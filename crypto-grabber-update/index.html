@@ -1,0 +1,2077 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d1117">
+<title>Crypto Grabber</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20200%20200%22%20shape-rendering%3D%22crispEdges%22%3E%3Crect%20width%3D%22200%22%20height%3D%22200%22%20rx%3D%2244%22%20fill%3D%22%230d1117%22/%3E%3Cg%20fill%3D%22%232dd4bf%22%3E%3Crect%20x%3D%2234%22%20y%3D%2262%22%20width%3D%2270%22%20height%3D%2220%22/%3E%3Crect%20x%3D%2234%22%20y%3D%2282%22%20width%3D%2220%22%20height%3D%2240%22/%3E%3Crect%20x%3D%2234%22%20y%3D%22122%22%20width%3D%2270%22%20height%3D%2220%22/%3E%3Crect%20x%3D%2254%22%20y%3D%2282%22%20width%3D%2210%22%20height%3D%2210%22/%3E%3C/g%3E%3Cg%20fill%3D%22%23e6edf3%22%3E%3Crect%20x%3D%2264%22%20y%3D%2282%22%20width%3D%2210%22%20height%3D%2210%22/%3E%3Crect%20x%3D%2284%22%20y%3D%2282%22%20width%3D%2210%22%20height%3D%2210%22/%3E%3Crect%20x%3D%2274%22%20y%3D%22112%22%20width%3D%2210%22%20height%3D%2210%22/%3E%3Crect%20x%3D%2294%22%20y%3D%22112%22%20width%3D%2210%22%20height%3D%2210%22/%3E%3C/g%3E%3Crect%20x%3D%2248%22%20y%3D%2266%22%20width%3D%2210%22%20height%3D%2210%22%20fill%3D%22%230d1117%22/%3E%3Cg%20fill%3D%22%23f87171%22%3E%3Crect%20x%3D%22130%22%20y%3D%2278%22%20width%3D%224%22%20height%3D%2248%22/%3E%3Crect%20x%3D%22124%22%20y%3D%2288%22%20width%3D%2216%22%20height%3D%2228%22/%3E%3Crect%20x%3D%22162%22%20y%3D%2290%22%20width%3D%224%22%20height%3D%2248%22/%3E%3Crect%20x%3D%22156%22%20y%3D%22100%22%20width%3D%2216%22%20height%3D%2228%22/%3E%3C/g%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Crypto Grabber">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Silkscreen:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: coin search, collapsible settings, sticky scan bar, one collapsed card per coin */
+:root{
+  --bg:#eef1f4; --panel:#ffffff; --fg:#111820; --muted:#5d6975; --line:#d6dce2;
+  --accent:#0f766e; --va:#9fd3cc; --bull:#15803d; --bullbg:#dcfce7; --bear:#b91c1c; --bearbg:#fee2e2; --gold:#a16207; --goldbg:#fef3c7;
+  --display:"Archivo",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+/* palettes, light values */
+:root[data-pal="blue"]{--accent:#1d4ed8;--va:#bcd0fa}
+:root[data-pal="violet"]{--accent:#6d28d9;--va:#d6c6f7}
+:root[data-pal="amber"]{--accent:#b45309;--va:#f6d6a8}
+:root[data-pal="rose"]{--accent:#be123c;--va:#f8c3cf}
+/* dark theme: follows the device unless Light is chosen, or forced by Dark */
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0d1117; --panel:#151b23; --fg:#e6edf3; --muted:#8b96a3; --line:#27313c;
+  --accent:#2dd4bf; --va:#1d5e57; --bull:#4ade80; --bullbg:#0f2a1a; --bear:#f87171; --bearbg:#2c1214; --gold:#fbbf24; --goldbg:#2d230a; color-scheme:dark}
+  :root[data-pal="blue"]:not([data-theme="light"]){--accent:#60a5fa;--va:#1e3a6e}
+  :root[data-pal="violet"]:not([data-theme="light"]){--accent:#a78bfa;--va:#3b2a6b}
+  :root[data-pal="amber"]:not([data-theme="light"]){--accent:#fbbf24;--va:#5a4113}
+  :root[data-pal="rose"]:not([data-theme="light"]){--accent:#fb7185;--va:#5e1f2e}}
+:root[data-theme="dark"]{
+  --bg:#0d1117; --panel:#151b23; --fg:#e6edf3; --muted:#8b96a3; --line:#27313c;
+  --accent:#2dd4bf; --va:#1d5e57; --bull:#4ade80; --bullbg:#0f2a1a; --bear:#f87171; --bearbg:#2c1214; --gold:#fbbf24; --goldbg:#2d230a; color-scheme:dark}
+:root[data-theme="dark"][data-pal="blue"]{--accent:#60a5fa;--va:#1e3a6e}
+:root[data-theme="dark"][data-pal="violet"]{--accent:#a78bfa;--va:#3b2a6b}
+:root[data-theme="dark"][data-pal="amber"]{--accent:#fbbf24;--va:#5a4113}
+:root[data-theme="dark"][data-pal="rose"]{--accent:#fb7185;--va:#5e1f2e}
+[hidden]{display:none!important}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 var(--display);-webkit-tap-highlight-color:transparent}
+.wrap{max-width:720px;margin:0 auto;padding-block:12px 40px;padding-left:max(14px,env(safe-area-inset-left,0px));padding-right:max(14px,env(safe-area-inset-right,0px));display:grid;gap:12px}
+header{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.gear{width:40px;height:40px;display:grid;place-items:center;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
+.gear[aria-expanded="true"]{border-color:var(--accent);color:var(--accent)}
+.gear svg{width:20px;height:20px}
+.hbtns{display:flex;gap:8px}
+.regime{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.rt{display:grid;gap:3px;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px 10px;color:var(--fg);font:inherit;min-width:0}
+.rt[aria-expanded="true"]{border-color:var(--accent)}
+.rh{display:flex;align-items:center;gap:6px;font:700 12px var(--display);color:var(--muted)}
+.rh svg{width:15px;height:15px}
+.ri{font:800 13px var(--display)}
+.rst{font:800 14px/1.2 var(--display)}
+.rst.up{color:var(--bull)} .rst.down{color:var(--bear)} .rst.side{color:var(--gold)}
+.rx{font:11px var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stylebar{display:grid;gap:6px;font-size:12.5px;color:var(--muted);margin:-2px 2px 10px}
+.sbl{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
+.regd{display:grid;gap:4px;font-size:13px}
+.regd b{font-weight:700}
+.lp{font:600 13px var(--mono);margin-left:10px;padding:1px 6px;border-radius:5px;font-variant-numeric:tabular-nums}
+@keyframes up{from{background:var(--bullbg);color:var(--bull)}to{background:transparent}}
+@keyframes dn{from{background:var(--bearbg);color:var(--bear)}to{background:transparent}}
+.tick-up{animation:up 1s ease-out}.tick-dn{animation:dn 1s ease-out}
+.plan2{display:grid;gap:2px;padding:10px 12px;border-radius:10px;background:var(--bg)}
+.rec{font:12.5px/1.4 var(--display);color:var(--muted);padding:2px 0 4px}
+.rec b{color:var(--fg)}
+.eo{gap:0}
+.eor{padding:7px 0;border-bottom:1px solid var(--line)}
+.eor:last-child{border-bottom:0}
+.eoh{display:flex;justify-content:space-between;gap:8px;font:600 13px var(--display)}
+.eor.pick .eoh{color:var(--accent);font-weight:800}
+.eos{font:600 12px var(--mono);color:var(--muted);text-align:right}
+.eod{font:12px var(--mono);color:var(--muted);margin-top:2px}
+.dr{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.dr label{display:grid;gap:4px;min-width:0}
+.late{font:600 12.5px var(--display);color:var(--gold);background:var(--goldbg);border-radius:8px;padding:6px 8px;margin-top:6px}
+.tr{font:600 12.5px var(--display);color:var(--fg);padding:2px 0 6px}
+.ph{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:4px;font-size:12.5px}
+.pr{display:grid;grid-template-columns:84px 96px 1fr;gap:8px;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--line)}
+.pr:last-of-type{border-bottom:0}
+.pk{font:600 12px var(--display);color:var(--muted)}
+.pv{font:700 14px var(--mono);font-variant-numeric:tabular-nums}
+.pv.pos{color:var(--bull)} .pv.neg{color:var(--bear)}
+.pn{font:12px var(--display);color:var(--muted);min-width:0}
+.pt{font:12px var(--mono);color:var(--muted);padding-top:6px}
+.ladder{display:grid}
+.lvtf .chip{min-height:32px;padding:5px 10px;font-size:12px}
+.lr{display:grid;grid-template-columns:1fr auto 58px;gap:10px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
+.lr span:nth-child(2){font:600 13px var(--mono);font-variant-numeric:tabular-nums}
+.lr span:nth-child(3){font:12px var(--mono);text-align:right}
+.lr em{font-style:normal;color:var(--muted);font-size:11.5px}
+.lr.hl span:first-child{color:var(--accent);font-weight:700}
+.lr.now{background:var(--bg);border-radius:6px;padding:7px 8px;margin:2px -8px;border-bottom:0;font-weight:700}
+.status.err{color:var(--bear)}
+
+.mode{display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--fg);font:700 13px var(--display)}
+.mode .dot{width:8px;height:8px;border-radius:50%;background:var(--bull);box-shadow:0 0 0 3px var(--bullbg)}
+.mode[aria-pressed="true"]{border-color:var(--gold);color:var(--gold)}
+.mode[aria-pressed="true"] .dot{background:var(--gold);box-shadow:0 0 0 3px var(--goldbg)}
+body.btmode #scan{background:var(--gold)}
+body.btmode #btBar{border-color:var(--gold)}
+.field{width:100%;min-width:0;font:600 15px var(--mono);padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
+.fee{display:flex;align-items:center;gap:6px;font:600 14px var(--mono)}
+.fee input{width:84px;text-align:center}
+.btn:disabled{opacity:.6}
+.tablewrap{overflow-x:auto}
+table.bt{width:100%;border-collapse:collapse;font:12.5px var(--mono);font-variant-numeric:tabular-nums}
+table.bt th,table.bt td{padding:6px 4px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+table.bt th{font:600 10px var(--display);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+table.bt th:first-child,table.bt td:first-child{text-align:left}
+.pos{color:var(--bull)} .neg{color:var(--bear)}
+.btsum{display:grid;gap:10px}
+.outc{display:grid;gap:3px;font:12px var(--mono);background:var(--bg);border-radius:10px;padding:8px 10px}
+.mai{position:relative}
+.mai input{width:100%;padding-right:28px}
+.rs{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:24px;height:24px;display:grid;place-items:center;border-radius:50%;border:0;background:var(--bg);color:var(--accent);font:700 14px/1 var(--display);padding:0}
+.btn{font:700 14px var(--display);padding:10px;border-radius:10px;border:1px solid var(--accent);background:transparent;color:var(--accent);width:100%;margin-top:12px}
+.swatches{display:flex;gap:10px;flex-wrap:wrap}
+.sw{width:34px;height:34px;border-radius:50%;border:2px solid var(--line);padding:0}
+.sw[aria-pressed="true"]{border-color:var(--fg);box-shadow:0 0 0 2px var(--panel) inset}
+h1{font:800 22px var(--display);margin:0;letter-spacing:-.01em}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.chomper{width:52px;height:32px;flex:none;overflow:visible}
+.c-body{fill:var(--accent)} .c-tooth{fill:var(--fg)} .c-eye{fill:var(--bg)} .c-red{fill:var(--bear)}
+.jaw-top,.jaw-bot,.c-candles{transition:transform .2s}
+.wm{display:grid;line-height:1;font-family:"Silkscreen",ui-monospace,monospace;white-space:nowrap}
+.wm span{font-size:11px;letter-spacing:.32em;color:var(--muted)}
+.wm b{font-size:19px;font-weight:700;letter-spacing:.06em;color:var(--fg)}
+@keyframes jawT{0%,100%{transform:translateY(0)}50%{transform:translateY(12px)}}
+@keyframes jawB{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+@keyframes feed{0%{transform:translateX(0);opacity:1}80%{transform:translateX(-22px);opacity:0}100%{transform:translateX(0);opacity:0}}
+body.chomping .jaw-top{animation:jawT .45s steps(2,jump-none) infinite}
+body.chomping .jaw-bot{animation:jawB .45s steps(2,jump-none) infinite}
+body.chomping .c-candles{animation:feed 1.35s steps(6) infinite}
+@media (prefers-reduced-motion:reduce){body.chomping .jaw-top,body.chomping .jaw-bot,body.chomping .c-candles{animation:none}}
+.search{display:flex;gap:8px}
+.search input{flex:1;min-width:0;font:600 16px var(--mono);text-transform:uppercase;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
+.search button{font:700 15px var(--display);padding:0 18px;border-radius:10px;border:1px solid var(--accent);background:transparent;color:var(--accent)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+summary{list-style:none;cursor:pointer}
+summary::-webkit-details-marker{display:none}
+.panel>summary{font-weight:700;display:flex;justify-content:space-between}
+.panel>summary::after{content:"＋";color:var(--muted)} .panel[open]>summary::after{content:"－"}
+.row{display:grid;gap:8px;margin-top:14px}
+.rowhead{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.lbl{font:600 11px var(--display);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font:600 13px var(--mono);padding:8px 11px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--fg);min-height:38px}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--panel)}
+.chip.star[aria-pressed="true"]{background:transparent;border-color:var(--gold);color:var(--gold)}
+.link{font:600 13px var(--display);background:none;border:0;color:var(--accent);padding:4px 0}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{font:700 12px var(--mono);padding:7px 14px;border:0;background:transparent;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--panel)}
+.maedit{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.maedit input{min-width:0;font:600 15px var(--mono);padding:9px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--fg);text-align:center}
+.note{font-size:12.5px;color:var(--muted);margin:14px 0 0}
+.scanbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;display:grid;gap:8px;background:var(--bg);padding:6px 0}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+#scan{font:800 16px var(--display);padding:14px;border-radius:12px;border:0;background:var(--accent);color:var(--panel);width:100%}
+#scan:disabled,.search button:disabled{opacity:.6}
+.bar{height:4px;background:var(--line);border-radius:2px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.status{font:12px var(--mono);color:var(--muted)}
+.status.err{color:var(--bear)}
+.tools{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.auto{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+#results{display:grid;gap:10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px}
+.card.conf{border-color:var(--gold)}
+.csum{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px}
+.csum::after{content:"▾";color:var(--muted);font-size:14px;transition:transform .15s}
+.card[open]>.csum::after{transform:rotate(180deg)}
+.cl{display:grid;gap:6px;min-width:0;flex:1}
+.sym{font:800 18px var(--display)}
+.sym small{font:600 12px var(--mono);color:var(--muted);margin-left:8px}
+.sub{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.cbody{display:grid;gap:10px;padding:0 14px 14px}
+.pill{font:700 12px var(--display);padding:3px 9px;border-radius:999px;white-space:nowrap;display:inline-block}
+.pill.bull{color:var(--bull);background:var(--bullbg)} .pill.bear{color:var(--bear);background:var(--bearbg)} .pill.flat{color:var(--muted);background:var(--bg)}
+.pills{display:flex;flex-wrap:wrap;gap:6px}
+.swp{display:inline-block;font:700 10.5px/1.5 var(--mono);padding:0 5px;border-radius:5px;margin-left:3px;vertical-align:1px}
+.swp.up{color:var(--bull);background:var(--bullbg)} .swp.down{color:var(--bear);background:var(--bearbg)} .swp.eq{color:var(--gold);background:var(--goldbg)}
+.rec.gold{color:var(--gold)}
+.donebn{display:grid;gap:2px;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:12.5px;background:var(--bg)}
+.donebn b{font:800 13px var(--display)}.donebn.bull{background:var(--bullbg)}.donebn.bull b{color:var(--bull)}
+.donebn.bear{background:var(--bearbg)}.donebn.bear b{color:var(--bear)}.donebn span{color:var(--muted)}
+.dim{opacity:.55}
+.inv{display:grid;gap:4px;font-size:12.5px;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+.inv>b{font:700 12px var(--display);color:var(--muted)}.inv>div{display:flex;gap:8px;align-items:baseline}.inv>div>b{width:14px;flex:none}
+.inv .ok>b{color:var(--bull)}.inv .no>b{color:var(--bear)}.inv .no span{color:var(--gold)}
+.lq{display:grid;gap:3px;font:12px var(--mono)}
+.lqh{display:flex;justify-content:space-between;color:var(--muted);font:600 11.5px var(--display);padding:2px 0}
+.lqr{display:grid;grid-template-columns:72px 48px 1fr 56px;gap:8px;align-items:center}
+.lqr>span:last-child{text-align:right}
+.lqb{height:10px;border-radius:3px;background:var(--bg);overflow:hidden}.lqb i{display:block;height:100%;border-radius:3px}
+.lqr.up .lqb i{background:var(--bull)}.lqr.dn .lqb i{background:var(--bear)}
+.lqr.now{color:var(--accent);font-weight:700;border-top:1px dashed var(--line);border-bottom:1px dashed var(--line);padding:3px 0}
+.tfbody.sbody{gap:3px;font:12px/1.45 var(--mono);color:var(--muted)}
+.legend{font-size:11.5px;line-height:1.45;color:var(--muted);padding-top:4px}
+.x-struct .tfrow+.tfrow{margin-top:6px}
+.x-struct .th{align-items:center}
+.tag{font:600 11px var(--mono);padding:2px 7px;border-radius:5px;background:var(--bg);color:var(--muted)}
+.tag.gold{color:var(--gold);background:var(--goldbg)}
+.tag.bull{color:var(--bull);background:var(--bullbg)} .tag.bear{color:var(--bear);background:var(--bearbg)}
+.schip{font:700 12px var(--display);padding:5px 9px;border-radius:8px;white-space:nowrap;border:1px solid currentColor}
+.schip b{font:800 15px var(--display)}
+.schip.bull{color:var(--bull)} .schip.gold{color:var(--gold)} .schip.bear{color:var(--bear)}
+.score{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:center;padding:10px;border-radius:10px;border:1px solid var(--line)}
+.score.bull{border-color:var(--bull)} .score.gold{border-color:var(--gold)} .score.bear{border-color:var(--bear)}
+.sn b{font:800 30px/1 var(--display);font-variant-numeric:tabular-nums}
+.sn small{font:600 12px var(--mono);color:var(--muted)}
+.score.bull .sn b{color:var(--bull)} .score.gold .sn b{color:var(--gold)} .score.bear .sn b{color:var(--bear)}
+.sv{display:grid;gap:6px;min-width:0}
+.why{display:grid;gap:2px;font-size:12.5px}
+.why .neg{color:var(--muted)}
+.plan{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:10px;border-radius:10px;background:var(--bg)}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.m{min-width:0}
+.m .k{font:600 10px var(--display);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.m .v{font:600 13px var(--mono);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.m .s{font:11px/1.3 var(--display);color:var(--muted)}
+.v.pos{color:var(--bull)} .v.neg{color:var(--bear)}
+.timing{font:12px var(--mono);background:var(--bg);border-radius:10px;padding:8px 10px;display:grid;gap:2px}
+.sec,.tfrow{border:1px solid var(--line);border-radius:10px}
+.sec>summary{padding:10px 12px;font:700 13px var(--display);color:var(--accent);display:flex;justify-content:space-between}
+.sec>summary::after,.tfrow>summary::after{content:"▾";color:var(--muted);transition:transform .15s}
+.sec[open]>summary::after,.tfrow[open]>summary::after{transform:rotate(180deg)}
+.secbody{display:grid;gap:10px;padding:0 12px 12px;min-width:0}
+.tfrow>summary{display:flex;align-items:center;gap:10px;padding:9px 11px}
+.tfrow>summary::after{margin-left:auto}
+.tflab{font:700 14px var(--mono);color:var(--accent);min-width:34px}
+.th{display:flex;flex-wrap:wrap;gap:4px;min-width:0}
+.tfrow>summary .schip{margin-left:auto}
+.tfbody{display:grid;gap:8px;padding:0 11px 11px;min-width:0}
+.lvcols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.lvl{display:flex;justify-content:space-between;gap:6px;font:12.5px var(--mono);font-variant-numeric:tabular-nums;padding:5px 0;border-bottom:1px solid var(--line)}
+.mu{color:var(--muted)} .small{font-size:12px;margin-top:6px}
+.vpwrap{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+.vp{display:grid;gap:1px;padding:2px 0;border-left:1px solid var(--line)}
+.vprow{height:4px;position:relative}
+.vprow i{display:block;height:100%;background:var(--line);border-radius:0 2px 2px 0}
+.vprow i.va{background:var(--va)} .vprow i.poc{background:var(--accent)}
+.vprow.now::after{content:"";position:absolute;left:0;right:0;top:1px;height:2px;background:var(--fg)}
+.links{display:flex;justify-content:space-between;gap:8px}
+.links a{font:600 13px var(--display);color:var(--accent);text-decoration:none}
+.empty{text-align:center;color:var(--muted);padding:20px 10px}
+.ahead{font-size:13.5px;color:var(--muted);margin:0 2px 10px}.ahead b{color:var(--bull)}
+.near{margin-top:4px}.near>.secbody{gap:10px;padding:0 8px 8px}
+.tag.aplus{color:var(--bull);background:var(--bullbg);font-weight:800}
+.pill.gold{color:var(--gold);background:var(--goldbg)}
+.chk{gap:6px;font-size:13px}.chk>div{display:flex;gap:8px;align-items:baseline}.chk b{width:14px;flex:none}
+.chk .ok b{color:var(--bull)}.chk .no b{color:var(--bear)}.chk .no span{color:var(--muted)}
+button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:420px){.plan{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:340px){.lvcols,.vpwrap{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1 class="brand" aria-label="Crypto Grabber">
+    <svg class="chomper" viewBox="28 56 150 92" shape-rendering="crispEdges" aria-hidden="true">
+      <rect class="c-body" x="34" y="82" width="20" height="40"/>
+      <g class="jaw-top"><rect class="c-body" x="34" y="62" width="70" height="20"/><rect class="c-body" x="54" y="82" width="10" height="10"/>
+        <rect class="c-eye" x="48" y="66" width="10" height="10"/><rect class="c-tooth" x="64" y="82" width="10" height="10"/><rect class="c-tooth" x="84" y="82" width="10" height="10"/></g>
+      <g class="jaw-bot"><rect class="c-body" x="34" y="122" width="70" height="20"/><rect class="c-tooth" x="74" y="112" width="10" height="10"/><rect class="c-tooth" x="94" y="112" width="10" height="10"/></g>
+      <g class="c-candles"><rect class="c-red" x="130" y="78" width="4" height="48"/><rect class="c-red" x="124" y="88" width="16" height="28"/>
+        <rect class="c-red" x="162" y="90" width="4" height="48"/><rect class="c-red" x="156" y="100" width="16" height="28"/></g>
+    </svg>
+    <span class="wm"><span>CRYPTO</span><b>GRABBER</b></span></h1>
+    <div class="hbtns">
+    <button class="mode" id="modeBtn" aria-pressed="false" aria-label="Switch between live data and backtest"><span class="dot"></span><span id="modeTxt">Live</span></button>
+    <button class="gear" id="gear" aria-label="Settings" aria-expanded="false" aria-controls="settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+    </div>
+  </header>
+
+  <div class="regime" id="regime">
+    <button class="rt" data-reg="btc" aria-expanded="false"><span class="rh"><span class="ri">₿</span>BTC</span><span class="rst">…</span><span class="rx">Daily</span></button>
+    <button class="rt" data-reg="alts" aria-expanded="false"><span class="rh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="8" cy="9" r="5"/><circle cx="16" cy="15" r="5"/></svg>Alts</span><span class="rst">…</span><span class="rx">Daily</span></button>
+    <button class="rt" data-reg="mkt" aria-expanded="false"><span class="rh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Market</span><span class="rst">…</span><span class="rx">Daily</span></button>
+  </div>
+  <div class="stylebar" id="styleBar" hidden></div>
+  <div class="panel regd" id="regDetail" hidden></div>
+
+  <section class="panel" id="btBar" hidden>
+    <div class="rowhead"><span class="lbl">Backtest</span>
+      <span class="fee">Fees <input class="field" id="btFee" type="number" min="0" max="2" step="0.05" inputmode="decimal" aria-label="Fees and slippage percent per trade">%</span></div>
+    <div class="dr" style="margin-top:8px"><label><span class="lbl">From</span><input class="field" id="wrFrom" type="date" aria-label="Backtest from date"></label>
+      <label><span class="lbl">To</span><input class="field" id="wrTo" type="date" aria-label="Backtest to date"></label></div>
+  </section>
+
+  <section class="panel" id="settings" hidden>
+    <div class="row" style="margin-top:0">
+      <div class="rowhead"><span class="lbl">Timeframes</span><button class="link" id="editTf">Edit favorites</button></div>
+      <div class="chips" id="tfChips"></div>
+      <div id="tfEdit" hidden><div class="chips" id="tfAll"></div></div>
+    </div>
+    <div class="row">
+      <div class="rowhead"><span class="lbl">Moving averages</span>
+        <div class="seg" role="group" aria-label="Moving average type"><button data-ma="ema">EMA</button><button data-ma="sma">MA</button></div></div>
+      <div><button class="link" id="editMa">Customize periods</button></div>
+      <div id="maEdit" hidden>
+        <div class="maedit">
+          <div class="mai"><input type="number" id="ma0" min="2" max="300" inputmode="numeric" aria-label="Period 1"><button class="rs" data-i="0" aria-label="Reset to 9" title="Reset to 9" hidden>↺</button></div>
+          <div class="mai"><input type="number" id="ma1" min="2" max="300" inputmode="numeric" aria-label="Period 2"><button class="rs" data-i="1" aria-label="Reset to 21" title="Reset to 21" hidden>↺</button></div>
+          <div class="mai"><input type="number" id="ma2" min="2" max="300" inputmode="numeric" aria-label="Period 3"><button class="rs" data-i="2" aria-label="Reset to 50" title="Reset to 50" hidden>↺</button></div>
+          <div class="mai"><input type="number" id="ma3" min="2" max="300" inputmode="numeric" aria-label="Period 4"><button class="rs" data-i="3" aria-label="Reset to 200" title="Reset to 200" hidden>↺</button></div>
+        </div>
+        <button class="btn" id="saveMa">Save periods</button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="rowhead"><span class="lbl">Stop triggers on</span>
+        <div class="seg" role="group" aria-label="Stop type"><button data-stop="wick">Touch</button><button data-stop="close">Candle close</button></div></div>
+    </div>
+    <div class="row">
+      <div class="rowhead"><span class="lbl">Theme</span>
+        <div class="seg" role="group" aria-label="Theme"><button data-theme-opt="auto">Auto</button><button data-theme-opt="light">Light</button><button data-theme-opt="dark">Dark</button></div></div>
+    </div>
+    <div class="row">
+      <span class="lbl">Colour palette</span>
+      <div class="swatches" id="pal">
+        <button class="sw" data-pal="teal" aria-label="Teal" style="background:#14b8a6"></button>
+        <button class="sw" data-pal="blue" aria-label="Blue" style="background:#3b82f6"></button>
+        <button class="sw" data-pal="violet" aria-label="Violet" style="background:#8b5cf6"></button>
+        <button class="sw" data-pal="amber" aria-label="Amber" style="background:#f59e0b"></button>
+        <button class="sw" data-pal="rose" aria-label="Rose" style="background:#f43f5e"></button>
+      </div>
+    </div>
+  </section>
+
+  <div class="search">
+    <input id="q" type="search" placeholder="Check a coin: SOL, ETH, HYPE…" autocomplete="off" autocapitalize="characters" aria-label="Coin symbol">
+    <button id="check">Check</button>
+  </div>
+
+  <div class="scanbar">
+    <button id="scan">Scan market</button>
+    <div class="bar"><i id="prog"></i></div>
+    <div class="status" id="status">Scan the top 50, or check one coin.</div>
+    <div class="tools">
+      <label class="auto" id="autoWrap"><input type="checkbox" id="auto"> Rescan every 15 min</label>
+      <button class="link" id="closeall">Collapse all</button>
+    </div>
+  </div>
+
+  <div id="results"></div>
+</div>
+
+<script>
+// ---------- settings ----------
+const ALL_TF=["1m","3m","5m","15m","30m","1h","2h","4h","6h","8h","12h","1d","3d","1w","1M"];
+const TF_MIN={"1m":1,"3m":3,"5m":5,"15m":15,"30m":30,"1h":60,"2h":120,"4h":240,"6h":360,"8h":480,"12h":720,"1d":1440,"3d":4320,"1w":10080,"1M":43200};
+const OKX_BAR={"1m":"1m","3m":"3m","5m":"5m","15m":"15m","30m":"30m","1h":"1H","2h":"2H","4h":"4H","6h":"6Hutc","12h":"12Hutc","1d":"1Dutc","3d":"3Dutc","1w":"1Wutc","1M":"1Mutc"};
+const STD_MA=[9,21,50,200];
+const TOP_N=50,VOL_MULT=1.5,VOL_LEN=20,MAX_FAV=10;
+let S={favs:["15m","1h","4h","1d","1w"],tfs:["1h","4h","1d"],maType:"ema",slots:[...STD_MA],periods:[...STD_MA],off:[],theme:"auto",pal:"teal",entry:"close",stopMode:"wick"};
+const okP=v=>{const n=Number(v);return v!==""&&v!=null&&Number.isInteger(n)&&n>=2&&n<=300?n:null;};
+const fromSlots=sl=>[...new Set(sl.filter(n=>n!=null))].sort((x,y)=>x-y);
+try{
+  const o=JSON.parse(localStorage.getItem("cgrab")||"{}");
+  if(Array.isArray(o.favs))S.favs=o.favs.filter(t=>ALL_TF.includes(t)).slice(0,MAX_FAV);
+  if(Array.isArray(o.tfs))S.tfs=o.tfs.filter(t=>S.favs.includes(t));
+  if(o.maType==="ema"||o.maType==="sma")S.maType=o.maType;
+  if(Array.isArray(o.slots)&&o.slots.length===4){const sl=o.slots.map(okP);if(sl.some(n=>n!=null)){S.slots=sl;S.periods=fromSlots(sl);}}
+  if(["auto","light","dark"].includes(o.theme))S.theme=o.theme;
+  if(["close","pullback","breakout","sweep"].includes(o.entry))S.entry=o.entry;
+  if(["wick","close"].includes(o.stopMode))S.stopMode=o.stopMode;
+  if(["teal","blue","violet","amber","rose"].includes(o.pal))S.pal=o.pal;
+  if(Array.isArray(o.off))S.off=o.off.filter(p=>S.periods.includes(p));
+}catch(e){}
+const save=()=>{try{const {periods,...keep}=S;localStorage.setItem("cgrab",JSON.stringify(keep));}catch(e){}};
+const $=id=>document.getElementById(id);
+const sortTf=a=>a.slice().sort((x,y)=>ALL_TF.indexOf(x)-ALL_TF.indexOf(y));
+const maName=()=>S.maType==="ema"?"EMA":"MA";
+
+function renderTf(){
+  const box=$("tfChips");box.textContent="";
+  if(!S.favs.length){box.innerHTML='<span class="status">No favorites yet. Tap Edit favorites.</span>';}
+  for(const tf of sortTf(S.favs)){
+    const b=document.createElement("button");b.className="chip";b.textContent=tf;b.setAttribute("aria-pressed",S.tfs.includes(tf));
+    b.onclick=()=>{S.tfs=S.tfs.includes(tf)?S.tfs.filter(x=>x!==tf):[...S.tfs,tf];save();renderTf();};
+    box.appendChild(b);
+  }
+  if(typeof renderBtTf==="function"&&window.BT_READY)renderBtTf();
+  const all=$("tfAll");all.textContent="";
+  for(const tf of ALL_TF){
+    const fav=S.favs.includes(tf);
+    const b=document.createElement("button");b.className="chip star";b.textContent=(fav?"★ ":"☆ ")+tf;b.setAttribute("aria-pressed",fav);
+    b.onclick=()=>{
+      if(fav){S.favs=S.favs.filter(x=>x!==tf);S.tfs=S.tfs.filter(x=>x!==tf);}
+      else{if(S.favs.length>=MAX_FAV){setStatus("You can keep 10 favorite timeframes. Remove one first.",true);return;}S.favs=[...S.favs,tf];}
+      save();renderTf();
+    };
+    all.appendChild(b);
+  }
+}
+$("editTf").onclick=()=>{const e=$("tfEdit");e.hidden=!e.hidden;$("editTf").textContent=e.hidden?"Edit favorites":"Done";};
+function renderMa(){
+  document.querySelectorAll("[data-ma]").forEach(x=>x.setAttribute("aria-pressed",S.maType===x.dataset.ma));
+  [0,1,2,3].forEach(i=>{$("ma"+i).value=S.slots[i]??"";});
+  updResets();
+}
+document.querySelectorAll("[data-ma]").forEach(b=>b.onclick=()=>{S.maType=b.dataset.ma;save();renderMa();});
+$("editMa").onclick=()=>{const e=$("maEdit");e.hidden=!e.hidden;$("editMa").textContent=e.hidden?"Customize periods":"Close";};
+// a reset icon shows only on a box whose value differs from the standard 9 / 21 / 50 / 200
+function updResets(){document.querySelectorAll(".rs").forEach(b=>{const i=+b.dataset.i;b.hidden=okP($("ma"+i).value)===STD_MA[i];});}
+[0,1,2,3].forEach(i=>$("ma"+i).addEventListener("input",updResets));
+function applySlots(sl,msg){
+  if(!sl.some(n=>n!=null)){setStatus("Enter at least one period between 2 and 300.",true);return;}
+  S.slots=sl;S.periods=fromSlots(sl);S.off=S.off.filter(p=>S.periods.includes(p));save();renderMa();if(msg)setStatus(msg);
+}
+const readSlots=()=>[0,1,2,3].map(i=>okP($("ma"+i).value));
+$("saveMa").onclick=()=>{const sl=readSlots();applySlots(sl,`Saved: ${maName()} ${fromSlots(sl).join(" · ")}`);};
+document.querySelectorAll(".rs").forEach(b=>b.onclick=()=>{
+  const i=+b.dataset.i,sl=readSlots();sl[i]=STD_MA[i];applySlots(sl,null);setStatus("");
+});
+
+// ---------- entry method ----------
+function renderEntry(){
+  document.querySelectorAll("[data-stop]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.stop===S.stopMode));
+}
+document.querySelectorAll("[data-stop]").forEach(b=>b.onclick=()=>{S.stopMode=b.dataset.stop;save();renderEntry();
+  setStatus("Stop type changed. Scan or check again to apply it.");});
+renderEntry();
+
+// ---------- appearance ----------
+function applyLook(){
+  const r=document.documentElement;
+  if(S.theme==="auto")delete r.dataset.theme;else r.dataset.theme=S.theme;
+  if(S.pal==="teal")delete r.dataset.pal;else r.dataset.pal=S.pal;
+  document.querySelectorAll("[data-theme-opt]").forEach(x=>x.setAttribute("aria-pressed",x.dataset.themeOpt===S.theme));
+  document.querySelectorAll("#pal .sw").forEach(x=>x.setAttribute("aria-pressed",x.dataset.pal===S.pal));
+}
+document.querySelectorAll("[data-theme-opt]").forEach(b=>b.onclick=()=>{S.theme=b.dataset.themeOpt;save();applyLook();});
+document.querySelectorAll("#pal .sw").forEach(b=>b.onclick=()=>{S.pal=b.dataset.pal;save();applyLook();});
+applyLook();
+$("gear").onclick=()=>{const p=$("settings");p.hidden=!p.hidden;$("gear").setAttribute("aria-expanded",!p.hidden);};
+
+// ---------- indicators ----------
+function ema(a,n){const k=2/(n+1),o=[a[0]];for(let i=1;i<a.length;i++)o.push(a[i]*k+o[i-1]*(1-k));return o;}
+function sma(a,n){const o=new Array(a.length).fill(NaN);let s=0;for(let i=0;i<a.length;i++){s+=a[i];if(i>=n)s-=a[i-n];if(i>=n-1)o[i]=s/n;}return o;}
+function rsi(c,n=14){
+  const o=new Array(c.length).fill(50);let g=0,l=0;const al=1/n;
+  for(let i=1;i<c.length;i++){const d=c[i]-c[i-1];
+    g=g*(1-al)+Math.max(d,0)*al; l=l*(1-al)+Math.max(-d,0)*al;
+    o[i]=l===0?100:100-100/(1+g/l);}
+  return o;
+}
+function macdHist(c){const a=ema(c,12),b=ema(c,26),line=a.map((v,i)=>v-b[i]),sig=ema(line,9);return line.map((v,i)=>v-sig[i]);}
+function atr(d,n=14){
+  const o=[d.high[0]-d.low[0]];
+  for(let i=1;i<d.close.length;i++){
+    const tr=Math.max(d.high[i]-d.low[i],Math.abs(d.high[i]-d.close[i-1]),Math.abs(d.low[i]-d.close[i-1]));
+    o.push(o[i-1]+(tr-o[i-1])/n);
+  }
+  return o;
+}
+function pivots(v,L,R,kind){
+  const out=[];
+  for(let i=L;i<v.length-R;i++){
+    const w=v.slice(i-L,i+R+1);
+    const ext=kind==="low"?Math.min(...w):Math.max(...w);
+    if(v[i]===ext&&w.indexOf(ext)===L)out.push(i);
+  }
+  return out;
+}
+// maxAge keeps a signal in the scan for its whole entry window: 3 candles to confirm + up to 8 for a sweep entry.
+const CFG={L:5,R:3,minGap:5,maxGap:60,maxAge:11,trigger:5,sweepWin:8};
+function divergences(d){
+  const n=d.close.length,found=[];
+  const check=(piv,kind)=>{
+    if(piv.length<2)return;const b=piv[piv.length-1];
+    if(n-1-b>CFG.maxAge)return;
+    for(let j=piv.length-2;j>=0;j--){const a=piv[j],gap=b-a;
+      if(gap<CFG.minGap)continue; if(gap>CFG.maxGap)break;
+      const P=kind==="low"?d.low:d.high, r=d.rsi; let t=null;
+      if(kind==="low"){ if(P[b]<P[a]&&r[b]>r[a])t="regular_bull"; else if(P[b]>P[a]&&r[b]<r[a])t="hidden_bull"; }
+      else{ if(P[b]>P[a]&&r[b]<r[a])t="regular_bear"; else if(P[b]<P[a]&&r[b]>r[a])t="hidden_bear"; }
+      if(!t)continue;
+      found.push({type:t,p1:P[a],p2:P[b],r1:r[a],r2:r[b],ago:n-1-b,time:d.time[b],bi:b,gap});
+      return;
+    }
+  };
+  check(pivots(d.low,CFG.L,CFG.R,"low"),"low");
+  check(pivots(d.high,CFG.L,CFG.R,"high"),"high");
+  return found;
+}
+// ---------- market structure ----------
+// Swings are confirmed pivots (5 candles left, 3 right), so each one is known 3 candles after it forms.
+// A close beyond the latest swing is a break: with the trend it is a BOS, against it a CHoCH (the trend flips).
+// Two or more CHoCHs within 30 candles means the structure is choppy (range-bound).
+// The last two swing highs and lows give HH/LH/EQH and HL/LL/EQL. Swings within 0.3 ATR of each other count as equal:
+// two equal highs are a double top, three or more a triple top (same for lows). Their stops are resting liquidity.
+// Smart-money extras (full mode only): order blocks, fair value gaps (CE, inverse FVG, balanced price range),
+// premium/discount of the dealing range with the OTE zone, swing failure sweeps, strong/weak highs and lows.
+// pv={L,R} runs a "lite" pass with smaller pivots, used for internal structure.
+function structure(d,look=400,pv){
+  const PL=pv?pv.L:5,PR=pv?pv.R:3,lite=!!pv;
+  const n=d.close.length,s0=Math.max(0,n-look),H=d.high,Lw=d.low,C=d.close,L=n-1;
+  const isPiv=(v,i,hi)=>{if(i-PL<s0||i+PR>=n)return false;
+    for(let j=i-PL;j<=i+PR;j++){if(j===i)continue;if(hi?(j<i?v[j]>=v[i]:v[j]>v[i]):(j<i?v[j]<=v[i]:v[j]<v[i]))return false;}return true;};
+  let trend=0,sh=null,sl=null,shUsed=false,slUsed=false;const ev=[],HS=[],LS=[];
+  for(let t=s0;t<n;t++){
+    const c=t-PR;
+    if(c>=s0){if(isPiv(H,c,true)){sh=c;shUsed=false;HS.push(c);}if(isPiv(Lw,c,false)){sl=c;slUsed=false;LS.push(c);}}
+    if(sh!=null&&!shUsed&&C[t]>H[sh]){ev.push({t,dir:1,kind:trend===-1?"CHoCH":"BOS",lvl:H[sh],from:sh});trend=1;shUsed=true;}
+    if(sl!=null&&!slUsed&&C[t]<Lw[sl]){ev.push({t,dir:-1,kind:trend===1?"CHoCH":"BOS",lvl:Lw[sl],from:sl});trend=-1;slUsed=true;}
+  }
+  const last=ev[ev.length-1]||null,chop=ev.filter(e=>e.kind==="CHoCH"&&L-e.t<=30).length>=2;
+  if(lite)return {trend,last,ago:last?L-last.t:null,chop};
+  const A=d.atr?d.atr[L]:atr(d)[L],tol=Math.max(A*0.3,C[L]*0.001),px=C[L];
+  // suffix extremes: what price did after a given candle
+  const mnC=new Array(n+1).fill(Infinity),mxC=new Array(n+1).fill(-Infinity),mnL=new Array(n+1).fill(Infinity),mxH=new Array(n+1).fill(-Infinity);
+  for(let i=L;i>=s0;i--){mnC[i]=Math.min(C[i],mnC[i+1]);mxC[i]=Math.max(C[i],mxC[i+1]);mnL[i]=Math.min(Lw[i],mnL[i+1]);mxH[i]=Math.max(H[i],mxH[i+1]);}
+  const lab=(S,v,hi)=>{if(S.length<2)return null;const x=v[S[S.length-1]],y=v[S[S.length-2]];
+    return Math.abs(x-y)<=tol?(hi?"EQH":"EQL"):x>y?(hi?"HH":"HL"):(hi?"LH":"LL");};
+  // Equal highs/lows: the biggest cluster of recent swings at one level, with nothing between the touches going through it.
+  // After the last touch: a close through it breaks the pattern; a wick through it with a close back inside is a sweep.
+  const eqLevel=(S,v,hi)=>{
+    const rec=S.filter(i=>L-i<=150).slice(-10);let best=null;
+    for(const a of rec){
+      const cl=rec.filter(i=>Math.abs(v[i]-v[a])<=tol);if(cl.length<2)continue;
+      const f=cl[0],l=cl[cl.length-1],ext=hi?Math.max(...cl.map(i=>v[i])):Math.min(...cl.map(i=>v[i]));
+      let ok=true;for(let i=f;i<=l;i++)if(hi?H[i]>ext:Lw[i]<ext){ok=false;break;}
+      if(!ok)continue;
+      let status="intact",sw=null;
+      for(let i=l+1;i<=L;i++){if(hi?C[i]>ext:C[i]<ext){status="broken";break;}if(hi?H[i]>ext:Lw[i]<ext){status="swept";sw=i;}}
+      if(status==="broken")continue;
+      const c={n:cl.length,lvl:ext,ago:L-l,status,sweptAgo:sw!=null?L-sw:null};
+      if(!best||c.n>best.n||(c.n===best.n&&c.ago<best.ago))best=c;
+    }
+    return best;
+  };
+  // Order block: the candle where the move that broke structure started (lowest low before a break up,
+  // highest high before a break down). It stays valid until a candle closes through its far side.
+  const obs=[];
+  for(const e of ev){if(L-e.t>250)continue;
+    let k=e.from;for(let i=e.from;i<e.t;i++)if(e.dir>0?Lw[i]<Lw[k]:H[i]>H[k])k=i;
+    const z={dir:e.dir,lo:Lw[k],hi:H[k],t:k,from:e.kind};
+    z.broken=e.dir>0?mnC[e.t+1]<z.lo:mxC[e.t+1]>z.hi;
+    z.tested=e.dir>0?mnL[e.t+1]<=z.hi:mxH[e.t+1]>=z.lo;
+    if(!z.broken)obs.push(z);
+  }
+  // Fair value gap: candle 3's low above candle 1's high (bullish) or candle 3's high below candle 1's low (bearish).
+  // CE is the gap's midpoint. A close through the far edge turns it into an inverse FVG with the opposite role.
+  const fv=[],minGap=A*0.15;
+  for(let i=Math.max(s0+2,L-200);i<=L;i++){
+    if(Lw[i]-H[i-2]>minGap)fv.push({dir:1,lo:H[i-2],hi:Lw[i],t:i});
+    if(Lw[i-2]-H[i]>minGap)fv.push({dir:-1,lo:H[i],hi:Lw[i-2],t:i});
+  }
+  for(const g of fv){const a=g.t+1;g.ce=(g.lo+g.hi)/2;
+    if(g.dir>0){g.fill=mnL[a]<=g.lo?"full":mnL[a]<=g.ce?"ce":mnL[a]<g.hi?"part":"none";g.inv=mnC[a]<g.lo;}
+    else{g.fill=mxH[a]>=g.hi?"full":mxH[a]>=g.ce?"ce":mxH[a]>g.lo?"part":"none";g.inv=mxC[a]>g.hi;}
+    if(g.inv){for(let i=a;i<=L;i++)if(g.dir>0?C[i]<g.lo:C[i]>g.hi){g.invT=i;break;}
+      g.dead=false;for(let i=g.invT+1;i<=L;i++)if(g.dir>0?C[i]>g.hi:C[i]<g.lo){g.dead=true;break;}}
+  }
+  const live=fv.filter(g=>!g.inv),pick=(arr,up)=>arr.sort((a,b)=>up?a.lo-b.lo:b.hi-a.hi)[0]||null;
+  const fvgBull=pick(live.filter(g=>g.dir>0&&g.fill!=="full"&&g.lo<=px),false),fvgBear=pick(live.filter(g=>g.dir<0&&g.fill!=="full"&&g.hi>=px),true);
+  const ifvg=fv.filter(g=>g.inv&&!g.dead&&L-g.invT<=60).sort((a,b)=>b.invT-a.invT)[0]||null;
+  // Balanced price range: a bullish and a bearish gap from the same swing that overlap; the overlap is a strong reaction zone.
+  let bpr=null;
+  const recent=fv.filter(g=>L-g.t<=100);
+  for(const a of recent)for(const b of recent){if(a.dir!==1||b.dir!==-1||Math.abs(a.t-b.t)>15)continue;
+    const lo=Math.max(a.lo,b.lo),hi=Math.min(a.hi,b.hi);if(hi<=lo)continue;
+    const later=a.t>b.t?a:b,dir=later.dir;let ok=true;
+    for(let i=later.t+1;i<=L;i++)if(dir>0?C[i]<lo:C[i]>hi){ok=false;break;}
+    if(ok&&(!bpr||later.t>bpr.t))bpr={lo,hi,dir,t:later.t};}
+  // Swing failure (liquidity sweep): a wick through the last confirmed swing that closes back inside, in the last 10 candles.
+  const sfp=(S,hi)=>{
+    for(let t=L;t>=Math.max(s0,L-10);t--){
+      let c=null;for(let k=S.length-1;k>=0;k--)if(S[k]+PR<t){c=S[k];break;}if(c==null)continue;
+      const lv=hi?H[c]:Lw[c];
+      if(hi?H[t]>lv&&C[t]<=lv:Lw[t]<lv&&C[t]>=lv){let clean=true;for(let i=c+1;i<t;i++)if(hi?C[i]>lv:C[i]<lv){clean=false;break;}
+        if(clean)return {lvl:lv,ago:L-t,wick:hi?H[t]:Lw[t]};}
+    }
+    return null;
+  };
+  // Dealing range: last swing low (or anything lower since) to last swing high (or anything higher since).
+  let rng=null;
+  if(sh!=null&&sl!=null){const top=mxH[sh],bot=mnL[sl];
+    if(top>bot){const pos=(px-bot)/(top-bot);
+      rng={top,bot,pos,zone:pos>0.55?"Premium":pos<0.45?"Discount":"Equilibrium",
+        ote:trend>0?[top-0.79*(top-bot),top-0.62*(top-bot)]:trend<0?[bot+0.62*(top-bot),bot+0.79*(top-bot)]:null};
+      rng.inOte=!!rng.ote&&px>=rng.ote[0]&&px<=rng.ote[1];}}
+  return {trend,last,ago:last?L-last.t:null,chop,tol,HS,LS,
+    swingHigh:sh!=null?H[sh]:null,swingLow:sl!=null?Lw[sl]:null,
+    sw:{hi:lab(HS,H,true),lo:lab(LS,Lw,false)},eqH:eqLevel(HS,H,true),eqL:eqLevel(LS,Lw,false),
+    obs:obs.slice(-12),obBull:pick(obs.filter(z=>z.dir>0&&z.lo<=px),false),obBear:pick(obs.filter(z=>z.dir<0&&z.hi>=px),true),
+    fvgs:live.slice(-20),fvgBull,fvgBear,ifvg,bpr,sfpH:sfp(HS,true),sfpL:sfp(LS,false),rng,
+    internal:structure(d,150,{L:2,R:2})};
+}
+// Where the divergence pivot sits in the leg it pulled back from: 0 = no pullback, 1 = back to the leg's start,
+// above 1 = it took out the prior swing. Also whether it reacted from an order block or a fair value gap.
+function legLoc(d,st,x,bull){
+  if(!st||!st.HS)return null;
+  const S=bull?st.LS:st.HS;let a=null;for(let k=S.length-1;k>=0;k--)if(S[k]<x.bi){a=S[k];break;}
+  if(a==null)return null;
+  let ext=bull?-Infinity:Infinity;for(let i=a;i<=x.bi;i++)ext=bull?Math.max(ext,d.high[i]):Math.min(ext,d.low[i]);
+  const start=bull?d.low[a]:d.high[a],r=Math.abs(ext-start);if(!r)return null;
+  const D=bull?1:-1,inZ=z=>z.dir===D&&z.t<x.bi&&(bull?x.p2<=z.hi&&x.p2>=z.lo-st.tol:x.p2>=z.lo&&x.p2<=z.hi+st.tol);
+  return {ret:bull?(ext-x.p2)/r:(x.p2-ext)/r,atOB:st.obs.some(inZ),atFVG:st.fvgs.some(inZ)};
+}
+const STR_TXT=st=>!st?"n/a":st.chop?"Range-bound":st.last&&st.last.kind==="CHoCH"&&st.ago<=20?(st.trend>0?"Turning up":"Turning down"):st.trend>0?"Uptrend":st.trend<0?"Downtrend":"No clear trend";
+const STR_CLS=st=>!st||st.chop||!st.trend?"side":st.trend>0?"up":"down";
+const SEQ={"HH|HL":["Higher highs & higher lows","up"],"LH|LL":["Lower highs & lower lows","down"],
+  "LH|HL":["Squeeze: lower highs, higher lows","side"],"HH|LL":["Expanding: higher highs, lower lows","side"],
+  "EQH|HL":["Higher lows into equal highs (ascending triangle)","up"],"LH|EQL":["Lower highs into equal lows (descending triangle)","down"],
+  "EQH|EQL":["Flat range: equal highs and lows","side"]};
+const seqOf=st=>{const {hi,lo}=st.sw;
+  if(st.trend>0&&lo){if(hi==="EQH"&&lo==="HL")return SEQ["EQH|HL"];
+    if(lo==="HL")return [hi==="HH"?"Higher highs & higher lows":"Higher lows, broke above the last high","up"];
+    return [lo==="EQL"?"Equal lows held, then broke up":"Broke up, waiting for a higher low to confirm","up"];}
+  if(st.trend<0&&hi){if(hi==="LH"&&lo==="EQL")return SEQ["LH|EQL"];
+    if(hi==="LH")return [lo==="LL"?"Lower highs & lower lows":"Lower highs, broke below the last low","down"];
+    return [hi==="EQH"?"Equal highs held, then broke down":"Broke down, waiting for a lower high to confirm","down"];}
+  return SEQ[`${hi}|${lo}`]||(hi&&lo?[`${hi} · ${lo}`,"side"]:["Not enough swings yet","side"]);};
+const swCls=x=>x==="HH"||x==="HL"?"up":x==="LH"||x==="LL"?"down":"eq";
+const swPills=st=>[st.sw.hi,st.sw.lo].filter(Boolean).map(x=>`<span class="swp ${swCls(x)}">${x}</span>`).join("");
+const eqName=(e,hi)=>`${e.n>=3?"Triple":"Double"} ${hi?"top":"bottom"}`;
+const eqTxt=(e,hi,px)=>e?`Equal ${hi?"highs":"lows"} ×${e.n} (${eqName(e,hi).toLowerCase()})${px?` at ${px(e.lvl)}`:""}${e.status==="swept"?` · swept ${e.sweptAgo} candle${e.sweptAgo===1?"":"s"} ago`:hi?" · stops resting above":" · stops resting below"}`:"";
+// Top-down: daily structure sets the bias, 4h the setup, 1h/15m the entry. Uses these four timeframes whatever the favourites are.
+// Swing = daily and 4h trending the same way. Daily trending but 4h against it or ranging = swing forming (wait).
+// No daily trend = scalp only, when 4h and 1h (or 1h and 15m) agree. Otherwise stand aside.
+const CORE_TF=["15m","1h","4h","1d"];
+function styleOf(map){
+  const dir=st=>!st||st.chop?0:st.trend,D=dir(map["1d"]),F=dir(map["4h"]),H1=dir(map["1h"]),Q=dir(map["15m"]);
+  const w=d=>d>0?"long":"short",u=d=>d>0?"up":"down";
+  if(D&&F===D){
+    if(H1===D||(H1===0&&Q===D))return {kind:"swing",dir:D,ready:true,label:`Swing ${w(D)}`,txt:`Daily and 4h structure are ${u(D)} and 1h agrees. Swing entries are on; hold for Target 2.`};
+    return {kind:"swing",dir:D,ready:false,label:`Swing ${w(D)}`,txt:`Daily and 4h structure are ${u(D)}, 1h is pulling back. Best entry is a 1h CHoCH back ${u(D)} (or a divergence on 1h/15m).`};
+  }
+  if(D)return {kind:"wait",dir:D,label:`Swing ${w(D)} forming`,txt:`Daily is ${u(D)} but 4h is ${F?`pulling back ${u(F)}`:"ranging"}. Wait for a 4h ${F?"CHoCH":"BOS"} ${u(D)} before swinging; trades against the daily are scalps only.`};
+  if(F&&H1===F)return {kind:"scalp",dir:F,label:`Scalp ${w(F)}`,txt:`No daily trend. 4h and 1h are ${u(F)}, so take quick profits at Target 1.`};
+  if(H1&&Q===H1)return {kind:"scalp",dir:H1,label:`Scalp ${w(H1)}`,txt:`No daily or 4h trend. 1h and 15m are ${u(H1)}: small, quick trades only.`};
+  return {kind:"none",dir:0,label:"Stand aside",txt:"Daily, 4h and 1h structure don't line up, so there's no clean trend to trade."};
+}
+const styleTag=y=>`<span class="tag ${y.kind==="none"?"":y.kind==="wait"?"gold":y.dir>0?"bull":"bear"}">${y.label}</span>`;
+// The trade type of a signal: the coin's top-down trend read relative to the signal's own direction.
+function tradeType(h,sty){
+  if(!sty)return null;
+  const D=dirOf(h.type)==="bull"?1:-1,w=D>0?"long":"short",u=d=>d>0?"up":"down",col=D>0?"bull":"bear";
+  if((sty.kind==="swing"||sty.kind==="wait"||sty.kind==="scalp")&&sty.dir===-D)
+    return {label:`Counter-trend ${w}`,cls:"gold",counter:true,
+      txt:`The ${sty.kind==="scalp"?"4h and 1h":"daily"} trend is ${u(-D)}, against this ${w}. Treat it as a scalp: take profit at Target 1 and skip Target 2.`};
+  if(sty.kind==="swing")return {label:`Swing ${w}`,cls:col,txt:`With the daily and 4h trend, so you can hold for Target 2.`};
+  if(sty.kind==="wait")return {label:`Swing ${w} forming`,cls:"gold",txt:`Daily trend is ${u(D)} but 4h hasn't turned yet. Take profit at Target 1 unless 4h turns ${u(D)}.`};
+  if(sty.kind==="scalp")return {label:`Scalp ${w}`,cls:col,txt:`No daily trend; 4h and 1h agree. Take profit at Target 1.`};
+  return {label:`Scalp ${w} only`,cls:"",txt:`No clear trend on daily, 4h or 1h. Small size, take profit at Target 1.`};
+}
+const typeTag=y=>`<span class="tag ${y.cls}">${y.label}</span>`;
+// Make sure a coin has structure for the four core timeframes (fetches only the missing ones).
+async function fillCore(s,id,at){
+  const m=STRUCT[id]=STRUCT[id]||{};
+  await Promise.all(CORE_TF.filter(tf=>!m[tf]).map(async tf=>{try{
+    const k=at?toK(await ending(s,id,tf,at,400)):await s.candles(id,tf);
+    if(k.length>=100)m[tf]=structure(analyse(k));}catch(e){}}));
+}
+// Every requirement for a full-quality setup. All must pass for "All checks met".
+function checklist(h,sty){
+  const bull=dirOf(h.type)==="bull",D=bull?1:-1,f=(h.sc&&h.sc.flags)||{},tk=h.track,mk=REG&&REG.mkt;
+  const items=[
+    [h.filtersMet,`${bull?"Above":"Below"} the ${maName()} ${h.longP} with a volume spike (${h.vx.toFixed(1)}×)`,
+      h.vx<VOL_MULT?`Volume ${h.vx.toFixed(1)}× (needs ${VOL_MULT}×)`:`${bull?"Below":"Above"} the ${maName()} ${h.longP}, against the trade`],
+    [!!sty&&sty.kind==="swing"&&sty.dir===D,`Daily and 4h structure ${bull?"up":"down"}: a swing with the trend`,
+      !sty?"Higher-timeframe structure not loaded":sty.dir===-D&&sty.kind!=="none"?`Counter-trend: the ${sty.kind==="scalp"?"4h and 1h":"daily"} trend is ${bull?"down":"up"}`:`Daily and 4h not both ${bull?"up":"down"} (${sty.label})`],
+    [f.struct>=6,f.structTxt||"Structure confirms",f.structTxt||"Structure doesn't confirm"],
+    [f.loc>=3,f.locTxt||"Good location",f.locTxt||"Poor location in the range"],
+    [!!h.lv&&h.lv.rr1>=1.5,h.lv?`Target 1 pays ${h.lv.rr1.toFixed(1)}R (1.5R or more)`:"",h.lv?`Target 1 pays only ${h.lv.rr1.toFixed(1)}R (needs 1.5R)`:"No valid plan"],
+    [!h.conflict&&!(h.ctx&&h.ctx.against.length),"No opposite signal on any timeframe",h.conflict?"Opposite divergence on the same timeframe":`Opposite signal on ${h.ctx&&h.ctx.against.join(", ")}`],
+    (()=>{const opp=bull?"down":"up",av=h.sym!=="BTC"&&REG&&REG.alts.view;
+      if(!mk)return [true,"Market trend not loaded",""];
+      if(mk.cls===opp)return [false,"",`Market is ${mk.state.toLowerCase()}, against the trade`];
+      if(av&&av.cls===opp)return [false,"",`Alts are ${av.tile.toLowerCase()} (${REG.alts.rot.lead.label.toLowerCase()}), against the trade`];
+      return [true,`Market ${mk.state.toLowerCase()}${av?`, alts ${av.tile.toLowerCase()}`:""}: not against the trade`,""];})(),
+    [h.sc&&h.sc.verdict==="take",`Score ${h.sc?h.sc.score:0} (70 or more)`,`Score ${h.sc?h.sc.score:0} (needs 70)`],
+    (()=>{if(!tk||tk.status==="pending")return [true,"Still actionable (waiting for entry)",""];
+      if(tk.status!=="open")return [false,"",trackInfo(h)[0]];
+      if(tk.t1>=0)return [false,"","Target 1 already hit, too late to enter"];
+      const pr=h.lv?((h.live||h.close)-h.lv.entry)/(h.lv.t1-h.lv.entry):0,bad=(invChecks(h)||[]).find(i=>!i.ok);
+      if(bad)return [false,"",bad.txt];
+      return pr>=0.5?[false,"",`Too late to enter: ${Math.round(pr*100)}% of the way to Target 1`]:[true,`Still actionable (in trade, ${Math.max(0,Math.round(pr*100))}% of the way to Target 1)`,""];})()
+  ].map(([ok,g,b])=>({ok:!!ok,txt:ok?g:b}));
+  const n=items.filter(i=>i.ok).length;
+  return {items,n,total:items.length,all:n===items.length};
+}
+function checkHTML(c){
+  return `<details class="sec x-check"><summary>Checklist · ${c.n}/${c.total}${c.all?" · all met":""}</summary><div class="secbody chk">${
+    c.items.map(i=>`<div class="${i.ok?"ok":"no"}"><b>${i.ok?"✓":"✗"}</b><span>${esc(i.txt)}</span></div>`).join("")}</div></details>`;
+}
+function analyse(k){
+  const d={time:k.map(x=>x[0]),high:k.map(x=>+x[2]),low:k.map(x=>+x[3]),close:k.map(x=>+x[4]),vol:k.map(x=>+x[5])};
+  d.rsi=rsi(d.close); d.hist=macdHist(d.close); d.atr=atr(d);
+  d.ma={};d.maOk={};
+  for(const p of S.periods){
+    d.ma[p]=S.maType==="ema"?ema(d.close,p):sma(d.close,p);
+    d.maOk[p]=d.close.length>=(S.maType==="ema"?p+30:p);
+  }
+  return d;
+}
+// Standard filter, not adjustable: longs need price above the longest moving average (200 by default), shorts below it,
+// and a volume spike of 1.5x the 20-candle average on one of the last 3 candles. The shorter averages count toward the score.
+const passes=(f,bull)=>(bull?f.up:f.dn)&&f.ok;
+function filters(d){
+  const n=d.close.length,L=n-1;
+  const valid=S.periods.filter(p=>d.maOk[p]);
+  const aboveList=valid.filter(p=>d.close[L]>d.ma[p][L]);
+  const longP=valid.length?valid[valid.length-1]:null,lm=longP!=null?d.ma[longP][L]:null;
+  let vx=0;
+  for(let i=Math.max(VOL_LEN,n-3);i<n;i++){let s=0;for(let j=i-VOL_LEN;j<i;j++)s+=d.vol[j];const avg=s/VOL_LEN;if(avg>0)vx=Math.max(vx,d.vol[i]/avg);}
+  return {aboveList,vx,ok:vx>=VOL_MULT,longP,up:lm==null||d.close[L]>lm,dn:lm==null||d.close[L]<lm};
+}
+
+// ---------- support / resistance and volume profile ----------
+function srLevels(d){
+  const n=d.close.length,L=n-1,a=d.atr[L],start=Math.max(0,n-300);
+  const pts=[];
+  for(const i of pivots(d.high,5,3,"high"))if(i>=start)pts.push(d.high[i]);
+  for(const i of pivots(d.low,5,3,"low"))if(i>=start)pts.push(d.low[i]);
+  pts.sort((x,y)=>x-y);
+  const cl=[];
+  for(const p of pts){const c=cl[cl.length-1];
+    if(c&&p-c.p<=0.6*a){c.sum+=p;c.t++;c.p=c.sum/c.t;}else cl.push({p,sum:p,t:1});}
+  const close=d.close[L];
+  return {res:cl.filter(c=>c.p>close).sort((x,y)=>x.p-y.p),sup:cl.filter(c=>c.p<close).sort((x,y)=>y.p-x.p)};
+}
+function volumeProfile(d,N=200,B=40){
+  const n=d.close.length,s=Math.max(0,n-N);
+  let lo=Infinity,hi=-Infinity;
+  for(let i=s;i<n;i++){lo=Math.min(lo,d.low[i]);hi=Math.max(hi,d.high[i]);}
+  if(!(hi>lo))return null;
+  const w=(hi-lo)/B,bins=new Array(B).fill(0);
+  for(let i=s;i<n;i++){
+    const l=d.low[i],h=d.high[i],v=d.vol[i];if(!(v>0))continue;
+    if(h<=l){bins[Math.min(B-1,Math.floor((l-lo)/w))]+=v;continue;}
+    const b0=Math.max(0,Math.floor((l-lo)/w)),b1=Math.min(B-1,Math.floor((h-lo)/w));
+    for(let b=b0;b<=b1;b++){const bl=lo+b*w,ov=Math.min(h,bl+w)-Math.max(l,bl);if(ov>0)bins[b]+=v*ov/(h-l);}
+  }
+  const tot=bins.reduce((x,y)=>x+y,0);if(!tot)return null;
+  let pi=0;bins.forEach((v,i)=>{if(v>bins[pi])pi=i;});
+  let a=pi,b=pi,acc=bins[pi];
+  while(acc<0.7*tot&&(a>0||b<B-1)){
+    const up=b<B-1?bins[b+1]:-1,dn=a>0?bins[a-1]:-1;
+    if(up>=dn){b++;acc+=bins[b];}else{a--;acc+=bins[a];}
+  }
+  const mid=i=>lo+(i+0.5)*w;
+  const nodes=[];
+  for(let i=0;i<B;i++){const v=bins[i];if(i!==pi&&v>0&&v>=(bins[i-1]||0)&&v>=(bins[i+1]||0))nodes.push({p:mid(i),pct:v/tot*100});}
+  nodes.sort((x,y)=>y.pct-x.pct);
+  return {poc:mid(pi),pocPct:bins[pi]/tot*100,vah:lo+(b+1)*w,val:lo+a*w,nodes:nodes.slice(0,3),bars:n-s,bins,lo,w};
+}
+
+// ---------- trade plan ----------
+// Entry: break of the last closed candle. Stop: beyond the divergence pivot + 1/4 ATR.
+// Targets come from real levels (S/R clusters, POC, value area, volume nodes):
+// T1 = first level at least 1R away; T2 = first level at least 0.5R beyond T1. Fallbacks use R multiples.
+function levels(d,x,sr,vp,method="close"){
+  const L=d.close.length-1,a=d.atr[L],bull=x.type.endsWith("bull");
+  // Signal close: enter at the close of the confirming candle (default).
+  // Pullback: limit order halfway between that close and the divergence pivot.
+  // Breakout: enter on a break of the confirming candle's high (long) or low (short).
+  const pivotX=bull?d.low[x.bi]:d.high[x.bi];
+  // Sweep & reclaim: wait for price to run the stops beyond the pivot, then re-enter as it closes back above it.
+  // Entry sits just inside the pivot, so the stop can sit below the usual hunt depth without risking more.
+  const sweep=method==="sweep";
+  const entry=sweep?pivotX+(bull?0.1:-0.1)*a:method==="breakout"?(bull?d.high[L]:d.low[L]):method==="pullback"?(d.close[L]+pivotX)/2:d.close[L];
+  const stop=sweep?pivotX+(bull?-0.75:0.75)*a:bull?d.low[x.bi]-0.25*a:d.high[x.bi]+0.25*a;
+  if(bull?stop>=entry:stop<=entry)return null;
+  const R=Math.abs(entry-stop);
+  const cands=[];
+  for(const c of (bull?sr.res:sr.sup))cands.push({p:c.p,src:`${bull?"resistance":"support"} (${c.t}×)`});
+  if(vp){cands.push({p:vp.poc,src:"POC"},{p:vp.vah,src:"value area high"},{p:vp.val,src:"value area low"});
+    for(const nd of vp.nodes)cands.push({p:nd.p,src:"volume node"});}
+  const ahead=cands.filter(c=>bull?c.p>entry:(c.p<entry&&c.p>0)).sort((u,v)=>bull?u.p-v.p:v.p-u.p);
+  const rr=p=>Math.abs(p-entry)/R;
+  const t1=ahead.find(c=>rr(c.p)>=1)||{p:bull?entry+1.5*R:entry-1.5*R,src:"1.5R, no level nearby"};
+  let t2=ahead.find(c=>rr(c.p)>=rr(t1.p)+0.5);
+  if(!t2){const m=Math.max(3,rr(t1.p)+1);t2={p:bull?entry+m*R:entry-m*R,src:`${m.toFixed(1)}R, no level beyond T1`};}
+  if(!bull&&t2.p<=0)t2={p:t1.p,src:t1.src};
+  const block=ahead.find(c=>rr(c.p)>=0.2&&rr(c.p)<1);
+  return {method,pivot:pivotX,stopMode:S.stopMode,entry,stop,t1:t1.p,t2:t2.p,t1src:t1.src,t2src:t2.src,rr1:rr(t1.p),rr2:rr(t2.p),riskPct:R/entry*100,atr:a,block};
+}
+function timing(lv,x){
+  const d1=Math.abs(lv.t1-lv.entry)/lv.atr, d2=Math.abs(lv.t2-lv.entry)/lv.atr;
+  const f1=Math.max(2,Math.round(d1)), s1=Math.max(f1+2,Math.min(Math.round(d1*3),Math.max(x.gap,f1*2)));
+  const f2=Math.max(f1+1,Math.round(d2)), s2=Math.max(f2+2,Math.min(Math.round(d2*3),Math.max(x.gap*2,f2*2)));
+  return {t1:[f1,s1],t2:[f2,s2],trigger:CFG.trigger};
+}
+function dur(bars,tf){
+  const m=bars*TF_MIN[tf];
+  if(m<60)return m+"m"; if(m<48*60)return Math.round(m/60)+"h";
+  if(m<21*1440)return Math.round(m/1440)+"d"; if(m<120*1440)return Math.round(m/10080)+"w"; return Math.round(m/43200)+"mo";
+}
+// The plan is fixed at the candle that confirmed the signal, so later candles never move entry, stop or targets.
+function buildSignal(d,x,c,tf){
+  const L=d.close.length-1,t=Math.min(L,x.bi+CFG.R),v=t<L?viewAt(d,t):d;
+  const f=filters(v),sr=srLevels(v),vp=volumeProfile(v);
+  const h=buildHit(v,f,{...x,ago:t-x.bi},c,tf,sr,vp);
+  h.sigTime=d.time[t]+TF_MS(tf);h.after=[];
+  for(let i=t+1;i<=L;i++)h.after.push({t:d.time[i],h:d.high[i],l:d.low[i],c:d.close[i]});
+  return h;
+}
+const METHODS=["close","pullback","sweep","breakout"];
+const MNAME={close:"Signal close",pullback:"Pullback",sweep:"Sweep & reclaim",breakout:"Breakout"};
+// Pick the entry that fits the situation; the other three stay visible for comparison.
+// The recommended entry is chosen once, from what was known at the signal candle, so it never changes afterwards.
+function pickPlan(h){
+  const bull=dirOf(h.type)==="bull",base=h.plans.close,pb=h.plans.pullback,mk=REG&&REG.mkt;
+  let m="close",why="Standard divergence entry at the close of the signal candle.";
+  const ext=base&&base.atr?Math.abs(base.entry-base.pivot)/base.atr:0;   // how far the signal candle closed from the pivot
+  if(mk&&mk.cls===(bull?"down":"up")){m="breakout";why=`The market is ${mk.state.toLowerCase()}, against this ${bull?"long":"short"}. Wait for a breakout to confirm.`;}
+  else if(base&&pb&&(ext>=1.5||base.rr1<1.2)&&pb.rr1>base.rr1){m="pullback";why=`The signal candle closed ${ext.toFixed(1)} ATR from the pivot, so entering at the close pays only ${base.rr1.toFixed(1)}R. A pullback entry pays ${pb.rr1.toFixed(1)}R.`;}
+  else if(mk&&(mk.state==="Range-bound"||mk.state==="Sideways")){m="sweep";why=`The market is ${mk.state.toLowerCase()}, where stop hunts are common. Wait for a sweep and reclaim.`;}
+  if(!h.plans[m]){m=METHODS.find(k=>h.plans[k])||"close";why="The other entries aren't valid for this setup.";}
+  h.rec={m,why};h.lv=h.plans[m]||null;h.tm=h.lv?timing(h.lv,h):null;
+}
+function track(h){
+  h.tracks={};const bull=dirOf(h.type)==="bull";
+  for(const m of METHODS)if(h.plans[m])h.tracks[m]=simulate(h.plans[m],bull,h.after,BT.fee);
+  h.track=h.tracks[h.rec.m]||null;
+}
+function buildHit(d,f,x,c,tf,sr,vp){
+  const L=d.close.length-1,plans={},st=structure(d),loc=legLoc(d,st,x,dirOf(x.type)==="bull");for(const m of METHODS)plans[m]=levels(d,x,sr,vp,m);
+  const lv=plans.close||METHODS.map(m=>plans[m]).find(Boolean)||null;
+  return {...x,lv,plans,rec:{m:lv?lv.method:"close",why:""},tm:lv?timing(lv,x):null,sym:c.base,id:c.id,tf,close:d.close[L],rsiNow:d.rsi[L],vx:f.vx,
+    longP:S.periods[S.periods.length-1],e200:d.maOk[S.periods[S.periods.length-1]]?(d.close[L]/d.ma[S.periods[S.periods.length-1]][L]-1)*100:null,macdUp:d.hist[L]>d.hist[L-1],aboveList:f.aboveList,
+    filtersMet:passes(f,dirOf(x.type)==="bull"),sr,vp,st,loc};
+}
+
+// ---------- score ----------
+function scoreHit(h,conf){
+  const bull=h.type.endsWith("bull"), parts=[], pen=[], flags={};
+  const add=(pts,max,good,bad)=>parts.push({pts,max,txt:pts>=max*0.6?good:bad});
+  const dr=Math.abs(h.r2-h.r1), mn=maName();
+  add(Math.round(Math.min(dr/10,1)*15),15,`Strong RSI gap (${dr.toFixed(1)} pts)`,`Weak RSI gap (${dr.toFixed(1)} pts)`);
+  add(bull?(h.r2<=40?8:h.r2<=50?5:2):(h.r2>=60?8:h.r2>=50?5:2),8,bull?"RSI pivot in a low zone":"RSI pivot in a high zone",bull?"RSI pivot not low enough":"RSI pivot not high enough");
+  const ab=h.aboveList||[];
+  const P=S.periods,f0=P[0],f1=P[1]??P[0];
+  const tr=Math.round((bull?ab.length:P.length-ab.length)/P.length*8);
+  add(tr,8,bull?`Above key ${mn}s`:"Short-term trend rolling over",bull?`Below key ${mn}s`:"Trend still strong against the short");
+  // Structure (8): hidden divergences need the structure trending their way; regular ones want a CHoCH,
+  // or a double/triple bottom (top), or a sweep of equal lows (highs), to back the reversal.
+  const st=h.st,D=bull?1:-1;
+  if(st){
+    const eqx=bull?st.eqL:st.eqH,atEq=eqx&&(eqx.ago<=6||(eqx.status==="swept"&&eqx.sweptAgo<=6));let sp,good,bad;
+    const sf=bull?st.sfpL:st.sfpH,swept=sf&&sf.ago<=6,ist=st.internal,ich=ist&&ist.last&&ist.last.kind==="CHoCH"&&ist.last.dir===D&&ist.ago<=5;
+    if(h.type.startsWith("hidden")){const seqOk=bull?st.sw.lo==="HL":st.sw.hi==="LH";
+      sp=st.chop||st.trend!==D?0:seqOk?8:6;
+      good=seqOk?(bull?"Higher low in an uptrend":"Lower high in a downtrend"):"Structure trending your way";
+      bad=st.chop?"Hidden divergence in a choppy range":"Hidden divergence against the structure";}
+    else{const ch=st.last&&st.last.kind==="CHoCH"&&st.last.dir===D;
+      sp=ch?8:atEq||swept||ich?7:st.trend===D?6:st.chop?5:3;
+      good=ch?"CHoCH confirms the reversal":swept?`Swept the swing ${bull?"low":"high"} (SFP), then divergence`:ich?"Internal CHoCH confirms the turn":atEq?(eqx.status==="swept"?`Equal ${bull?"lows":"highs"} swept, then divergence`:`Divergence at a ${eqName(eqx,!bull).toLowerCase()}`):st.chop?"Reversal setup inside a range":"Structure already your way";
+      bad="No CHoCH yet, reversal unconfirmed";}
+    add(sp,8,good,bad);flags.struct=sp;flags.structTxt=sp>=6?good:bad;
+  }else parts.push({pts:4,max:8,txt:""});
+  add(h.vx>=3?12:h.vx>=2?9:h.vx>=1.5?6:2,12,`Volume ${h.vx.toFixed(1)}× average`,`Light volume ${h.vx.toFixed(1)}×`);
+  add(h.macdUp===bull?8:0,8,"MACD turning with the trade","MACD not confirming yet");
+  // Location (4): buy low in the range, sell high, ideally from an order block, a fair value gap or the OTE zone.
+  const lc=h.loc;
+  if(lc){const disc=lc.ret>=0.5,ote=lc.ret>=0.62&&lc.ret<=0.79,z=lc.atOB||lc.atFVG,bs=bull?"bullish":"bearish";
+    flags.loc=Math.min(4,(disc?3:1)+(z||ote?1:0));
+    add(flags.loc,4,
+      lc.atOB?`Bounced from a ${bs} order block`:lc.atFVG?`Reacted at a ${bs} fair value gap`:ote?"Pullback into the OTE zone (62–79%)":lc.ret>1?(bull?"Took out the prior low first (deep discount)":"Took out the prior high first (deep premium)"):bull?"Long from the discount half of the range":"Short from the premium half of the range",
+      bull?"Long from the premium half (shallow pullback)":"Short from the discount half (shallow bounce)");
+    flags.locTxt=parts[parts.length-1].txt;
+  }else parts.push({pts:2,max:4,txt:""});
+  if(h.lv){
+    add(h.lv.rr1>=2?12:h.lv.rr1>=1.5?9:h.lv.rr1>=1?5:0,12,`Target 1 pays ${h.lv.rr1.toFixed(1)}R`,`Target 1 pays only ${h.lv.rr1.toFixed(1)}R`);
+    add(h.lv.riskPct<=3?10:h.lv.riskPct<=5?7:h.lv.riskPct<=8?3:0,10,`Tight stop (${h.lv.riskPct.toFixed(1)}%)`,`Wide stop (${h.lv.riskPct.toFixed(1)}%)`);
+    if(h.lv.block)pen.push({pts:8,txt:`${h.lv.block.src} in the way at ${fmtP(h.lv.block.p)}`});
+  }else{parts.push({pts:0,max:12,txt:"Setup broken"});parts.push({pts:0,max:10,txt:""});}
+  // Multi-timeframe confluence (up to 15): more agreeing timeframes, and higher ones, make a stronger case.
+  const cx=conf&&conf.agree?conf:{agree:[],against:[]},rank=tf=>ALL_TF.indexOf(tf);
+  const nA=cx.agree.length,htf=cx.agree.some(tf=>rank(tf)>rank(h.tf));
+  const cpts=Math.min(15,(nA>=2?12:nA===1?8:0)+(htf?3:0));
+  parts.push({pts:cpts,max:15,txt:""});
+  const confTxt=nA?`Also on ${cx.agree.join(", ")}${htf?" (incl. a higher timeframe)":""}`:null;
+  if(cx.against.length)pen.push({pts:Math.min(10,5*cx.against.length),txt:`Opposite signal on ${cx.against.join(", ")}`});
+  if(h.conflict)pen.push({pts:10,txt:"Opposite divergence on the same timeframe"});
+  const score=Math.max(0,parts.reduce((s,p)=>s+p.pts,0)-pen.reduce((s,p)=>s+p.pts,0));
+  const verdict=score>=70?"take":score>=50?"risk":"skip";
+  const sc=parts.filter(p=>p.txt).map(p=>({...p,r:p.pts/p.max}));
+  const pros=sc.filter(p=>p.r>=0.6).sort((a,b)=>b.r-a.r).map(p=>p.txt),cons=[...pen.map(p=>p.txt),...sc.filter(p=>p.r<0.6).sort((a,b)=>a.r-b.r).map(p=>p.txt)];
+  if(confTxt)pros.unshift(confTxt);else cons.unshift("No other timeframe agrees");
+  return {score,verdict,pros:pros.slice(0,3),cons:cons.slice(0,3),flags};
+}
+const VERDICT={take:["Take","bull"],risk:["High risk","gold"],skip:["Skip","bear"]};
+const LABEL={regular_bull:"Regular bullish",hidden_bull:"Hidden bullish",regular_bear:"Regular bearish",hidden_bear:"Hidden bearish"};
+const SHORT={regular_bull:"Reg bull",hidden_bull:"Hid bull",regular_bear:"Reg bear",hidden_bear:"Hid bear"};
+const chip=sc=>{if(!sc)return "";const [vt,vc]=VERDICT[sc.verdict];return `<span class="schip ${vc}"><b>${sc.score}</b> ${vt}</span>`;};
+const dirOf=t=>t.endsWith("bull")?"bull":"bear";
+// One signal per timeframe: if bullish and bearish divergences form together, keep the stronger one and mark it mixed.
+const rankOf=h=>(isClosed(h.track)?0:1000)+h.sc.score;
+function resolveSignals(hits){
+  scoreAll(hits);
+  const byTf={};for(const h of hits)(byTf[h.tf]=byTf[h.tf]||[]).push(h);
+  const kept=Object.values(byTf).map(arr=>{const best=arr.reduce((a,b)=>rankOf(b)>rankOf(a)?b:a);
+    best.conflict=arr.some(h=>dirOf(h.type)!==dirOf(best.type));return best;});
+  return {kept,top:scoreAll(kept)};
+}
+function scoreAll(hits){
+  for(const h of hits){
+    const others=hits.filter(o=>o!==h&&o.tf!==h.tf),tfs=f=>sortTf([...new Set(others.filter(f).map(o=>o.tf))]);
+    h.ctx={agree:tfs(o=>dirOf(o.type)===dirOf(h.type)),against:tfs(o=>dirOf(o.type)!==dirOf(h.type))};
+    h.sc=scoreHit(h,h.ctx);
+  }
+  return hits.length?hits.reduce((a,b)=>rankOf(b)>rankOf(a)?b:a):null;
+}
+
+// ---------- data sources ----------
+const STABLE=new Set(["USDT","USDC","BUSD","DAI","TUSD","FDUSD","USDP","USDD","PYUSD","EUR","USDE","USD1","RLUSD","EURC","XUSD","BFUSD"]);
+const LEV=/(UP|DOWN|BULL|BEAR)$/;
+const BINANCE={
+  name:"Binance",id:b=>b+"USDT",
+  async symbols(top){
+    const r=await fetch("https://data-api.binance.vision/api/v3/ticker/24hr");
+    if(!r.ok)throw new Error("Binance "+r.status);
+    return (await r.json()).filter(t=>t.symbol.endsWith("USDT")&&+t.count>0)
+      .map(t=>({id:t.symbol,base:t.symbol.slice(0,-4),qv:+t.quoteVolume}))
+      .filter(t=>!STABLE.has(t.base)&&!LEV.test(t.base)).sort((a,b)=>b.qv-a.qv).slice(0,top);
+  },
+  async candles(id,tf){
+    const r=await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${id}&interval=${tf}&limit=400`);
+    if(!r.ok)throw new Error(r.status);
+    const rows=await r.json(),out=rows.slice(0,-1).map(x=>[x[0],x[1],x[2],x[3],x[4],x[7]]);
+    if(rows.length)out.live=+rows[rows.length-1][4];
+    return out;
+  },
+  async raw(id,tf,limit,at){
+    const r=await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${id}&interval=${tf}&limit=${limit}${at?`&endTime=${Math.floor(at)}`:""}`);
+    if(!r.ok)throw new Error(r.status);
+    return (await r.json()).map(x=>({t:x[0],h:+x[2],l:+x[3]}));
+  },
+  tv:id=>`https://www.tradingview.com/chart/?symbol=BINANCE:${id}`
+};
+const OKX={
+  name:"OKX",id:b=>b+"-USDT",
+  async symbols(top){
+    const r=await fetch("https://www.okx.com/api/v5/market/tickers?instType=SPOT");
+    if(!r.ok)throw new Error("OKX "+r.status);
+    return (await r.json()).data.filter(t=>t.instId.endsWith("-USDT"))
+      .map(t=>({id:t.instId,base:t.instId.split("-")[0],qv:+t.volCcy24h}))
+      .filter(t=>!STABLE.has(t.base)&&!LEV.test(t.base)).sort((a,b)=>b.qv-a.qv).slice(0,top);
+  },
+  async candles(id,tf){
+    const bar=OKX_BAR[tf];if(!bar)throw new Error("unsupported");
+    const r=await fetch(`https://www.okx.com/api/v5/market/candles?instId=${id}&bar=${bar}&limit=300`);
+    if(!r.ok)throw new Error(r.status);
+    const j=await r.json(); if(j.code&&j.code!=="0")throw new Error(j.msg||"OKX");
+    const out=j.data.filter(x=>x[8]==="1").reverse().map(x=>[+x[0],x[1],x[2],x[3],x[4],x[7]]);
+    if(j.data.length)out.live=+j.data[0][4];
+    return out;
+  },
+  async raw(id,tf,limit,at){
+    const r=await fetch(at?`https://www.okx.com/api/v5/market/history-candles?instId=${id}&bar=${OKX_BAR[tf]}&after=${Math.floor(at)+1}&limit=${limit}`
+      :`https://www.okx.com/api/v5/market/candles?instId=${id}&bar=${OKX_BAR[tf]}&limit=${limit}`);
+    if(!r.ok)throw new Error(r.status);
+    return (await r.json()).data.reverse().map(x=>({t:+x[0],h:+x[2],l:+x[3]}));
+  },
+  tv:id=>`https://www.tradingview.com/chart/?symbol=OKX:${id.replace("-","")}`
+};
+const liqURL=b=>`https://www.coinglass.com/pro/futures/LiquidationHeatMap?coin=${encodeURIComponent(b)}`;
+
+// ---------- weekly / monthly / quarterly levels ----------
+const KL_CACHE={};
+async function keyLevels(s,id,at){
+  const key=s.name+id+(at||"");if(KL_CACHE[key])return KL_CACHE[key];
+  const [wk,mo]=await Promise.all([s.raw(id,"1w",3,at),s.raw(id,"1M",9,at)]);
+  const pw=wk[wk.length-2], pm=mo[mo.length-2];
+  const q=t=>{const d=new Date(t);return d.getUTCFullYear()*4+Math.floor(d.getUTCMonth()/3);};
+  const nowQ=q(at||Date.now());
+  const hl=a=>a.length?{h:Math.max(...a.map(x=>x.h)),l:Math.min(...a.map(x=>x.l))}:null;
+  const out={pw,pm,pq:hl(mo.filter(m=>q(m.t)===nowQ-1)),cq:hl(mo.filter(m=>q(m.t)===nowQ)),pqN:"Q"+((nowQ-1)%4+1),cqN:"Q"+(nowQ%4+1)};
+  KL_CACHE[key]=out;return out;
+}
+function klHTML(k,close){
+  const r=(lab,v)=>v==null?"":`<div class="lvl"><span>${lab}</span><span>${fmtP(v)} <span class="mu">${pctTxt(v,close)}</span></span></div>`;
+  return `<div class="lvcols"><div>${r("PWH",k.pw&&k.pw.h)}${r("PMH",k.pm&&k.pm.h)}${r(`PQH ${k.pqN}`,k.pq&&k.pq.h)}${r(`${k.cqN} high`,k.cq&&k.cq.h)}</div>
+    <div>${r("PWL",k.pw&&k.pw.l)}${r("PML",k.pm&&k.pm.l)}${r(`PQL ${k.pqN}`,k.pq&&k.pq.l)}${r(`${k.cqN} low`,k.cq&&k.cq.l)}</div></div>`;
+}
+
+// ---------- liquidation map (estimate) ----------
+// CoinGlass-style model: when open interest rises, new leveraged longs and shorts were opened near that candle's price.
+// Spread them over common leverage (5x 10%, 10x 30%, 25x 30%, 50x 20%, 100x 10%), weight longs vs shorts by the
+// long/short account ratio, shrink them as open interest later falls (positions closed), and drop any liquidation price
+// that price has already traded through. What is left are the pools of liquidations price has not reached yet.
+const LIQ_LEV=[[5,.10],[10,.30],[25,.30],[50,.20],[100,.10]],LIQ_MMR=0.005;
+const jget=u=>fetch(u).then(r=>{if(!r.ok)throw 0;return r.json();});
+const LIQ_SRC=[
+  {name:"Binance Futures",async get(base){const sym=base+"USDT";
+    const [oi,k,ls]=await Promise.all([jget(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${sym}&period=1h&limit=500`),
+      jget(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=1h&limit=500`),
+      jget(`https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=${sym}&period=1h&limit=500`).catch(()=>[])]);
+    return {oi:oi.map(x=>({t:+x.timestamp,v:+x.sumOpenInterest})),k:k.map(x=>({t:+x[0],h:+x[2],l:+x[3],c:+x[4]})),ls:ls.map(x=>({t:+x.timestamp,f:+x.longAccount}))};}},
+  {name:"Bybit",async get(base){const sym=base+"USDT",B="https://api.bybit.com/v5/market";
+    let oi=[],cur="";for(let pg=0;pg<3;pg++){const r=await jget(`${B}/open-interest?category=linear&symbol=${sym}&intervalTime=1h&limit=200${cur?`&cursor=${encodeURIComponent(cur)}`:""}`);
+      oi.push(...r.result.list);cur=r.result.nextPageCursor;if(!cur)break;}
+    const [k,ls]=await Promise.all([jget(`${B}/kline?category=linear&symbol=${sym}&interval=60&limit=600`),jget(`${B}/account-ratio?category=linear&symbol=${sym}&period=1h&limit=500`).catch(()=>null)]);
+    return {oi:oi.map(x=>({t:+x.timestamp,v:+x.openInterest})),k:k.result.list.map(x=>({t:+x[0],h:+x[2],l:+x[3],c:+x[4]})),ls:ls?ls.result.list.map(x=>({t:+x.timestamp,f:+x.buyRatio})):[]};}},
+  {name:"OKX",async get(base){const R="https://www.okx.com/api/v5";
+    const [oi,k,ls]=await Promise.all([jget(`${R}/rubik/stat/contracts/open-interest-volume?ccy=${base}&period=1H`),
+      jget(`${R}/market/candles?instId=${base}-USDT-SWAP&bar=1H&limit=300`),jget(`${R}/rubik/stat/contracts/long-short-account-ratio?ccy=${base}&period=1H`).catch(()=>null)]);
+    const K=k.data.map(x=>({t:+x[0],h:+x[2],l:+x[3],c:+x[4]})),px=new Map(K.map(x=>[x.t,x.c]));
+    return {oi:oi.data.filter(x=>px.has(+x[0])).map(x=>({t:+x[0],v:+x[1]/px.get(+x[0])})),k:K,ls:ls?ls.data.map(x=>({t:+x[0],f:+x[1]/(1+ +x[1])})):[]};}}
+];
+const LIQ_CACHE={};
+async function liqMap(base){
+  const c=LIQ_CACHE[base];if(c&&Date.now()-c.at<5*60000)return c.m;
+  for(const sc of LIQ_SRC){try{const D=await sc.get(base);if(D.oi.length<24||D.k.length<24)continue;
+    const m=liqModel(D);if(m){m.src=sc.name;LIQ_CACHE[base]={at:Date.now(),m};return m;}}catch(e){}}
+  return null;
+}
+function liqModel(D){
+  const K=D.k.sort((a,b)=>a.t-b.t),O=D.oi.sort((a,b)=>a.t-b.t),n=K.length,m=O.length,at=new Map(K.map((x,i)=>[x.t,i]));
+  const px=K[n-1].c,mnL=new Array(n+1).fill(Infinity),mxH=new Array(n+1).fill(-Infinity);
+  for(let i=n-1;i>=0;i--){mnL[i]=Math.min(K[i].l,mnL[i+1]);mxH[i]=Math.max(K[i].h,mxH[i+1]);}
+  const surv=new Array(m).fill(1);let run=1;
+  for(let i=m-1;i>=1;i--){surv[i]=run;const r=O[i].v/O[i-1].v;if(r<1)run*=r;}
+  const LS=D.ls.sort((a,b)=>a.t-b.t);let li=0;
+  const step=px*0.0025,bins={},add=(p,usd,side)=>{if(Math.abs(p/px-1)>0.25)return;const k=Math.round((p-px)/step);(bins[k]=bins[k]||{p:px+k*step,long:0,short:0})[side]+=usd;};
+  for(let i=1;i<m;i++){const d=O[i].v-O[i-1].v;if(!(d>0))continue;
+    const ci=at.has(O[i-1].t)?at.get(O[i-1].t):at.get(O[i].t);if(ci==null)continue;
+    while(li+1<LS.length&&LS[li+1].t<=O[i].t)li++;const lf=LS.length&&LS[li].t<=O[i].t&&LS[li].f>0&&LS[li].f<1?LS[li].f:0.5;
+    const c=K[ci],e=(c.h+c.l+c.c)/3,usd=d*e*surv[i];
+    for(const [lev,w] of LIQ_LEV){
+      const pl=e*(1-1/lev+LIQ_MMR),ps=e*(1+1/lev-LIQ_MMR);
+      if(mnL[ci+1]>pl)add(pl,usd*w*2*lf,"long");
+      if(mxH[ci+1]<ps)add(ps,usd*w*2*(1-lf),"short");
+    }
+  }
+  const B=Object.entries(bins).map(([k,b])=>({k:+k,...b}));
+  const peaks=side=>{const arr=B.filter(b=>side==="long"?b.k<0&&b.long>0:b.k>0&&b.short>0).map(b=>({k:b.k,v:b[side]}));
+    const val=k=>arr.filter(b=>Math.abs(b.k-k)<=2).reduce((a,b)=>a+b.v,0),out=[];
+    for(const b of [...arr].sort((a,b)=>b.v-a.v)){if(out.length>=4)break;if(out.some(o=>Math.abs(o.k-b.k)<=4))continue;
+      const v=val(b.k);out.push({k:b.k,p:px+b.k*step,usd:v,dist:(b.k*step)/px*100});}
+    const mx=Math.max(0,...out.map(o=>o.usd));return out.filter(o=>o.usd>=mx*0.15).sort((a,b)=>Math.abs(a.k)-Math.abs(b.k));};
+  const above=peaks("short"),below=peaks("long");
+  const near=(arr,side)=>B.filter(b=>Math.abs(b.k*step/px)<=0.05).reduce((a,b)=>a+(side==="long"?(b.k<0?b.long:0):(b.k>0?b.short:0)),0);
+  const up5=near(above,"short"),dn5=near(below,"long");
+  // Pull = size over distance: a big pool close to price usually gets taken first
+  const pull=arr=>arr.reduce((a,o)=>Math.max(a,o.usd/(Math.abs(o.dist)+0.5)),0),pu=pull(above),pd=pull(below);
+  const magnet=pu>pd*1.25?"above":pd>pu*1.25?"below":"both";
+  return {px,above,below,up5,dn5,magnet,hours:Math.round((O[m-1].t-O[0].t)/3600e3)};
+}
+const usdTxt=v=>v>=1e9?`$${(v/1e9).toFixed(1)}B`:v>=1e6?`$${(v/1e6).toFixed(0)}M`:v>=1e3?`$${(v/1e3).toFixed(0)}K`:`$${v.toFixed(0)}`;
+function liqHTML(L,t,st){
+  const fc=fmtP,sg=v=>(v>=0?"+":"")+v.toFixed(1)+"%",all=[...L.above,...L.below],mx=Math.max(1,...all.map(o=>o.usd));
+  const row=(o,side)=>`<div class="lqr ${side}"><span>${fc(o.p)}</span><span class="mu">${sg(o.dist)}</span><span class="lqb"><i style="width:${Math.max(4,o.usd/mx*100).toFixed(0)}%"></i></span><span>${usdTxt(o.usd)}</span></div>`;
+  const big=L.magnet==="above"?L.above[0]&&[...L.above].sort((a,b)=>b.usd/(Math.abs(b.dist)+.5)-a.usd/(Math.abs(a.dist)+.5))[0]:L.magnet==="below"?[...L.below].sort((a,b)=>b.usd/(Math.abs(b.dist)+.5)-a.usd/(Math.abs(a.dist)+.5))[0]:null;
+  let h=`<div class="rec">${L.magnet==="both"?"Liquidity is balanced on both sides, so expect a sweep of one side before a real move.":`Bigger pull: <b>${L.magnet}</b>. ${L.magnet==="above"?"Shorts":"Longs"} would be liquidated around ${fc(big.p)} (${sg(big.dist)}), and price is often drawn to the larger nearby pool first.`}</div>
+    <div class="lq"><div class="lqh"><span>Short liquidations above</span><span>${usdTxt(L.up5)} within 5%</span></div>${[...L.above].sort((a,b)=>b.p-a.p).map(o=>row(o,"up")).join("")||`<div class="mu">None left nearby</div>`}
+    <div class="lqr now"><span>${fc(L.px)}</span><span class="mu">price</span><span class="lqb"></span><span></span></div>
+    ${[...L.below].sort((a,b)=>b.p-a.p).map(o=>row(o,"dn")).join("")||`<div class="mu">None left nearby</div>`}<div class="lqh"><span>Long liquidations below</span><span>${usdTxt(L.dn5)} within 5%</span></div></div>`;
+  // Stop-based liquidity from structure on the signal timeframe
+  if(st){const bs=[st.eqH&&`equal highs ${fc(st.eqH.lvl)}`,st.swingHigh!=null&&`swing high ${fc(st.swingHigh)}`].filter(Boolean),ss=[st.eqL&&`equal lows ${fc(st.eqL.lvl)}`,st.swingLow!=null&&`swing low ${fc(st.swingLow)}`].filter(Boolean);
+    h+=`<div class="eod">Stops resting above (buy-side): ${bs.join(" · ")||"none"}<br>Stops resting below (sell-side): ${ss.join(" · ")||"none"}</div>`;}
+  // How the plan sits against the pools
+  if(t&&t.lv){const lv=t.lv,bull=dirOf(t.type)==="bull",tol=Math.max(lv.atr*0.5,lv.entry*0.004),notes=[];
+    const own=bull?L.below:L.above,opp=bull?L.above:L.below;
+    const atStop=own.find(o=>Math.abs(o.p-lv.stop)<=tol);
+    if(atStop)notes.push(`<div class="rec gold">Your stop (${fc(lv.stop)}) is right at a ${bull?"long":"short"}-liquidation pool (${fc(atStop.p)}, ${usdTxt(atStop.usd)}). Price often sweeps these, so expect a wick there or use Sweep &amp; reclaim.</div>`);
+    const magT=opp.find(o=>bull?o.p>lv.entry&&o.p<=lv.t1+tol:o.p<lv.entry&&o.p>=lv.t1-tol);
+    if(magT)notes.push(`<div class="rec">✓ ${bull?"Short":"Long"}-liquidation pool at ${fc(magT.p)} (${usdTxt(magT.usd)}) sits on the way to Target 1, which helps pull price there.</div>`);
+    else if(opp.length)notes.push(`<div class="rec">No liquidation pool between entry and Target 1; the nearest is at ${fc(opp[0].p)}.</div>`);
+    h+=notes.join("");}
+  return h+`<div class="legend">Estimated from about ${Math.round(L.hours/24)} days of hourly open interest on ${L.src}, not CoinGlass's own data. Sizes are rough; compare them with each other rather than reading them as exact.</div>`;
+}
+// ---------- spot vs leverage ----------
+const FUT=[
+  {name:"Binance Futures",async get(base){
+    const sym=base+"USDT";
+    const [t,p,oi]=await Promise.all([
+      fetch(`https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=${sym}`).then(r=>{if(!r.ok)throw 0;return r.json();}),
+      fetch(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${sym}`).then(r=>{if(!r.ok)throw 0;return r.json();}),
+      fetch(`https://fapi.binance.com/futures/data/openInterestHist?symbol=${sym}&period=1h&limit=25`).then(r=>{if(!r.ok)throw 0;return r.json();})]);
+    const a=oi.map(x=>+x.sumOpenInterestValue);
+    return {perpVol:+t.quoteVolume,funding:+p.lastFundingRate,oiChg:a.length>1?(a[a.length-1]/a[0]-1)*100:null};
+  }},
+  {name:"Bybit",async get(base){
+    const sym=base+"USDT";
+    const [t,oi]=await Promise.all([
+      fetch(`https://api.bybit.com/v5/market/tickers?category=linear&symbol=${sym}`).then(r=>r.json()),
+      fetch(`https://api.bybit.com/v5/market/open-interest?category=linear&symbol=${sym}&intervalTime=1h&limit=25`).then(r=>r.json())]);
+    const x=t.result.list[0];if(!x)throw 0;
+    const a=oi.result.list.map(y=>+y.openInterest).reverse();
+    return {perpVol:+x.turnover24h,funding:+x.fundingRate,oiChg:a.length>1?(a[a.length-1]/a[0]-1)*100:null};
+  }},
+  {name:"OKX",async get(base){
+    const inst=base+"-USDT-SWAP";
+    const [t,f,oi]=await Promise.all([
+      fetch(`https://www.okx.com/api/v5/market/ticker?instId=${inst}`).then(r=>r.json()),
+      fetch(`https://www.okx.com/api/v5/public/funding-rate?instId=${inst}`).then(r=>r.json()),
+      fetch(`https://www.okx.com/api/v5/rubik/stat/contracts/open-interest-volume?ccy=${base}&period=1H`).then(r=>r.json())]);
+    const x=t.data&&t.data[0];if(!x)throw 0;
+    const a=(oi.data||[]).slice(0,25).map(y=>+y[1]).reverse();
+    return {perpVol:+x.volCcy24h*+x.last,funding:+f.data[0].fundingRate,oiChg:a.length>1?(a[a.length-1]/a[0]-1)*100:null};
+  }}
+];
+async function futuresInfo(base){
+  for(const f of FUT){try{const r=await f.get(base);if(r&&r.perpVol>0)return {...r,src:f.name};}catch(e){}}
+  return null;
+}
+async function spotInfo(base){
+  for(const s of [BINANCE,OKX]){
+    try{
+      const id=s.id(base), day=await s.candles(id,"1d");
+      if(day.length<5)continue;
+      const vols=day.slice(-20).map(x=>+x[5]), avg=vols.reduce((a,b)=>a+b,0)/vols.length;
+      let spot24,taker=null;
+      if(s===BINANCE){
+        const [t,h]=await Promise.all([
+          fetch(`https://data-api.binance.vision/api/v3/ticker/24hr?symbol=${id}`).then(r=>r.json()),
+          fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${id}&interval=1h&limit=25`).then(r=>r.json())]);
+        spot24=+t.quoteVolume;
+        const c=h.slice(0,-1),qv=c.reduce((a,x)=>a+ +x[7],0),tb=c.reduce((a,x)=>a+ +x[10],0);
+        taker=qv>0?tb/qv:null;
+      }else{
+        const [t,tv]=await Promise.all([
+          fetch(`https://www.okx.com/api/v5/market/ticker?instId=${id}`).then(r=>r.json()),
+          fetch(`https://www.okx.com/api/v5/rubik/stat/taker-volume?ccy=${base}&instType=SPOT&period=1H`).then(r=>r.json())]);
+        spot24=+t.data[0].volCcy24h;
+        const rows=(tv.data||[]).slice(0,24),sell=rows.reduce((a,x)=>a+ +x[1],0),buy=rows.reduce((a,x)=>a+ +x[2],0);
+        taker=buy+sell>0?buy/(buy+sell):null;
+      }
+      return {src:s.name,spot24,spotX:avg>0?spot24/avg:null,taker};
+    }catch(e){}
+  }
+  return null;
+}
+function flowVerdict(sp,fu){
+  const why=[];let spotPts=0,levPts=0,ratio=null;
+  if(sp.spotX!=null){
+    if(sp.spotX>=1.3){spotPts+=2;why.push(`✓ Spot volume ${sp.spotX.toFixed(1)}× its 20-day average`);}
+    else if(sp.spotX<1){levPts+=1;why.push(`✗ Spot volume below normal (${sp.spotX.toFixed(1)}×)`);}
+    else why.push(`· Spot volume about normal (${sp.spotX.toFixed(1)}×)`);
+  }
+  if(sp.taker!=null){
+    if(sp.taker>=0.52){spotPts+=1;why.push(`✓ Spot buyers aggressive (${(sp.taker*100).toFixed(0)}% taker buys)`);}
+    else if(sp.taker<=0.48)why.push(`✗ Spot sellers aggressive (${(sp.taker*100).toFixed(0)}% taker buys)`);
+  }
+  if(fu){
+    ratio=fu.perpVol/sp.spot24;
+    if(ratio>=8){levPts+=2;why.push(`✗ Futures volume ${ratio.toFixed(1)}× spot`);}
+    else if(ratio>=4){levPts+=1;why.push(`· Futures volume ${ratio.toFixed(1)}× spot`);}
+    else{spotPts+=1;why.push(`✓ Futures only ${ratio.toFixed(1)}× spot`);}
+    if(fu.oiChg!=null){
+      if(fu.oiChg>=5&&(sp.spotX==null||sp.spotX<1.15)){levPts+=2;why.push(`✗ Open interest +${fu.oiChg.toFixed(1)}% while spot is quiet`);}
+      else if(fu.oiChg>=5)why.push(`· Open interest +${fu.oiChg.toFixed(1)}%`);
+      else if(fu.oiChg<=-5)why.push(`· Open interest ${fu.oiChg.toFixed(1)}% (positions closing)`);
+    }
+    const fp=fu.funding*100;
+    if(fp>=0.03){levPts+=1;why.push(`✗ Longs crowded (funding ${fp.toFixed(3)}%)`);}
+    else if(fp<=-0.03)why.push(`· Shorts crowded (funding ${fp.toFixed(3)}%)`);
+  }else why.push("· Futures data not reachable, spot only");
+  const v=spotPts>=3&&levPts<=1?["Spot-led","bull"]:levPts>=3&&spotPts<=1?["Leverage-led","bear"]:["Mixed","gold"];
+  return {label:v[0],cls:v[1],why,ratio};
+}
+const money=v=>v>=1e9?(v/1e9).toFixed(2)+"B":v>=1e6?(v/1e6).toFixed(1)+"M":v>=1e3?(v/1e3).toFixed(0)+"K":v.toFixed(0);
+function flowHTML(sp,fu){
+  const v=flowVerdict(sp,fu);
+  const m=(k,val)=>`<div class="m"><div class="k">${k}</div><div class="v">${val}</div></div>`;
+  return `<div><span class="schip ${v.cls}">${v.label}</span></div><div class="grid">
+    ${m("Spot 24h","$"+money(sp.spot24))}${m("Spot vs 20d",sp.spotX!=null?sp.spotX.toFixed(2)+"×":"n/a")}${m("Spot taker buys",sp.taker!=null?(sp.taker*100).toFixed(0)+"%":"n/a")}
+    ${m("Perp 24h",fu?"$"+money(fu.perpVol):"n/a")}${m("Perp / spot",v.ratio!=null?v.ratio.toFixed(1)+"×":"n/a")}${m("OI 24h",fu&&fu.oiChg!=null?(fu.oiChg>=0?"+":"")+fu.oiChg.toFixed(1)+"%":"n/a")}
+  </div><div class="why">${v.why.map(t=>`<span>${esc(t)}</span>`).join("")}</div>`;
+}
+
+// ---------- rendering ----------
+let busy=false,src=null;
+const setStatus=(t,err)=>{$("status").textContent=t;$("status").className="status"+(err?" err":"");};
+const fmtP=v=>v>=100?v.toFixed(2):v>=1?v.toFixed(4):v.toPrecision(4);
+const pctTxt=(p,c)=>{const v=(p/c-1)*100;return (v>=0?"+":"")+v.toFixed(1)+"%";};
+const lock=on=>{document.body.classList.toggle("chomping",on);busy=on;$("scan").disabled=on;$("check").disabled=on;};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pm=(k,v,cls,sub)=>`<div class="m"><div class="k">${k}</div><div class="v ${cls||""}">${v}</div>${sub?`<div class="s">${esc(sub)}</div>`:""}</div>`;
+
+function trackInfo(h){
+  const o=h.track;if(!o)return null;
+  const bull=dirOf(h.type)==="bull",until=fmtDate(h.sigTime+CFG.trigger*TF_MS(h.tf));
+  switch(o.status){
+    case "pending":return ["Waiting for entry","flat",`${h.lv.method==="pullback"?"Waiting for the pullback":h.lv.method==="sweep"?`Waiting for a dip below ${fmtP(h.lv.pivot)} that closes back ${bull?"above":"below"} ${fmtP(h.lv.entry)}`:"Waiting for the breakout"} · valid until ${h.lv.method==="sweep"?fmtDate(h.sigTime+CFG.sweepWin*TF_MS(h.tf)):until}`];
+    case "no_trigger":
+      if(o.missed)return ["Closed · missed","flat",`Price reached Target 1 (${fmtP(h.lv.t1)}) without ${h.lv.method==="pullback"?"pulling back to":h.lv.method==="sweep"?"sweeping for":"breaking"} the entry. No trade; don't chase it.`];
+      if(o.failed)return ["Closed · invalid","flat",`Price closed ${bull?"below":"above"} the pivot (${fmtP(h.lv.pivot)}) before the entry, so the divergence failed. No trade.`];
+      return ["Closed · "+(o.deep?"invalid":"expired"),"flat",o.deep?"The sweep went past the stop level, so the setup is invalid. No trade.":"The entry was not reached in time. No trade."];
+    case "open":return o.t1>=0?["T1 hit · stop at entry","bull",`Target 1 reached ${fmtDate(o.t1t)}. Half taken, stop moved to entry (${fmtP(h.lv.entry)}), aiming for Target 2.`]:["In trade","gold",o.atClose?`Entered at the signal close (${fmtDate(h.sigTime)}).`:`Entry filled ${fmtDate(o.tt)}.`];
+    case "t2":return ["Closed · T2 hit","bull",`Both targets reached (${fmtDate(o.t2t)}). Trade closed.`];
+    case "t1_be":return ["Closed · at entry","flat","Target 1 hit, then price came back to the entry. Trade closed with half the profit."];
+    case "stopped":return ["Closed · stopped","bear",o.wick?`Stopped by a wick ${fmtDate(o.st)}. The candle closed back inside the stop, which looks like a stop hunt. Trade closed.`:`Stop hit ${fmtDate(o.st)}. Trade closed.`];
+    default:return ["Closed · time limit","flat","No result within 200 candles. Trade closed."];
+  }
+}
+// What can still invalidate the plan, checked against the latest candles and structure.
+function invChecks(h){
+  const o=h.track,lv=h.lv;if(!o||!lv)return null;
+  const bull=dirOf(h.type)==="bull",D=bull?1:-1,items=[];
+  if(o.status==="pending"){
+    items.push({ok:true,txt:`Entry window open until ${fmtDate(h.sigTime+(lv.method==="sweep"?CFG.sweepWin:CFG.trigger)*TF_MS(h.tf))}`});
+    items.push({ok:true,txt:`Target 1 (${fmtP(lv.t1)}) not reached yet; if it is reached first, the move is missed`});
+    items.push({ok:true,txt:`Pivot ${fmtP(lv.pivot)} holding; a ${h.tf} close ${bull?"below":"above"} it cancels the setup`});
+  }else if(o.status==="open"){
+    const since=o.atClose?h.after.length:h.after.length-1-o.trig,hard=lv.stop-D*0.5*Math.abs(lv.entry-lv.stop);
+    items.push({ok:true,txt:o.t1>=0?`Stop at entry (${fmtP(lv.entry)}) since Target 1`:`Stop ${fmtP(lv.stop)} not hit${lv.stopMode==="close"?` (exits on a ${h.tf} close past it; hard stop ${fmtP(hard)})`:""}`});
+    const st=STRUCT[h.id]&&STRUCT[h.id][h.tf];
+    if(st){const bad=st.last&&st.last.kind==="CHoCH"&&st.last.dir===-D&&st.ago<=since;
+      items.push({ok:!bad,txt:bad?`${h.tf} structure turned ${bull?"down":"up"} (CHoCH at ${fmtP(st.last.lvl)}, ${st.ago} candle${st.ago===1?"":"s"} ago). Consider exiting.`:`No ${h.tf} CHoCH against the trade since entry`});}
+    if(o.t1<0&&h.tm){const lim=Math.ceil(h.tm.t1[1]*1.5),slow=since>lim;
+      items.push({ok:!slow,txt:slow?`Slow: ${since} candles since entry; Target 1 was expected within ${h.tm.t1[1]}. Consider tightening the stop or exiting.`:`On schedule: ${since} candle${since===1?"":"s"} in, Target 1 expected within ~${h.tm.t1[1]}`});}
+    if(h.conflict)items.push({ok:false,txt:`Opposite divergence on ${h.tf} now. Consider taking profit or tightening the stop.`});
+  }
+  return items.length?items:null;
+}
+const isClosed=o=>!!o&&o.status!=="pending"&&o.status!=="open";
+const trackPill=h=>{const i=trackInfo(h);if(!i)return "";const o=h.track,r=isClosed(o)&&o.trig>=0?" "+rTxt(o.r):"";
+  return `<span class="pill ${i[1]==="gold"?"flat":i[1]}">${i[0]}${r}</span>`;};
+const stPill=h=>h.track&&!h.out?`<span data-tp="${esc(sigKey(h))}">${trackPill(h)}</span>`:outPill(h);
+const outPill=h=>h.out?`<span class="pill ${outCls(h.out)}">${OUT[h.out.status]}${h.out.trig>=0?" "+rTxt(h.out.r):""}</span>`:"";
+// For someone not in the trade yet: is it still worth entering?
+const lateTxt=pr=>pr>=1?"Price has reached Target 1. If you're in, take half and move the stop to entry. Too late to enter.":
+  pr>=0.5?`Too late to enter now: price is ${Math.round(pr*100)}% of the way to Target 1. Only manage it if you're already in.`:
+  `Late: price is ${Math.round(pr*100)}% of the way to Target 1, so entering now cuts the reward.`;
+const sigKey=h=>[h.id,h.tf,h.type,h.time].join("|");
+function signalHTML(h){
+  const bull=h.type.endsWith("bull"),L=h.live||h.close,lv=h.lv;
+  let html=h.out?outcomeHTML(h):"";
+  if(lv){
+    const fromEntry=p=>pctTxt(p,lv.entry);
+    const ENTRY_LBL={close:["Entry (signal close)","Entry (signal close)"],pullback:["Buy on dip to","Sell on bounce to"],sweep:["Buy on reclaim of","Sell on reclaim of"],breakout:["Buy above","Sell below"]};
+    const elab=!h.out&&h.track&&h.track.trig>=0?"Entered at":ENTRY_LBL[lv.method][bull?0:1];
+    const prog=(L-lv.entry)/(lv.t1-lv.entry);   // share of the way from entry to Target 1 already covered
+    const inTrade=!h.out&&!!h.track&&h.track.status==="open"&&h.track.t1<0,late=inTrade&&prog>=0.25,inv=h.out?null:invChecks(h);
+    const closed=!h.out&&isClosed(h.track),ti=trackInfo(h);
+    const row=(k,v,note,cls,va,na)=>`<div class="pr"><span class="pk">${k}</span><span class="pv ${cls||""}"${va||""}>${v}</span><span class="pn"${na||""}>${note}</span></div>`;
+    const isLive=MODE==="live";
+    html+=`<div class="plan2">
+      <div class="ph"><span class="pill ${bull?"bull":"bear"}">${bull?"Long":"Short"}</span><span class="mu">${h.tf} · ${LABEL[h.type]} · signal ${fmtDate(h.sigTime)}</span></div>
+      <div class="rec"><b>Entry: ${MNAME[h.rec.m]}</b>${h.rec.why?` · ${esc(h.rec.why)}`:""}</div>
+      ${(()=>{const y=!h.out&&!closed&&STRUCT[h.id]?tradeType(h,styleOf(STRUCT[h.id])):null;return y?`<div class="rec${y.counter?" gold":""}"><b>${y.label}</b> · ${esc(y.txt)}</div>`:"";})()}
+      ${closed?`<div class="donebn ${ti[1]==="gold"?"flat":ti[1]}"><b>${ti[0]}${h.track.trig>=0?" · "+rTxt(h.track.r):""}</b><span>${esc(ti[2])}</span></div>`:ti?`<div class="tr">${ti[2]}</div>`:""}
+      <div class="${closed?"dim":""}">
+      ${row(isLive?"Live price":"Price then",fmtP(L),"","",isLive?` data-live="${h.id}"`:"")}
+      ${closed?row(elab,fmtP(lv.entry),h.track.trig>=0?(h.track.atClose?"at the signal close":`filled ${fmtDate(h.track.tt)}`):"never filled"):row(elab,fmtP(lv.entry),`${pctTxt(lv.entry,L)} from ${isLive?"live":"price then"}`,"","",isLive?` data-dist="${h.id}" data-entry="${lv.entry}"`:"")}
+      ${row("Stop",fmtP(lv.stop),`${fromEntry(lv.stop)} · risk ${lv.riskPct.toFixed(1)}%${lv.stopMode==="close"?` · on close, hard ${fmtP(lv.stop-(bull?1:-1)*0.5*Math.abs(lv.entry-lv.stop))}`:""}`,"neg")}
+      ${row("Target 1",fmtP(lv.t1),`${fromEntry(lv.t1)} · ${lv.rr1.toFixed(1)}R · ${esc(lv.t1src)}`,"pos")}
+      ${row("Target 2",fmtP(lv.t2),`${fromEntry(lv.t2)} · ${lv.rr2.toFixed(1)}R · ${esc(lv.t2src)}`,"pos")}
+      </div>
+      ${inTrade?`<div class="late"${late?"":" hidden"}${isLive?` data-late="${h.id}" data-entry="${lv.entry}" data-t1="${lv.t1}"`:""}>${late?lateTxt(prog):""}</div>`:""}
+      ${inv?`<div class="inv"><b>Invalidation checks</b>${inv.map(i=>`<div class="${i.ok?"ok":"no"}"><b>${i.ok?"✓":"✗"}</b><span>${esc(i.txt)}</span></div>`).join("")}</div>`:""}
+      <div class="pt">Levels fixed at the signal · T1 ~${dur(h.tm.t1[0],h.tf)}–${dur(h.tm.t1[1],h.tf)} · T2 ~${dur(h.tm.t2[0],h.tf)}–${dur(h.tm.t2[1],h.tf)}</div>
+    </div>`;
+  }else html+=`<span class="status err">Price is already past the divergence pivot, so this setup is broken.</span>`;
+  if(h.plans){
+    const st=m=>{const o=(h.outs||h.tracks||{})[m];if(!o)return "";
+      if(h.outs)return `${OUT[o.status]}${o.trig>=0?" "+rTxt(o.r):""}`;
+      return {pending:"Waiting",no_trigger:o.missed?"Closed · missed":o.failed||o.deep?"Closed · invalid":"Closed · expired",open:o.t1>=0?"T1 hit":"In trade",t2:"Closed · T2 hit",t1_be:"Closed · at entry",stopped:"Closed · stopped",timeout:"Closed"}[o.status]||"";};
+    html+=`<details class="sec"><summary>All entry options</summary><div class="secbody eo">${
+      METHODS.map(m=>{const p=h.plans[m];
+        if(!p)return `<div class="eor"><div class="eoh"><span>${MNAME[m]}</span><span class="mu">not valid here</span></div></div>`;
+        return `<div class="eor${m===h.rec.m?" pick":""}"><div class="eoh"><span>${m===h.rec.m?"★ ":""}${MNAME[m]}</span><span class="eos">${st(m)}</span></div>
+          <div class="eod">Entry ${fmtP(p.entry)} · stop ${fmtP(p.stop)} (${p.riskPct.toFixed(1)}%) · T1 ${fmtP(p.t1)} (${p.rr1.toFixed(1)}R)</div></div>`;}).join("")}</div></details>`;
+  }
+  if(h.sc)html+=`<details class="sec x-reasons"><summary>Why ${h.sc.score}/100</summary><div class="secbody why">${h.sc.pros.map(t=>`<span>✓ ${esc(t)}</span>`).join("")}${h.sc.cons.map(t=>`<span class="neg">✗ ${esc(t)}</span>`).join("")}</div></details>`;
+  html+=`<details class="sec x-details"><summary>Indicator details</summary><div class="secbody"><div class="grid">
+    ${pm("RSI pivots",`${h.r1.toFixed(1)} → ${h.r2.toFixed(1)}`)}${pm("Price pivots",`${fmtP(h.p1)} → ${fmtP(h.p2)}`)}${pm(`Last ${h.tf} close`,fmtP(h.close))}
+    ${pm("Volume",h.vx.toFixed(2)+"×")}${pm(`vs ${maName()}${h.longP}`,h.e200==null?"n/a":(h.e200>=0?"+":"")+h.e200.toFixed(1)+"%")}${pm("RSI · MACD",`${h.rsiNow.toFixed(0)} · ${h.macdUp?"rising":"falling"}`)}
+  </div></div></details>`;
+  return `<div class="sigw" data-sk="${esc(sigKey(h))}">${html}</div>`;
+}
+// One list of every key level, sorted by price, with the live price in its place.
+function ladderHTML(o,kl){
+  const L=o.live,items=[];
+  o.sr.res.slice(0,2).forEach((c,i)=>items.push({k:`Resistance ${i+1}`,p:c.p,n:`${c.t}× tested`}));
+  o.sr.sup.slice(0,2).forEach((c,i)=>items.push({k:`Support ${i+1}`,p:c.p,n:`${c.t}× tested`}));
+  if(o.vp)items.push({k:"POC · most traded",p:o.vp.poc,n:`${o.vp.pocPct.toFixed(1)}% of volume`,hl:1},{k:"Value area high",p:o.vp.vah},{k:"Value area low",p:o.vp.val});
+  if(kl){const add=(k,v)=>{if(v!=null)items.push({k,p:v});};
+    add("Prev week high",kl.pw&&kl.pw.h);add("Prev week low",kl.pw&&kl.pw.l);add("Prev month high",kl.pm&&kl.pm.h);add("Prev month low",kl.pm&&kl.pm.l);
+    add(`Prev quarter high (${kl.pqN})`,kl.pq&&kl.pq.h);add(`Prev quarter low (${kl.pqN})`,kl.pq&&kl.pq.l);}
+  items.push({k:MODE==="bt"?"Price then":"Live price",p:L,now:1});
+  items.sort((a,b)=>b.p-a.p);
+  let h=`<div class="ladder">${items.map(it=>it.now
+    ?`<div class="lr now"><span>▶ ${it.k}</span><span${o.id?` data-live="${o.id}"`:""}>${fmtP(it.p)}</span><span></span></div>`
+    :`<div class="lr${it.hl?" hl":""}"><span>${it.k}${it.n?` <em>${it.n}</em>`:""}</span><span>${fmtP(it.p)}</span><span class="${it.p>L?"pos":"neg"}"${o.id?` data-pct="${o.id}" data-lvl="${it.p}"`:""}>${pctTxt(it.p,L)}</span></div>`).join("")}</div>`;
+  if(!kl)h+=`<span class="status kls">Loading weekly, monthly and quarterly levels…</span>`;
+  return h;
+}
+function tfRow(tf,head,sc,body){
+  return `<details class="tfrow"><summary><span class="tflab">${tf}</span><span class="th">${head}</span>${chip(sc)}</summary><div class="tfbody">${body}</div></details>`;
+}
+function structHTML(map,sty,t){
+  const fc=v=>v==null?"–":fmtP(v),pl=n=>`candle${n===1?"":"s"}`,zr=z=>`${fc(z.lo)} – ${fc(z.hi)}`;
+  let warn="";
+  const ts=t&&t.lv&&(map[t.tf]||t.st);
+  if(ts){const bull=dirOf(t.type)==="bull",e=bull?ts.eqL:ts.eqH,gap=e?(bull?e.lvl-t.lv.stop:t.lv.stop-e.lvl):-1;
+    if(e&&e.status==="intact"&&gap>0&&gap<=t.lv.atr)warn=`<div class="rec gold">Your stop is just ${bull?"under equal lows":"over equal highs"} at ${fc(e.lvl)}. Stops pile up there and often get hunted, which is what Sweep &amp; reclaim waits for.</div>`;}
+  const FILL={none:"unfilled",part:"partly filled",ce:"filled to CE",full:"filled"};
+  const rows=sortTf(Object.keys(map)).map(tf=>{const st=map[tf];if(!st)return "";
+    const L=[],add=x=>x&&L.push(x),r=st.rng,it=st.internal;
+    add(st.last?`${st.last.kind} ${st.last.dir>0?"↑":"↓"} ${st.ago} ${pl(st.ago)} ago at ${fc(st.last.lvl)}`:"No breaks yet");
+    add(seqOf(st)[0]);
+    if(it&&it.last)add(`Internal: ${it.last.kind} ${it.last.dir>0?"↑":"↓"} ${it.ago} ${pl(it.ago)} ago${st.trend&&it.trend===-st.trend?" (pullback inside the trend)":""}`);
+    if(st.trend>0)add(`Strong low ${fc(st.swingLow)} (flips on a close below) · weak high ${fc(r?r.top:st.swingHigh)} (likely to be run)`);
+    else if(st.trend<0)add(`Strong high ${fc(st.swingHigh)} (flips on a close above) · weak low ${fc(r?r.bot:st.swingLow)} (likely to be run)`);
+    if(r)add(`Range ${fc(r.bot)} – ${fc(r.top)} · price at ${Math.round(r.pos*100)}% (${r.zone.toLowerCase()})${r.ote?` · OTE ${fc(r.ote[0])} – ${fc(r.ote[1])}${r.inOte?" ◀ in it":""}`:""}`);
+    if(st.obBull)add(`Bullish OB ${zr(st.obBull)}${st.obBull.tested?" · tested":" · untested"}`);
+    if(st.obBear)add(`Bearish OB ${zr(st.obBear)}${st.obBear.tested?" · tested":" · untested"}`);
+    if(st.fvgBull)add(`Bullish FVG ${zr(st.fvgBull)} · CE ${fc(st.fvgBull.ce)} · ${FILL[st.fvgBull.fill]}`);
+    if(st.fvgBear)add(`Bearish FVG ${zr(st.fvgBear)} · CE ${fc(st.fvgBear.ce)} · ${FILL[st.fvgBear.fill]}`);
+    if(st.ifvg)add(`Inverse FVG ${zr(st.ifvg)} · was ${st.ifvg.dir>0?"support, now resistance":"resistance, now support"}`);
+    if(st.bpr)add(`Balanced price range ${zr(st.bpr)} · ${st.bpr.dir>0?"support":"resistance"}`);
+    add(eqTxt(st.eqH,true,fc));add(eqTxt(st.eqL,false,fc));
+    if(st.sfpH)add(`Swept the swing high at ${fc(st.sfpH.lvl)} and closed back under, ${st.sfpH.ago} ${pl(st.sfpH.ago)} ago (SFP)`);
+    if(st.sfpL)add(`Swept the swing low at ${fc(st.sfpL.lvl)} and closed back over, ${st.sfpL.ago} ${pl(st.sfpL.ago)} ago (SFP)`);
+    const zt=r?`<span class="tag">${r.inOte?"OTE":r.zone}</span>`:"";
+    return `<details class="tfrow"><summary><span class="tflab">${tf}</span><span class="th">${swPills(st)}<span class="rst ${STR_CLS(st)}" style="font-size:13px">${STR_TXT(st)}</span>${zt}</span></summary><div class="tfbody sbody">${L.map(x=>`<div>${x}</div>`).join("")}</div></details>`;}).join("");
+  return `<details class="sec x-struct"><summary>Market structure · ${{swing:sty.dir>0?"Trend up (daily & 4h)":"Trend down (daily & 4h)",wait:sty.dir>0?"Daily up, 4h pulling back":"Daily down, 4h pulling back",scalp:sty.dir>0?"Short-term up only":"Short-term down only",none:"No clear trend"}[sty.kind]}</summary><div class="secbody"><div class="rec">${esc(sty.txt)}</div>${warn}${rows}
+    <div class="legend">OB: candle where the last strong move started, price often returns to it · FVG: a gap left by a fast move, price tends to come back to fill it · CE: the middle of the gap · SFP: a stop hunt, wick through a swing and close back · OTE: the 62–79% pullback zone</div></div></details>`;
+}
+const ckTag=ck=>ck&&ck.all?`<span class="tag aplus">✓ All checks</span>`:ck?`<span class="tag">${ck.n}/${ck.total} checks</span>`:"";
+function makeCard(o){
+  const el=document.createElement("details");el.className="card"+(o.conf?" conf":"");el.open=!!o.open;
+  const t=o.top;
+  const lp=o.lv&&o.lv.live,lvx=o.lv&&{...o.lv,id:o.asOf?null:o.id},sty=o.struct&&Object.keys(o.struct).length?styleOf(o.struct):null,ck=t?(t.chk||(t.chk=checklist(t,sty))):null;
+  let h=`<summary class="csum"><div class="cl"><div class="sym">${esc(o.sym)}${t?`<small>${t.tf}</small>`:""}${lp&&!o.asOf?`<span class="lp" data-live="${o.id}">${fmtP(lp)}</span>`:""}</div>
+    <div class="sub">${t?`<span class="pill ${dirOf(t.type)}">${LABEL[t.type]}</span>${outPill(t)}<span data-tp="${esc(sigKey(t))}">${trackPill(t)}</span>`:`<span class="pill flat">No divergence</span>`}<span data-ckt>${ckTag(ck)}</span>${t&&sty?typeTag(tradeType(t,sty)):sty?styleTag(sty):""}${t&&t.conflict?`<span class="tag gold">Mixed</span>`:""}${t&&t.ctx&&t.ctx.agree.length?`<span class="tag gold">Confluence ×${t.ctx.agree.length+1}</span>`:""}${(o.others||[]).map(h=>`<span class="tag ${dirOf(h.type)}">${h.tf} ${dirOf(h.type)==="bull"?"Long":"Short"}</span>`).join("")}</div></div>${t?chip(t.sc):""}</summary><div class="cbody">`;
+  if(t){if(o.check&&!t.filtersMet)h+=`<span class="status">Trend or volume filter not met on ${t.tf}</span>`;h+=signalHTML(t);}
+  if(ck)h+=checkHTML(ck);
+  if(sty)h+=structHTML(o.struct,sty,t);
+  const lvTfs=o.lv?sortTf([...new Set([...S.favs,o.lv.tf])]):[];
+  if(o.lv)h+=`<details class="sec lvsec x-levels"><summary>Key levels${o.asOf?" at that time":""}</summary><div class="secbody">
+    <div class="chips lvtf" role="group" aria-label="Key levels timeframe">${lvTfs.map(tf=>`<button class="chip" data-lvtf="${tf}" aria-pressed="${tf===o.lv.tf}">${tf}</button>`).join("")}</div>
+    <div class="lvbox">${ladderHTML(lvx,null)}</div></div></details>`;
+  if(!o.asOf)h+=`<details class="sec liq x-liq"><summary>Liquidity map</summary><div class="secbody"><span class="status">Loading…</span></div></details>`;
+  if(!o.asOf)h+=`<details class="sec flow x-flow"><summary>Spot vs leverage</summary><div class="secbody"><span class="status">Loading…</span></div></details>`;
+  if(o.rows)h+=`<details class="sec x-tfs"><summary>${o.check?"All timeframes":"Other timeframes"} (${o.rowsN})</summary><div class="secbody">${o.rows}</div></details>`;
+  h+=`<div class="links"><a target="_blank" rel="noopener" href="${liqURL(o.sym)}">Liquidation heatmap ↗</a><a target="_blank" rel="noopener" href="${o.s.tv(o.id)}">Chart ↗</a></div></div>`;
+  el.innerHTML=h;
+  const lvs=el.querySelector("details.lvsec");
+  if(lvs){
+    // Support, resistance and volume are recalculated for whichever timeframe is picked; weekly/monthly/quarterly stay the same.
+    const box=lvs.querySelector(".lvbox"),st={tf:o.lv.tf,kl:null,cache:{[o.lv.tf]:{sr:o.lv.sr,vp:o.lv.vp}}};
+    const paint=()=>{const c=st.cache[st.tf];box.innerHTML=ladderHTML({...lvx,tf:st.tf,sr:c.sr,vp:c.vp},st.kl);
+      if(st.klErr){const k=box.querySelector(".kls");if(k){k.textContent="Couldn't load weekly and monthly levels. Close and reopen to retry.";k.classList.add("err");}}};
+    lvs.addEventListener("toggle",async()=>{
+      if(!lvs.open||lvs.dataset.ok)return;lvs.dataset.ok="1";
+      try{st.kl=await keyLevels(o.s,o.id,o.asOf);st.klErr=false;}catch(e){st.klErr=true;lvs.dataset.ok="";}
+      paint();
+    });
+    lvs.querySelectorAll("[data-lvtf]").forEach(b=>b.onclick=async()=>{
+      const tf=b.dataset.lvtf;st.tf=tf;
+      lvs.querySelectorAll("[data-lvtf]").forEach(x=>x.setAttribute("aria-pressed",x.dataset.lvtf===tf));
+      if(!st.cache[tf]){
+        box.innerHTML=`<span class="status">Loading ${tf} levels…</span>`;
+        try{
+          const k=o.asOf?toK(await ending(o.s,o.id,tf,o.asOf,400)):await o.s.candles(o.id,tf);
+          if(k.length<30)throw new Error("short");
+          const d=analyse(k);st.cache[tf]={sr:srLevels(d),vp:volumeProfile(d)};
+        }catch(e){if(st.tf===tf)box.innerHTML=`<span class="status err">Not enough ${tf} history for this coin.</span>`;return;}
+      }
+      if(st.tf===tf)paint();
+    });
+  }
+  const lq=el.querySelector("details.liq");
+  if(lq)lq.addEventListener("toggle",async()=>{
+    if(!lq.open||lq.dataset.ok)return;const box=lq.querySelector(".secbody");
+    const L=await liqMap(o.sym);
+    if(!L){box.innerHTML=`<span class="status err">Couldn't load futures data for ${esc(o.sym)} (it may have no perpetual contract). Close and reopen to retry.</span>`;return;}
+    box.innerHTML=liqHTML(L,t,t&&((o.struct&&o.struct[t.tf])||t.st));lq.dataset.ok="1";
+  });
+  const fl=el.querySelector("details.flow");
+  if(fl)fl.addEventListener("toggle",async()=>{
+    if(!fl.open||fl.dataset.ok)return;const box=fl.querySelector(".secbody");
+    const [sp,fu]=await Promise.all([spotInfo(o.sym),futuresInfo(o.sym)]);
+    if(!sp){box.innerHTML=`<span class="status err">Couldn't load spot data. Close and reopen to retry.</span>`;return;}
+    box.innerHTML=flowHTML(sp,fu);fl.dataset.ok="1";
+  });
+  if(!o.asOf&&MODE==="live")[t,...(o.others||[])].forEach(x=>{if(x&&x.track&&!x.out)LIVE_HITS.push({h:x,el,top:x===t,sty});});
+  return el;
+}
+
+// ---------- market scan ----------
+async function pickSource(top){
+  for(const s of [BINANCE,OKX]){try{const list=await s.symbols(top);if(list.length){src=s;return list;}}catch(e){}}
+  throw new Error("none");
+}
+let STRUCT={};
+async function scan(){
+  if(busy)return;
+  if(MODE==="bt"){runHistory("top");return;}
+  if(!S.tfs.length){setStatus("Pick at least one timeframe in Settings.",true);return;}
+  const bt=MODE==="bt",at=bt?asOfTs():null;
+  if(bt&&!validAt(at)){setStatus("Pick a date and time in the past.",true);return;}
+  lock(true);$("prog").style.width="0";setStatus("Loading top 50 coins…");
+  let list;
+  try{list=await pickSource(TOP_N);}catch(e){
+    setStatus("Couldn't reach Binance or OKX. Open the page from a website, not from a downloaded file or the Claude app.",true);
+    lock(false);return;
+  }
+  const tfs=sortTf(S.tfs),jobs=[];for(const tf of tfs)for(const c of list)jobs.push({c,tf});
+  const total=jobs.length,hits=[];let done=0,fails=0;STRUCT={};
+  const worker=async()=>{
+    while(jobs.length){const {c,tf}=jobs.shift();
+      try{
+        let k,lastCt=0;
+        if(bt){const ser=await ending(src,c.id,tf,at,400);k=toK(ser);if(ser.length)lastCt=ser[ser.length-1].ct;}
+        else k=await src.candles(c.id,tf);
+        if(k.length>=100){const d=analyse(k);
+          (STRUCT[c.id]=STRUCT[c.id]||{})[tf]=structure(d);
+          const hs=divergences(d).map(x=>buildSignal(d,x,c,tf)).filter(h=>h.filtersMet);
+          if(hs.length){
+            hs.forEach(h=>{h.live=k.live||d.close[d.close.length-1];pickPlan(h);if(!bt)track(h);});
+            if(bt)await attachOutcomes(hs,src,c.id,tf,lastCt);
+            hits.push(...hs);}}
+      }catch(e){fails++;}
+      done++;$("prog").style.width=(done/total*100)+"%";setStatus(`Scanning ${done}/${total} · ${hits.length} signal(s)`);
+    }
+  };
+  await Promise.all(Array.from({length:6},worker));
+  const ids=[...new Set(hits.map(h=>h.id))];
+  if(ids.length){setStatus(`Reading daily, 4h, 1h and 15m structure for ${ids.length} coin(s)…`);const q=ids.slice();
+    await Promise.all(Array.from({length:4},async()=>{while(q.length)await fillCore(src,q.shift(),at);}));}
+  const coins=renderScan(hits,at);
+  const t=bt?`As of ${fmtDate(at)}`:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+  setStatus(`${t} · ${coins} coin(s) with signals · ${tfs.join(", ")}${fails?` · ${fails} failed`:""}`);
+  if(!bt)notify(hits);
+  lock(false);
+}
+function renderScan(hits,at){
+  const box=$("results");box.textContent="";
+  if(!hits.length){box.innerHTML=`<div class="empty">No coins passed the filters with a fresh divergence${at?" at that time":""}.</div>`;return 0;}
+  const by={};for(const h of hits)(by[h.id]=by[h.id]||[]).push(h);
+  const coins=Object.values(by).map(a=>{const r=resolveSignals(a),sty=STRUCT[r.top.id]?styleOf(STRUCT[r.top.id]):null;
+    r.top.chk=checklist(r.top,sty);return {arr:r.kept,top:r.top,sty};})
+    .sort((a,b)=>(b.top.chk.n-a.top.chk.n)||(b.top.sc.score-a.top.sc.score));
+  const card=({arr,top})=>{
+    const others=arr.filter(h=>h!==top).sort((a,b)=>ALL_TF.indexOf(a.tf)-ALL_TF.indexOf(b.tf));
+    const rows=others.map(h=>tfRow(h.tf,`<span class="pill ${dirOf(h.type)}">${SHORT[h.type]}</span>${stPill(h)}`,h.sc,signalHTML(h))).join("");
+    const conf=arr.some(o=>o!==top&&o.tf!==top.tf&&dirOf(o.type)===dirOf(top.type));
+    return makeCard({sym:top.sym,id:top.id,s:src,top,conf,others,rows,rowsN:others.length,asOf:at,struct:STRUCT[top.id],
+      lv:{tf:top.tf,sr:top.sr,vp:top.vp,live:top.live||top.close}});
+  };
+  LAST_SCAN=coins;
+  const best=coins.filter(c=>c.top.chk.all),near=coins.filter(c=>!c.top.chk.all);
+  const head=document.createElement("div");head.className="ahead";
+  head.innerHTML=best.length?`<b>${best.length} setup${best.length>1?"s":""} meet${best.length>1?"":"s"} every requirement</b>`:`No signal meets every requirement right now.${near.length?" The closest ones are below.":""}`;
+  box.appendChild(head);
+  best.forEach(c=>box.appendChild(card(c)));
+  if(near.length){const d=document.createElement("details");d.className="sec near";d.open=!best.length;
+    d.innerHTML=`<summary>Close, but not every check (${near.length})</summary><div class="secbody"></div>`;
+    near.forEach(c=>d.lastElementChild.appendChild(card(c)));box.appendChild(d);}
+  return coins.length;
+}
+
+// ---------- single coin ----------
+async function checkCoin(){
+  if(busy)return;
+  if(MODE==="bt"){runHistory("coin");return;}
+  const base=$("q").value.trim().toUpperCase().replace(/[^A-Z0-9]/g,"").replace(/(USDT|USD)$/,"");
+  if(!base){setStatus("Type a coin symbol, like SOL.",true);return;}
+  if(!S.tfs.length){setStatus("Pick at least one timeframe in Settings.",true);return;}
+  const bt=MODE==="bt",at=bt?asOfTs():null;
+  if(bt&&!validAt(at)){setStatus("Pick a date and time in the past.",true);return;}
+  lock(true);$("prog").style.width="0";
+  const tfs=sortTf(S.tfs);setStatus(bt?`Checking ${base} as of ${fmtDate(at)}…`:`Checking ${base}…`);
+  let used=null,rows=[];
+  for(const s of [BINANCE,OKX]){
+    let n=0;
+    rows=await Promise.all(tfs.map(async tf=>{let k=[],ct=0;
+      try{if(bt){const ser=await ending(s,s.id(base),tf,at,400);k=toK(ser);if(ser.length)ct=ser[ser.length-1].ct;}else k=await s.candles(s.id(base),tf);}catch(e){}
+      n++;$("prog").style.width=(n/tfs.length*100)+"%";return {tf,k,ct};}));
+    if(rows.some(r=>r.k.length)){used=s;break;}
+  }
+  if(!used){setStatus(`Couldn't load ${base}/USDT. Check the symbol, or open the page from a website.`,true);lock(false);return;}
+  src=used;
+  const c={id:used.id(base),base};
+  const prep=await Promise.all(rows.map(async({tf,k,ct})=>{
+    if(k.length<60)return {tf};
+    const d=analyse(k),f=filters(d),sr=srLevels(d),vp=volumeProfile(d),hs=divergences(d).map(x=>buildSignal(d,x,c,tf));
+    (STRUCT[c.id]=STRUCT[c.id]||{})[tf]=structure(d);
+    const live=k.live||d.close[d.close.length-1];hs.forEach(h=>{h.live=live;pickPlan(h);if(!bt)track(h);});
+    if(bt&&hs.length)await attachOutcomes(hs,used,c.id,tf,ct);
+    return {tf,d,f,sr,vp,hs,live};
+  }));
+  setStatus(`Checking ${base} structure…`);await fillCore(used,c.id,at);
+  const res=resolveSignals(prep.flatMap(p=>p.hs||[])),all=res.kept,top=res.top;
+  for(const p of prep)if(p.hs)p.hs=p.hs.filter(h=>all.includes(h));
+  const lvFrom=top?prep.find(p=>p.tf===top.tf):[...prep].reverse().find(p=>p.d);
+  const rowsHTML=prep.map(p=>{
+    if(!p.d)return tfRow(p.tf,`<span class="pill flat">not enough data</span>`,null,`<span class="status">Not enough history on this timeframe.</span>`);
+    const L=p.d.close.length-1,hs=p.hs.filter(h=>h!==top);
+    const maTxt=p.f.aboveList.length?`above ${maName()} ${p.f.aboveList.join("/")}`:`below all ${maName()}s`;
+    const head=hs.length?hs.map(h=>`<span class="pill ${dirOf(h.type)}">${SHORT[h.type]}</span>${stPill(h)}`).join(""):`<span class="pill flat">${p.hs.length?"top signal":"no divergence"}</span>`;
+    const best=hs.length?hs.reduce((a,b)=>b.sc.score>a.sc.score?b:a).sc:null;
+    const body=`<div class="pills"><span class="pill ${p.f.up?"bull":"bear"}">${esc(maTxt)}</span><span class="pill ${p.f.ok?"bull":"flat"}">vol ${p.f.vx.toFixed(2)}×</span><span class="pill flat">RSI ${p.d.rsi[L].toFixed(0)}</span></div>`
+      +hs.map(h=>`<div><span class="pill ${dirOf(h.type)}">${LABEL[h.type]}</span></div>${signalHTML(h)}`).join("");
+    return tfRow(p.tf,head,best,body);
+  }).join("");
+  const conf=!!top&&all.some(o=>o!==top&&o.tf!==top.tf&&dirOf(o.type)===dirOf(top.type));
+  const box=$("results");box.textContent="";
+  box.appendChild(makeCard({sym:base,id:c.id,s:used,top,conf,check:true,open:true,asOf:at,struct:STRUCT[c.id],others:all.filter(h=>h!==top),rows:rowsHTML,rowsN:prep.length,
+    lv:lvFrom&&{tf:lvFrom.tf,sr:lvFrom.sr,vp:lvFrom.vp,live:lvFrom.live}}));
+  setStatus(`${base}${bt?` as of ${fmtDate(at)}`:""}: ${all.length} divergence(s) on ${tfs.join(", ")} · ${used.name}`);
+  lock(false);
+}
+
+// ---------- backtest ----------
+const DIV_TYPES=["regular_bull","hidden_bull","regular_bear","hidden_bear"];
+const TF_MS=tf=>TF_MIN[tf]*60000;
+const BT={scope:"coin",tf:"4h",onlyF:true,fee:0.15};
+try{const o=JSON.parse(localStorage.getItem("cgrab_bt")||"{}");
+  if(o.scope==="coin"||o.scope==="top")BT.scope=o.scope;
+  if(ALL_TF.includes(o.tf))BT.tf=o.tf;
+  if(typeof o.onlyF==="boolean")BT.onlyF=o.onlyF;
+  if(Number.isFinite(o.fee)&&o.fee>=0&&o.fee<=2)BT.fee=o.fee;
+}catch(e){}
+const saveBT=()=>{try{localStorage.setItem("cgrab_bt",JSON.stringify(BT));}catch(e){}};
+const fmtDate=ts=>new Date(ts).toLocaleString([],{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});
+const toLocalInput=ts=>new Date(ts-new Date(ts).getTimezoneOffset()*60000).toISOString().slice(0,16);
+const rTxt=r=>(r>=0?"+":"")+r.toFixed(2)+"R";
+const cleanBase=v=>v.trim().toUpperCase().replace(/[^A-Z0-9]/g,"").replace(/(USDT|USD)$/,"");
+
+// closed candles whose close time is at or before endTs, oldest first
+async function binEnding(id,tf,endTs,count){
+  const r=await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${id}&interval=${tf}&endTime=${Math.floor(endTs)}&limit=${Math.min(1000,count)}`);
+  if(!r.ok)throw new Error(r.status);
+  const cut=Math.min(endTs,Date.now());
+  return (await r.json()).filter(x=>x[6]<=cut).map(x=>({t:x[0],ct:x[6],o:+x[1],h:+x[2],l:+x[3],c:+x[4],v:+x[7]}));
+}
+async function okxEnding(id,tf,endTs,count){
+  const bar=OKX_BAR[tf];if(!bar)throw new Error("unsupported");
+  const ms=TF_MS(tf),out=[];let after=Math.min(endTs,Date.now())-ms+1;
+  for(let page=0;page<Math.min(70,Math.ceil(count/100)+1)&&out.length<count;page++){
+    const r=await fetch(`https://www.okx.com/api/v5/market/history-candles?instId=${id}&bar=${bar}&after=${after}&limit=100`);
+    if(!r.ok)throw new Error(r.status);
+    const data=(await r.json()).data||[];if(!data.length)break;
+    for(const x of data)if(x[8]==="1")out.push({t:+x[0],ct:+x[0]+ms-1,o:+x[1],h:+x[2],l:+x[3],c:+x[4],v:+x[7]});
+    after=+data[data.length-1][0];
+  }
+  return out.sort((a,b)=>a.t-b.t).slice(-count);
+}
+// Closed candles between two dates, paging through the exchange's limits.
+async function binRange(id,tf,start,end){
+  const out=[],cut=Math.min(end,Date.now());let cur=start;
+  for(let g=0;g<8&&cur<cut;g++){
+    const r=await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${id}&interval=${tf}&startTime=${Math.floor(cur)}&endTime=${Math.floor(cut)}&limit=1000`);
+    if(!r.ok)throw new Error(r.status);
+    const a=await r.json();if(!a.length)break;
+    for(const x of a)if(x[6]<=cut)out.push({t:x[0],ct:x[6],o:+x[1],h:+x[2],l:+x[3],c:+x[4],v:+x[7]});
+    cur=a[a.length-1][0]+1;if(a.length<1000)break;
+  }
+  return out;
+}
+async function rangeSeries(base,tf,start,end){
+  for(const s of [BINANCE,OKX]){
+    try{const k=s===BINANCE?await binRange(s.id(base),tf,start,end)
+      :(await okxEnding(s.id(base),tf,end,Math.ceil((Math.min(end,Date.now())-start)/TF_MS(tf))+2)).filter(x=>x.t>=start);
+      if(k.length)return {s,k};}catch(e){}
+  }
+  return null;
+}
+const ending=(s,id,tf,end,count)=>s===BINANCE?binEnding(id,tf,end,count):okxEnding(id,tf,end,count);
+async function btSeries(base,tf,end,count){
+  for(const s of [BINANCE,OKX]){
+    try{const k=await ending(s,s.id(base),tf,end,count);if(k.length)return {s,k};}catch(e){}
+  }
+  return null;
+}
+const toK=a=>a.map(x=>[x.t,x.o,x.h,x.l,x.c,x.v]);
+function viewAt(D,t){
+  const v={ma:{},maOk:{}};
+  for(const k of ["time","high","low","close","vol","rsi","hist","atr"])v[k]=D[k].slice(0,t+1);
+  for(const p of S.periods){v.ma[p]=D.ma[p].slice(0,t+1);v.maOk[p]=t+1>=(S.maType==="ema"?p+30:p);}
+  return v;
+}
+
+// Trade rules: entry must trigger within the trigger window; half closes at T1 and the stop moves to entry;
+// the rest closes at T2. Stop and target in the same candle counts as the stop. Open trades are marked to market.
+function simulate(lv,bull,fwd,fee){
+  const R=Math.abs(lv.entry-lv.stop),dir=bull?1:-1,o={trig:-1,t1:-1,t2:-1,stop:-1};
+  const reach=(c,p)=>bull?c.h>=p:c.l<=p, back=(c,p)=>bull?c.l<=p:c.h>=p, closedPast=(c,p)=>bull?c.c<p:c.c>p;
+  const win=lv.method==="sweep"?CFG.sweepWin:CFG.trigger;
+  let start;
+  if(lv.method==="close"){o.trig=0;o.atClose=true;start=0;
+    if(!fwd.length){o.status="open";o.r=-fee/lv.riskPct;o.done=false;return o;}}
+  else if(lv.method==="sweep"){
+    for(let i=0;i<Math.min(win,fwd.length);i++){const c=fwd[i];
+      if((bull?c.l<lv.pivot:c.h>lv.pivot)&&!closedPast(c,lv.entry)){
+        if(back(c,lv.stop)){o.deep=true;o.deepT=c.t;break;}   // the sweep ran past our stop level: setup invalid
+        o.trig=i;break;}
+      if(reach(c,lv.t1)){o.missed=true;o.missT=c.t;break;}     // ran to Target 1 without the sweep: move missed
+    }
+    if(o.trig<0){o.status=o.deep||o.missed?"no_trigger":fwd.length<win?"pending":"no_trigger";o.r=0;o.done=false;return o;}
+    start=o.trig+1;   // filled at the reclaim close
+  }else{
+    const fill=lv.method==="pullback"?back:reach;
+    for(let i=0;i<Math.min(win,fwd.length);i++){
+      if(fill(fwd[i],lv.entry)){o.trig=i;break;}
+      if(reach(fwd[i],lv.t1)){o.missed=true;o.missT=fwd[i].t;break;}   // ran to Target 1 without filling: move missed
+      if(closedPast(fwd[i],lv.pivot)){o.failed=true;o.failT=fwd[i].t;break;}   // closed past the pivot first: divergence failed
+    }
+    if(o.trig<0){o.status=o.missed||o.failed?"no_trigger":fwd.length<win?"pending":"no_trigger";o.r=0;o.done=false;return o;}
+    start=o.trig;
+  }
+  // Stop on touch: exit at the stop. Stop on close: exit at the close beyond the stop, with a hard stop 0.5R further out.
+  let stopLvl=lv.stop,exitP=null;const end=Math.min(fwd.length,o.trig+200);
+  const hardOf=lvl=>lvl-dir*0.5*R;
+  for(let i=start;i<end;i++){const c=fwd[i];
+    if(lv.stopMode==="close"){
+      if(back(c,hardOf(stopLvl))){o.stop=i;exitP=hardOf(stopLvl);break;}
+      if(closedPast(c,stopLvl)){o.stop=i;exitP=c.c;break;}
+    }else if(back(c,stopLvl)){o.stop=i;exitP=stopLvl;o.wick=!closedPast(c,stopLvl);break;}
+    if(o.t1<0&&reach(c,lv.t1)){o.t1=i;stopLvl=lv.entry;}
+    if(o.t1>=0&&reach(c,lv.t2)){o.t2=i;break;}
+  }
+  const last=fwd[Math.max(0,end-1)],mtm=last?(last.c-lv.entry)*dir/R:0,exitR=exitP==null?0:(exitP-lv.entry)*dir/R;
+  if(o.t2>=0){o.status="t2";o.r=0.5*lv.rr1+0.5*lv.rr2;}
+  else if(o.stop>=0){o.status=o.t1>=0?"t1_be":"stopped";o.r=o.t1>=0?0.5*lv.rr1+0.5*exitR:exitR;}
+  else{o.status=end-o.trig>=200?"timeout":"open";o.r=o.t1>=0?0.5*lv.rr1+0.5*mtm:mtm;}
+  o.r-=fee/lv.riskPct;o.done=o.status!=="open";
+  const tm=i=>i>=0&&fwd[i]?fwd[i].t:null;o.tt=tm(o.trig);o.t1t=tm(o.t1);o.t2t=tm(o.t2);o.st=tm(o.stop);
+  return o;
+}
+const OUT={t2:"T2 hit",t1_be:"T1, then breakeven",stopped:"Stopped out",timeout:"Closed at 200 candles",open:"Still open",no_trigger:"Never triggered",pending:"Waiting for trigger",broken:"Setup broken"};
+const outCls=o=>o.trig<0?"flat":o.r>0?"bull":o.r<0?"bear":"flat";
+function outcomeHTML(h){
+  const o=h.out,L=[];
+  if(o.status==="broken")return `<div class="outc"><span>Price was already past the pivot, so there was no trade.</span></div>`;
+  if(o.trig<0)L.push(o.missed?"Price reached Target 1 before the entry filled, so there was no trade.":o.failed?"Price closed past the pivot before the entry, so the divergence failed. No trade.":o.deep?"The sweep ran past the stop level, so the setup was invalid. No trade.":o.status==="pending"?"Not enough candles yet to know if it triggers":h.lv&&h.lv.method==="sweep"?`No sweep and reclaim within ${CFG.sweepWin} candles. No trade.`:`Entry never reached within ${CFG.trigger} candles`);
+  else{
+    L.push(h.lv&&h.lv.method==="sweep"?`Sweep and reclaim after ${o.trig+1} candles, entered at the close · ${fmtDate(o.tt)}`:o.atClose?`Entered at the signal close · ${fmtDate(h.sigTime)}`:`Triggered ${o.trig===0?"on the next candle":`after ${o.trig+1} candles`} · ${fmtDate(o.tt)}`);
+    const n=i=>i-o.trig+1;
+    if(o.t1>=0)L.push(`T1 after ${n(o.t1)} candles (estimate ${h.tm.t1[0]}–${h.tm.t1[1]}) · ${fmtDate(o.t1t)}`);
+    if(o.t2>=0)L.push(`T2 after ${n(o.t2)} candles (estimate ${h.tm.t2[0]}–${h.tm.t2[1]}) · ${fmtDate(o.t2t)}`);
+    if(o.stop>=0)L.push(`${o.t1>=0?"Breakeven stop":"Stop"} hit after ${n(o.stop)} candles · ${fmtDate(o.st)}${o.wick?" · wick only, the candle closed back inside (likely a stop hunt)":""}`);
+    L.push(`Result ${rTxt(o.r)} after fees${o.done?"":" (marked to the latest price)"}`);
+  }
+  return `<div class="outc">${L.map(t=>`<span>${t}</span>`).join("")}</div>`;
+}
+function btCard(h,open){
+  const el=document.createElement("details");el.className="card";
+  const o=h.out;
+  el.innerHTML=`<summary class="csum"><div class="cl"><div class="sym">${esc(h.sym)}<small>${h.tf} · ${fmtDate(h.at)}</small></div>
+    <div class="sub"><span class="pill ${dirOf(h.type)}">${SHORT[h.type]}</span><span class="pill ${outCls(o)}">${OUT[o.status]}${o.trig>=0?" "+rTxt(o.r):""}</span></div></div>${chip(h.sc)}</summary><div class="cbody"></div>`;
+  const fill=()=>{if(el.dataset.ok)return;el.dataset.ok="1";
+    el.querySelector(".cbody").innerHTML=signalHTML(h)+
+      `<details class="sec x-levels"><summary>Key levels at that time · ${h.tf}</summary><div class="secbody">${ladderHTML({tf:h.tf,sr:h.sr,vp:h.vp,live:h.close},{})}</div></details>`;};
+  el.addEventListener("toggle",()=>{if(el.open)fill();});
+  if(open){fill();el.open=true;}
+  return el;
+}
+function statsOf(hs){
+  const trig=hs.filter(h=>h.out.trig>=0),res=trig.filter(h=>h.out.done),wins=res.filter(h=>h.out.r>0),sum=res.reduce((a,h)=>a+h.out.r,0);
+  return {n:hs.length,trig:trig.length,res:res.length,wr:res.length?wins.length/res.length*100:null,avg:res.length?sum/res.length:null,sum};
+}
+const rCell=v=>v==null?"<td>–</td>":`<td class="${v>0?"pos":v<0?"neg":""}">${rTxt(v)}</td>`;
+function statTable(rows){
+  return `<div class="tablewrap"><table class="bt"><thead><tr><th></th><th>Signals</th><th>Trig.</th><th>Win</th><th>Avg</th><th>Total</th></tr></thead><tbody>${
+    rows.map(([lab,hs])=>{const t=statsOf(hs);return `<tr><td>${lab}</td><td>${t.n}</td><td>${t.trig}</td><td>${t.wr==null?"–":t.wr.toFixed(0)+"%"}</td>${rCell(t.avg)}${t.res?rCell(t.sum):"<td>–</td>"}</tr>`;}).join("")}</tbody></table></div>`;
+}
+
+// ---- outcomes for signals found as of a past date
+async function attachOutcomes(hs,s,id,tf,lastCt){
+  let fwd=[];try{fwd=(await ending(s,id,tf,lastCt+260*TF_MS(tf),260)).filter(x=>x.t>lastCt);}catch(e){}
+  for(const h of hs){h.at=h.sigTime;h.outs={};const f=(h.after||[]).concat(fwd);
+    for(const m of METHODS)if(h.plans[m])h.outs[m]=simulate(h.plans[m],dirOf(h.type)==="bull",f,BT.fee);
+    h.out=h.outs[h.rec.m]||{status:"broken",r:0,trig:-1};}
+}
+
+// ---- mode 2: history test over the last 1000 candles
+function historyHits(series,c,tf,from=-Infinity,to=Infinity){
+  const D=analyse(toK(series)),n=series.length,out=[];
+  const run=(piv,kind)=>{
+    for(let j=1;j<piv.length;j++){
+      const b=piv[j],t=b+CFG.R;                      // the signal exists once the pivot is confirmed
+      if(t<250||t>n-1||series[t].ct<from||series[t].ct>to)continue;
+      let x=null;
+      for(let m=j-1;m>=0;m--){const a=piv[m],gap=b-a;
+        if(gap<CFG.minGap)continue;if(gap>CFG.maxGap)break;
+        const P=kind==="low"?D.low:D.high,r=D.rsi;let ty=null;
+        if(kind==="low"){if(P[b]<P[a]&&r[b]>r[a])ty="regular_bull";else if(P[b]>P[a]&&r[b]<r[a])ty="hidden_bull";}
+        else{if(P[b]>P[a]&&r[b]<r[a])ty="regular_bear";else if(P[b]<P[a]&&r[b]>r[a])ty="hidden_bear";}
+        if(ty){x={type:ty,p1:P[a],p2:P[b],r1:r[a],r2:r[b],ago:t-b,time:D.time[b],bi:b,gap};break;}
+      }
+      if(!x)continue;
+      const v=viewAt(D,t),f=filters(v);             // only data up to the signal candle
+      if(!passes(f,kind==="low"))continue;
+      const sr=srLevels(v),vp=volumeProfile(v),h=buildHit(v,f,x,c,tf,sr,vp);
+      h.sc=scoreHit(h,false);h.at=series[t].ct;
+      h.outs={};const fw=series.slice(t+1);
+      for(const m of METHODS)if(h.plans[m])h.outs[m]=simulate(h.plans[m],kind==="low",fw,BT.fee);
+      h.out=h.outs[h.rec.m]||{status:"broken",r:0,trig:-1};
+      out.push(h);
+    }
+  };
+  run(pivots(D.low,CFG.L,CFG.R,"low"),"low");
+  run(pivots(D.high,CFG.L,CFG.R,"high"),"high");
+  return out.sort((a,b)=>b.at-a.at);
+}
+const btRange=()=>{const day=86400000;return {from:new Date($("wrFrom").value+"T00:00").getTime(),to:new Date($("wrTo").value+"T00:00").getTime()+day-1};};
+const fmtDay=t=>new Date(t).toLocaleDateString([],{month:"short",day:"numeric",year:"numeric"});
+async function runHistory(scope){
+  const {from,to}=btRange(),tfs=sortTf(S.tfs);
+  if(!tfs.length){setStatus("Pick at least one timeframe in Settings.",true);return;}
+  if(!Number.isFinite(from)||!Number.isFinite(to)||from>to){setStatus("Pick a From date that is on or before the To date.",true);return;}
+  if(from>Date.now()){setStatus("The From date is in the future.",true);return;}
+  // 250 candles before the range warm up the indicators; up to 200 after it let trades finish.
+  const span=tf=>{const ms=TF_MS(tf),start=from-250*ms,end=Math.min(Date.now(),to+200*ms);return {start,end,need:Math.ceil((end-start)/ms)};};
+  const big=tfs.find(tf=>span(tf).need>6000);
+  if(big){setStatus(`That range needs ${span(big).need.toLocaleString()} ${big} candles. Pick a shorter range or turn off ${big} in Settings (limit 6,000).`,true);return;}
+  let bases;
+  lock(true);$("prog").style.width="0";
+  if(scope==="top"){
+    setStatus("Loading top 50 coins…");
+    try{bases=(await pickSource(TOP_N)).map(c=>c.base);}catch(e){setStatus("Couldn't reach Binance or OKX.",true);lock(false);return;}
+  }else{
+    const b=cleanBase($("q").value);if(!b){setStatus("Type a coin in the search box first.",true);lock(false);return;}
+    bases=[b];
+  }
+  const by={},jobs=[];for(const b of bases)for(const tf of tfs)jobs.push({b,tf});
+  const total=jobs.length;let done=0,srcName="";
+  const worker=async()=>{while(jobs.length){const {b:base,tf}=jobs.shift(),{start,end}=span(tf);
+    const res=await rangeSeries(base,tf,start,end);
+    if(res&&res.k.length>=300){
+      const hs=historyHits(res.k,{id:res.s.id(base),base},tf,from,to);
+      (by[base]=by[base]||[]).push(...hs);srcName=res.s.name;
+    }
+    done++;$("prog").style.width=(done/total*100)+"%";setStatus(`Testing ${done}/${total}…`);
+  }};
+  await Promise.all(Array.from({length:scope==="top"?4:Math.min(3,total)},worker));
+  const per=Object.entries(by).map(([base,hs])=>({base,hs:hs.sort((a,b)=>b.at-a.at),stats:statsOf(hs)}));
+  const all=per.flatMap(p=>p.hs);
+  const box=$("results");box.textContent="";
+  if(!per.length){setStatus(`Not enough history to test ${tfs.join(", ")}.`,true);lock(false);return;}
+  const t=statsOf(all),title=scope==="top"?"Top 50":esc(bases[0]),tf=tfs.join(", ");
+  const sum=document.createElement("div");sum.className="panel btsum";
+  sum.innerHTML=`<div class="sym">${title} <small class="mu">${tf} · ${fmtDay(from)}${fmtDay(from)===fmtDay(to)?"":" – "+fmtDay(to)}</small></div>
+    <div class="grid">${pm("Signals",t.n)}${pm("Triggered",t.trig)}${pm("Win rate",t.wr==null?"–":t.wr.toFixed(0)+"%")}
+      ${pm("Avg per trade",t.avg==null?"–":rTxt(t.avg),t.avg>0?"pos":t.avg<0?"neg":"")}${pm("Total",t.res?rTxt(t.sum):"–",t.sum>0?"pos":t.sum<0?"neg":"")}${pm("Finished",t.res)}</div>
+    <div class="lbl">By score</div>${statTable([["Take",all.filter(h=>h.sc.verdict==="take")],["High risk",all.filter(h=>h.sc.verdict==="risk")],["Skip",all.filter(h=>h.sc.verdict==="skip")]])}
+    <div class="lbl">By entry method</div>${statTable(METHODS.map(m=>[MNAME[m],all.filter(h=>h.outs&&h.outs[m]).map(h=>({out:h.outs[m]}))]))}
+    ${tfs.length>1?`<div class="lbl">By timeframe</div>${statTable(tfs.map(x=>[x,all.filter(h=>h.tf===x)]))}`:""}
+    <div class="lbl">By divergence</div>${statTable(DIV_TYPES.map(ty=>[SHORT[ty],all.filter(h=>h.type===ty)]))}
+    ${(()=>{const st=all.filter(h=>h.out.stop>=0&&h.out.t1<0),w=st.filter(h=>h.out.wick).length;
+      return st.length&&S.stopMode==="wick"?`<div class="late">Stop-outs: ${st.length}. Wick only (candle closed back inside): ${w} (${Math.round(w/st.length*100)}%). ${w/st.length>=0.4?"Many stops look like hunts. Try Sweep & reclaim or a close-based stop.":"Most stops were real breaks, not hunts."}</div>`:"";})()}
+    <span class="status">Headline numbers use the signal-close entry · stop on ${S.stopMode==="close"?"close":"touch"} · half at T1 then stop to entry, rest at T2 · fees ${BT.fee}% · standard filters · confluence not scored · ${srcName}</span>`;
+  box.appendChild(sum);
+  if(scope==="top"){
+    per.sort((a,b)=>b.stats.sum-a.stats.sum).forEach(p=>{
+      if(!p.hs.length)return;
+      const el=document.createElement("details");el.className="card";
+      el.innerHTML=`<summary class="csum"><div class="cl"><div class="sym">${esc(p.base)}</div><div class="sub"><span class="tag">${p.stats.n} signals</span><span class="tag">win ${p.stats.wr==null?"–":p.stats.wr.toFixed(0)+"%"}</span></div></div><span class="pill ${p.stats.sum>0?"bull":p.stats.sum<0?"bear":"flat"}">${p.stats.res?rTxt(p.stats.sum):"–"}</span></summary><div class="cbody"></div>`;
+      el.addEventListener("toggle",()=>{if(!el.open||el.dataset.ok)return;el.dataset.ok="1";const b=el.querySelector(".cbody");p.hs.slice(0,100).forEach(h=>b.appendChild(btCard(h,false)));});
+      box.appendChild(el);
+    });
+  }else all.slice(0,200).forEach(h=>box.appendChild(btCard(h,false)));
+  setStatus(`${title} ${tf}: ${t.n} signals, ${t.trig} triggered${t.wr==null?"":`, ${t.wr.toFixed(0)}% win rate`}`);
+  lock(false);
+}
+
+// ---- live / backtest switch (live on every page load)
+let MODE="live";
+const asOfTs=()=>new Date($("btDate").value).getTime();
+const validAt=t=>Number.isFinite(t)&&t<Date.now();
+function updScanLabel(){
+  const {from,to}=btRange(),ok=Number.isFinite(from)&&Number.isFinite(to);
+  $("scan").textContent=MODE==="bt"&&ok?`Test top 50 · ${fmtDay(from)}${fmtDay(from)===fmtDay(to)?"":" – "+fmtDay(to)}`:"Scan market";
+  $("check").textContent=MODE==="bt"?"Test":"Check";
+}
+function regimeAt(){const {to}=btRange();return Math.min(to,Date.now());}
+function setMode(m){
+  MODE=m;const bt=m==="bt";
+  $("modeBtn").setAttribute("aria-pressed",bt);$("modeTxt").textContent=bt?"Backtest":"Live";
+  $("btBar").hidden=!bt;document.body.classList.toggle("btmode",bt);
+  $("autoWrap").hidden=bt;if(bt&&$("auto").checked){$("auto").checked=false;clearInterval(timer);}
+  $("results").textContent="";$("prog").style.width="0";
+  setStatus(bt?"Pick dates, then test the top 50 or one coin.":"Scan the top 50, or check one coin.");
+  if(bt)loadRegime(regimeAt());else loadRegime();
+  updScanLabel();
+}
+$("modeBtn").onclick=()=>{if(!busy)setMode(MODE==="live"?"bt":"live");};
+function renderBtTf(){}
+function renderBt(){$("btFee").value=BT.fee;}
+$("btFee").onchange=e=>{const v=parseFloat(e.target.value);if(Number.isFinite(v)&&v>=0&&v<=2){BT.fee=v;saveBT();}else e.target.value=BT.fee;};
+{const d=t=>toLocalInput(t).slice(0,10);$("wrTo").value=d(Date.now());$("wrFrom").value=d(Date.now()-90*86400000);$("wrTo").max=$("wrFrom").max=d(Date.now());}
+for(const id of ["wrFrom","wrTo"])$(id).addEventListener("change",()=>{updScanLabel();if(MODE==="bt")loadRegime(regimeAt());});
+window.BT_READY=true;renderBt();
+
+// ---------- market regime: BTC, alts, whole market (daily) ----------
+function adxCalc(d,n=14){
+  const N=d.close.length,adx=new Array(N).fill(NaN),pdi=new Array(N).fill(NaN),mdi=new Array(N).fill(NaN);
+  let tr=0,pd=0,md=0,ax=null;const a=1/n;
+  for(let i=1;i<N;i++){
+    const up=d.high[i]-d.high[i-1],dn=d.low[i-1]-d.low[i];
+    const t=Math.max(d.high[i]-d.low[i],Math.abs(d.high[i]-d.close[i-1]),Math.abs(d.low[i]-d.close[i-1]));
+    tr=tr*(1-a)+t*a;pd=pd*(1-a)+(up>dn&&up>0?up:0)*a;md=md*(1-a)+(dn>up&&dn>0?dn:0)*a;
+    if(!tr)continue;pdi[i]=100*pd/tr;mdi[i]=100*md/tr;
+    const dx=pdi[i]+mdi[i]?100*Math.abs(pdi[i]-mdi[i])/(pdi[i]+mdi[i]):0;
+    ax=ax==null?dx:ax*(1-a)+dx*a;adx[i]=ax;
+  }
+  return {adx,pdi,mdi};
+}
+// Tile state: daily market structure (BOS/CHoCH) sets the direction; choppy structure or ADX under 18 means range-bound.
+function classify(d){
+  const L=d.close.length-1,A=adxCalc(d),e50=ema(d.close,50),a=A.adx[L],c=d.close[L],st=structure(d);
+  const s=Math.max(0,L-29);let hi=-Infinity,lo=Infinity;for(let i=s;i<=L;i++){hi=Math.max(hi,d.high[i]);lo=Math.min(lo,d.low[i]);}
+  const r={adx:a,vs50:(c/e50[L]-1)*100,up:A.pdi[L]>A.mdi[L],st,range:[lo,hi]};
+  if(st.chop||a<18||!st.trend)Object.assign(r,{state:"Range-bound",cls:"side"});
+  else Object.assign(r,{state:STR_TXT(st),cls:STR_CLS(st)});
+  return r;
+}
+// Equal-weight index built from the coins' own candles, each scaled to 1 at the start.
+function buildIndex(list){
+  const n=Math.min(...list.map(k=>k.length)),cut=list.map(k=>k.slice(-n)),base=cut.map(k=>k[0].c);
+  const avg=f=>Array.from({length:n},(_,i)=>cut.reduce((a,k,j)=>a+f(k[i])/base[j],0)/cut.length);
+  return {time:cut[0].map(x=>x.t),high:avg(x=>x.h),low:avg(x=>x.l),close:avg(x=>x.c)};
+}
+let REG=null,regBusy=false,regAt=0;
+async function loadRegime(at){
+  if(regBusy)return;regBusy=true;
+  document.querySelectorAll(".rt .rst").forEach(e=>{e.textContent="…";e.className="rst";});
+  try{
+    const list=await pickSource(TOP_N),s=src,end=at||Date.now();
+    const syms=[...new Set(["BTC",...list.map(c=>c.base)])].slice(0,TOP_N);
+    const series={},q=syms.slice();
+    await Promise.all(Array.from({length:6},async()=>{while(q.length){const b=q.shift();
+      try{const k=await ending(s,s.id(b),"1d",end,150);if(k.length>=80)series[b]=k;}catch(e){}}}));
+    if(!series.BTC)throw new Error("no btc");
+    const toD=k=>({time:k.map(x=>x.t),high:k.map(x=>x.h),low:k.map(x=>x.l),close:k.map(x=>x.c)});
+    const btcD=toD(series.BTC),btc=classify(btcD);
+    const altKeys=syms.filter(b=>b!=="BTC"&&series[b]).slice(0,20);
+    const idx=buildIndex(altKeys.map(b=>series[b])),alts=classify(idx);
+    const ch=(arr,n)=>(arr[arr.length-1]/arr[arr.length-1-n]-1)*100;
+    // ---- BTC vs alts rotation ----
+    const pct=(a,k)=>a.length>k?(a[a.length-1]/a[a.length-1-k]-1)*100:null,closes=b=>series[b].map(x=>x.c);
+    const n=idx.close.length,bc=btcD.close.slice(-n),bn=bc.map(v=>v/bc[0]),ratio=idx.close.map((v,i)=>v/bn[i]);
+    const R=alts.rot={btc7:pct(btcD.close,7),alt7:pct(idx.close,7),btc30:pct(btcD.close,30),alt30:pct(idx.close,30),rel7:pct(ratio,7),rel30:pct(ratio,30)};
+    // ALT/BTC ratio structure: up = alts gaining on BTC
+    R.st=structure({time:idx.time,high:idx.high.map((v,i)=>v/bn[i]),low:idx.low.map((v,i)=>v/bn[i]),close:ratio});
+    // Pace: compare the last 7 days of relative performance with the 30-day average pace
+    const p7=R.rel7/7,p30=R.rel30/30;
+    R.pace=R.rel7>=1&&p7>p30?{txt:"Alts picking up pace vs BTC",cls:"up"}:R.rel7<=-1&&p7<p30?{txt:"BTC picking up pace vs alts",cls:"down"}
+      :R.rel7>0?{txt:p7>p30?"Alts slightly ahead of BTC":"Alts ahead of BTC but slowing",cls:"side"}
+      :R.rel7<0?{txt:p7<p30?"BTC slightly ahead of alts":"BTC ahead of alts but slowing",cls:"side"}:{txt:"BTC and alts moving at the same pace",cls:"side"};
+    // Altcoin season index: share of alts beating BTC (75+ alt season, 25 or less Bitcoin season)
+    const altAll=syms.filter(b=>b!=="BTC"&&series[b]);
+    const season=k=>{const el=altAll.filter(b=>series[b].length>k);if(el.length<5||series.BTC.length<=k)return null;const bR=pct(closes("BTC"),k);
+      return {v:Math.round(el.filter(b=>pct(closes(b),k)>bR).length/el.length*100),n:el.length};};
+    R.s90=season(90);R.s30=season(30);
+    R.season=R.s90?(R.s90.v>=75?"Altcoin season":R.s90.v<=25?"Bitcoin season":"Neither season"):null;
+    // ETH/BTC usually leads alt rotations
+    try{const k=await ending(s,s.id("ETH").replace("USDT","BTC"),"1d",end,150);if(k.length>=60){const d=toD(k);R.eth={st:structure(d),ch30:pct(d.close,30)};}}catch(e){}
+    // BTC dominance now (CoinGecko) and an estimate of 7 and 30 days ago from the top 250 market caps
+    if(!at){try{
+      const [g,m]=await Promise.all([fetch("https://api.coingecko.com/api/v3/global").then(r=>r.json()),
+        fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&price_change_percentage=7d,30d").then(r=>r.json()).catch(()=>null)]);
+      alts.btcd=g.data.market_cap_percentage.btc;R.ethd=g.data.market_cap_percentage.eth;
+      const b=Array.isArray(m)&&m.find(c=>c.id==="bitcoin");
+      if(b&&b.market_cap){
+        const now=m.reduce((a,c)=>a+(c.market_cap||0),0),chg=(c,k)=>c[`price_change_percentage_${k}_in_currency`]||0;
+        const then=k=>m.reduce((a,c)=>a+(c.market_cap||0)/(1+chg(c,k)/100),0),bThen=k=>b.market_cap/(1+chg(b,k)/100);
+        R.dom7=alts.btcd*(bThen("7d")/b.market_cap)/(then("7d")/now);R.dom30=alts.btcd*(bThen("30d")/b.market_cap)/(then("30d")/now);}
+    }catch(e){}}
+    // Who is leading: dominance trend, ALT/BTC structure, pace and ETH/BTC each vote
+    const votes=[];
+    if(R.dom7!=null){const dd=alts.btcd-R.dom7;votes.push(dd<=-0.3?1:dd>=0.3?-1:0);}
+    votes.push(R.st.chop?0:R.st.trend);
+    votes.push(R.pace.cls==="up"?1:R.pace.cls==="down"?-1:0);
+    if(R.eth)votes.push(R.eth.st.chop?0:R.eth.st.trend);
+    const v=votes.reduce((a,b)=>a+b,0);
+    R.lead=v>=2?{label:"Alts leading",cls:"up"}:v<=-2?{label:"BTC leading",cls:"down"}:{label:"No clear leader",cls:"side"};
+    R.votes={v,n:votes.length};
+    // Are alts bullish? Index structure plus rotation against BTC
+    const id=alts.cls==="up"?1:alts.cls==="down"?-1:0,ld=R.lead.cls==="up"?1:R.lead.cls==="down"?-1:0;
+    alts.view=id>0&&ld>0?{tile:"Bullish",cls:"up",txt:"Bullish: rising and beating BTC"}
+      :id>0&&ld<0?{tile:"Lagging BTC",cls:"side",txt:"Rising, but lagging BTC (BTC is the stronger long)"}
+      :id>0?{tile:alts.state,cls:"up",txt:`${alts.state}, keeping pace with BTC`}
+      :id<0&&ld<0?{tile:"Bearish",cls:"down",txt:"Bearish: falling and losing to BTC"}
+      :id<0&&ld>0?{tile:"Holding up",cls:"side",txt:"Falling, but holding up better than BTC"}
+      :id<0?{tile:alts.state,cls:"down",txt:`${alts.state}, in line with BTC`}
+      :ld>0?{tile:"Range-bound",cls:"side",txt:"Range-bound, gaining on BTC"}:ld<0?{tile:"Range-bound",cls:"side",txt:"Range-bound, losing to BTC"}:{tile:"Range-bound",cls:"side",txt:"Range-bound"};
+    const keys=Object.keys(series),above=keys.filter(b=>{const c=series[b].map(x=>x.c),e=ema(c,50);return c[c.length-1]>e[e.length-1];}).length;
+    const breadth=above/keys.length*100;
+    const mkt={breadth,n:keys.length};
+    if(btc.cls==="up"&&alts.cls==="up")Object.assign(mkt,{state:"Trending up",cls:"up"});
+    else if(btc.cls==="down"&&alts.cls==="down")Object.assign(mkt,{state:"Trending down",cls:"down"});
+    else if(btc.cls==="side"&&alts.cls==="side")Object.assign(mkt,{state:"Range-bound",cls:"side"});
+    else Object.assign(mkt,{state:"Mixed",cls:"side"});
+    const btcMap={"1d":btc.st};
+    await Promise.all(["15m","1h","4h"].map(async tf=>{try{const k=await ending(s,s.id("BTC"),tf,end,300);if(k.length>=100)btcMap[tf]=structure(toD(k));}catch(e){}}));
+    mkt.style=styleOf(btcMap);mkt.btcMap=btcMap;
+    if(!at){try{btc.liq=await liqMap("BTC");}catch(e){}}
+    REG={btc,alts,mkt,at:end,last:btcD.close[btcD.close.length-1],nAlts:altKeys.length};regAt=Date.now();
+    paintRegime();
+  }catch(e){document.querySelectorAll(".rt .rst").forEach(x=>{x.textContent="n/a";x.className="rst";});REG=null;}
+  regBusy=false;
+}
+function paintRegime(){
+  if(!REG)return;const {btc,alts,mkt}=REG;
+  const set=(k,r,sub)=>{const t=document.querySelector(`.rt[data-reg="${k}"]`);const rs=t.querySelector(".rst");rs.textContent=r.state;rs.className="rst "+r.cls;t.querySelector(".rx").textContent=sub;};
+  const fc=v=>v>=1000?(v/1000).toFixed(1)+"k":fmtP(v);
+  const evTxt=st=>st&&st.last?`${st.last.kind} ${st.last.dir>0?"↑":"↓"} ${st.ago}d`:"No breaks";
+  set("btc",btc,btc.cls==="side"?`${fc(btc.range[0])}–${fc(btc.range[1])}`:evTxt(btc.st));
+  const Rt=alts.rot,dd=Rt.dom7!=null?alts.btcd-Rt.dom7:null,arrow=dd!=null?(dd>=0.3?"↑":dd<=-0.3?"↓":"→"):({up:"↓",down:"↑",side:"→"})[Rt.lead.cls];
+  set("alts",{state:alts.view.tile,cls:alts.view.cls},`BTC.D ${alts.btcd!=null?alts.btcd.toFixed(1)+"% ":""}${arrow}`);
+  set("mkt",mkt,`${mkt.breadth.toFixed(0)}% > EMA50`);
+  const sb=$("styleBar"),y=mkt.style;
+  const sg=v=>v==null?"–":(v>=0?"+":"")+v.toFixed(1)+"%",pc=c=>c==="up"?"bull":c==="down"?"bear":"flat";
+  sb.hidden=false;sb.innerHTML=(y?`<div class="sbl"><span class="pill ${y.kind==="none"?"flat":y.kind==="wait"?"gold":y.dir>0?"bull":"bear"}">BTC: ${y.label}</span><span>${esc(y.txt)}</span></div>`:"")+
+    `<div class="sbl"><span class="pill ${pc(Rt.lead.cls)}">${Rt.lead.label}</span><span>${Rt.pace.txt} · 7d alts ${sg(Rt.alt7)} vs BTC ${sg(Rt.btc7)}${Rt.season?` · ${Rt.season}`:""}</span></div>`;
+  const open=document.querySelector('.rt[aria-expanded="true"]');if(open)showRegDetail(open.dataset.reg);
+}
+function showRegDetail(k){
+  const box=$("regDetail");if(!REG){box.hidden=true;return;}
+  const r=REG[k],when=MODE==="bt"?` · as of ${fmtDate(REG.at)}`:"";
+  const lines={
+    btc:()=>[`<b>BTC · ${r.state}</b>${when}`,
+      r.st.last?`Daily structure: last break was a ${r.st.last.kind} ${r.st.last.dir>0?"up":"down"} at ${fmtP(r.st.last.lvl)}, ${r.st.ago} days ago${r.st.chop?" (repeated CHoCHs, so choppy)":""}`:"Daily structure: no breaks yet",
+      `Swings ${swPills(r.st)} ${seqOf(r.st)[0]}`,
+      r.st.trend>0?`Uptrend holds while price stays above ${fmtP(r.st.swingLow)}. A daily close below is a CHoCH down.`:r.st.trend<0?`Downtrend holds while price stays below ${fmtP(r.st.swingHigh)}. A daily close above is a CHoCH up.`:"",
+      r.st.rng?`Daily range ${fmtP(r.st.rng.bot)} – ${fmtP(r.st.rng.top)} · price in ${r.st.rng.inOte?"the OTE zone":r.st.rng.zone.toLowerCase()} (${Math.round(r.st.rng.pos*100)}%)`:"",
+      eqTxt(r.st.eqH,true,fmtP),eqTxt(r.st.eqL,false,fmtP),
+      r.st.fvgBear?`Unfilled daily FVG above ${fmtP(r.st.fvgBear.lo)} – ${fmtP(r.st.fvgBear.hi)}`:"",r.st.fvgBull?`Unfilled daily FVG below ${fmtP(r.st.fvgBull.lo)} – ${fmtP(r.st.fvgBull.hi)}`:"",
+      r.st.sfpH?`Swept the daily swing high at ${fmtP(r.st.sfpH.lvl)} ${r.st.sfpH.ago}d ago (SFP)`:"",r.st.sfpL?`Swept the daily swing low at ${fmtP(r.st.sfpL.lvl)} ${r.st.sfpL.ago}d ago (SFP)`:"",
+      REG.mkt.style?`<b>BTC by timeframe</b> → ${REG.mkt.style.label}<br>${sortTf(Object.keys(REG.mkt.btcMap)).map(t=>`${t}: ${STR_TXT(REG.mkt.btcMap[t])} ${swPills(REG.mkt.btcMap[t])}`).join(" · ")}`:"",
+      r.liq?`Liquidation pools (est.): ${r.liq.above[0]?`above ${fmtP(r.liq.above[0].p)} (+${r.liq.above[0].dist.toFixed(1)}%, ${usdTxt(r.liq.above[0].usd)})`:"none above"} · ${r.liq.below[0]?`below ${fmtP(r.liq.below[0].p)} (${r.liq.below[0].dist.toFixed(1)}%, ${usdTxt(r.liq.below[0].usd)})`:"none below"} → ${r.liq.magnet==="both"?"balanced":`bigger pull ${r.liq.magnet}`}`:"",
+      `ADX ${r.adx.toFixed(1)} (25+ strong trend, under 18 counts as a range) · price ${r.vs50>=0?"above":"below"} EMA 50 by ${Math.abs(r.vs50).toFixed(1)}%`,
+      r.cls==="side"?`30-day range ${fmtP(r.range[0])} – ${fmtP(r.range[1])}`:""],
+    alts:()=>{const R=r.rot,sg=v=>v==null?"–":(v>=0?"+":"")+v.toFixed(1)+"%",pp=v=>v.toFixed(1)+"%";return [`<b>Alts · ${r.view.txt}</b>${when}`,`Equal-weight index of the top ${REG.nAlts} altcoins by volume`,
+      `<b>${R.lead.label}</b> (rotation score ${R.votes.v>0?"+":""}${R.votes.v} from ${R.votes.n} checks below)`,
+      r.btcd!=null?`BTC dominance ${pp(r.btcd)} now${R.dom7!=null?` · about ${pp(R.dom7)} a week ago · ${pp(R.dom30)} a month ago → ${r.btcd-R.dom7>=0.3?"rising, money favouring BTC":r.btcd-R.dom7<=-0.3?"falling, money rotating into alts":"flat"}`:""}${R.ethd!=null?` · ETH dominance ${pp(R.ethd)} · alts (all ex-BTC) ${pp(100-r.btcd)}`:""}`:"BTC dominance: live value not available (backtest or CoinGecko unreachable)",
+      `ALT/BTC ratio: ${R.st.trend>0&&!R.st.chop?"uptrend, alts gaining on BTC":R.st.trend<0&&!R.st.chop?"downtrend, alts losing to BTC":"ranging"}${R.st.last?` (last ${R.st.last.kind} ${R.st.last.dir>0?"↑":"↓"} ${R.st.ago}d ago)`:""}`,
+      `Pace: ${R.pace.txt}. 7 days: alts ${sg(R.alt7)} vs BTC ${sg(R.btc7)} · 30 days: alts ${sg(R.alt30)} vs BTC ${sg(R.btc30)}`,
+      R.eth?`ETH/BTC: ${STR_TXT(R.eth.st).toLowerCase()}, ${sg(R.eth.ch30)} over 30 days (ETH usually leads alt rotations)`:"",
+      R.s90?`Altcoin season index: ${R.s90.v}/100 over 90 days, ${R.s30?R.s30.v+"/100 over 30 days":""} (share of top alts beating BTC; 75+ is alt season, 25 or less is Bitcoin season) → <b>${R.season}</b>`:"",
+      r.st.last?`Daily structure: last ${r.st.last.kind} ${r.st.last.dir>0?"up":"down"}, ${r.st.ago} days ago${r.st.chop?" (choppy)":""} · swings ${swPills(r.st)} ${seqOf(r.st)[0]}`:"",
+      r.st.eqH?`${eqName(r.st.eqH,true)} on the alt index${r.st.eqH.status==="swept"?" (swept)":""}`:"",r.st.eqL?`${eqName(r.st.eqL,false)} on the alt index${r.st.eqL.status==="swept"?" (swept)":""}`:"",
+      `Index ADX ${r.adx.toFixed(1)} · ${r.vs50>=0?"above":"below"} its EMA 50 by ${Math.abs(r.vs50).toFixed(1)}%`];},
+    mkt:()=>[`<b>Market · ${r.state}</b>${when}`,`${r.breadth.toFixed(0)}% of the top ${r.n} coins are above their EMA 50 (over 60% is broad strength, under 40% broad weakness)`,`BTC: ${REG.btc.state} · Alts: ${REG.alts.view.txt}`,`Rotation: ${REG.alts.rot.lead.label} · ${REG.alts.rot.pace.txt}${REG.alts.rot.season?` · ${REG.alts.rot.season}`:""}`]
+  }[k]().filter(Boolean);
+  box.innerHTML=lines.map(l=>`<span>${l}</span>`).join("");box.hidden=false;
+}
+document.querySelectorAll(".rt").forEach(t=>t.onclick=()=>{
+  const was=t.getAttribute("aria-expanded")==="true";
+  document.querySelectorAll(".rt").forEach(x=>x.setAttribute("aria-expanded","false"));
+  if(was){$("regDetail").hidden=true;return;}
+  t.setAttribute("aria-expanded","true");showRegDetail(t.dataset.reg);
+});
+setInterval(()=>{if(MODE==="live"&&!document.hidden&&Date.now()-regAt>10*60000)loadRegime();},60000);
+
+// ---------- auto rescan ----------
+let timer=null;const seen=new Set();
+function notify(hits){
+  const fresh=hits.filter(h=>h.chk&&h.chk.all).filter(h=>{const k=h.id+h.tf+h.type+h.time;if(seen.has(k))return false;seen.add(k);return true;});
+  if(!$("auto").checked||!fresh.length||!("Notification"in window)||Notification.permission!=="granted")return;
+  try{new Notification("Crypto Grabber · all checks met",{body:fresh.slice(0,5).map(h=>`${h.sym} ${h.tf}: ${LABEL[h.type]} · ${h.sc.score}`).join("\n")});}catch(e){}
+}
+$("auto").onchange=async e=>{
+  clearInterval(timer);
+  if(e.target.checked){
+    if("Notification"in window&&Notification.permission==="default"){try{await Notification.requestPermission();}catch(err){}}
+    timer=setInterval(scan,15*60*1000);
+  }
+};
+// ---------- headless hook for the Telegram alert bot (bot/alert.js) ----------
+// Runs the normal live scan and returns each coin's top setup with its plan, checklist and entry status.
+let LAST_SCAN=[];
+window.cgBot=async(o={})=>{
+  if(o.tfs&&o.tfs.length)S.tfs=sortTf(o.tfs.filter(t=>TF_MIN[t]));
+  const t0=Date.now();while((!REG||regBusy)&&Date.now()-t0<60000)await new Promise(r=>setTimeout(r,500));
+  LAST_SCAN=[];await scan();
+  const R=REG;
+  return {status:$("status").textContent,tz:Intl.DateTimeFormat().resolvedOptions().timeZone,
+    market:R?{btc:R.btc.state,alts:R.alts.view.tile,mkt:R.mkt.state,btcStyle:R.mkt.style?R.mkt.style.label:"",lead:R.alts.rot.lead.label,pace:R.alts.rot.pace.txt}:null,
+    setups:LAST_SCAN.map(({top:h,sty})=>{
+      const tk=h.track,lv=h.lv,bull=dirOf(h.type)==="bull",live=h.live||h.close,ti=trackInfo(h);
+      const f=v=>v==null?null:fmtP(v),pc=v=>lv?((v/lv.entry-1)*100):null;
+      return {key:[h.id,h.tf,h.type,h.time].join("|"),sym:h.sym,tf:h.tf,label:LABEL[h.type],dir:bull?"long":"short",
+        score:h.sc.score,verdict:VERDICT[h.sc.verdict][0],checks:`${h.chk.n}/${h.chk.total}`,all:h.chk.all,
+        missing:h.chk.items.filter(i=>!i.ok).map(i=>i.txt),style:sty?tradeType(h,sty).label:"",styleTxt:sty?tradeType(h,sty).txt:"",
+        method:lv?MNAME[lv.method]:"",why:h.rec.why,status:tk?tk.status:null,missed:!!tk&&!!tk.missed,t1hit:!!tk&&tk.t1>=0,
+        filledAt:tk&&tk.status==="open"?(tk.atClose?h.sigTime:tk.tt):null,stateTxt:ti?ti[0]:"",detail:ti?ti[2]:"",
+        sigTime:h.sigTime,tfMs:TF_MS(h.tf),prog:lv?(live-lv.entry)/(lv.t1-lv.entry):null,
+        live:f(live),entry:lv&&f(lv.entry),stop:lv&&f(lv.stop),t1:lv&&f(lv.t1),t2:lv&&f(lv.t2),
+        stopPct:lv&&pc(lv.stop),t1Pct:lv&&pc(lv.t1),t2Pct:lv&&pc(lv.t2),rr1:lv&&lv.rr1,rr2:lv&&lv.rr2,chart:src.tv(h.id)};})};
+};
+renderTf();renderMa();loadRegime();
+document.body.classList.add("chomping");setTimeout(()=>{if(!busy)document.body.classList.remove("chomping");},1400);
+$("scan").onclick=scan;
+$("check").onclick=checkCoin;
+$("q").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();checkCoin();}});
+if("serviceWorker"in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(()=>{});
+// ---------- live prices: refresh every 3 seconds while the page is open ----------
+const LIVE={};
+// Binance coins stream through a websocket (about one update per second, like the Binance app);
+// polling every 3 seconds is the fallback, and the only source for OKX coins.
+let ws=null,wsKey="",wsAlive=0,paintQueued=false;
+function closeWS(){try{if(ws)ws.close();}catch(e){}ws=null;wsKey="";}
+function ensureWS(bin){
+  const key=bin.slice().sort().join(",");
+  if(!bin.length){closeWS();return;}
+  if(key===wsKey&&ws&&ws.readyState<=1)return;
+  closeWS();wsKey=key;
+  try{
+    ws=new WebSocket(`wss://data-stream.binance.vision/stream?streams=${bin.map(i=>i.toLowerCase()+"@miniTicker").join("/")}`);
+    ws.onmessage=ev=>{try{const m=JSON.parse(ev.data).data;LIVE[m.s]=+m.c;wsAlive=Date.now();
+      if(!paintQueued){paintQueued=true;requestAnimationFrame(()=>{paintQueued=false;paintLive();});}}catch(e){}};
+    ws.onclose=()=>{ws=null;wsKey="";};
+  }catch(e){ws=null;wsKey="";}
+}
+async function pollLive(){
+  if(document.hidden||MODE!=="live"){closeWS();return;}
+  const ids=[...new Set([...document.querySelectorAll("[data-live]")].map(e=>e.dataset.live))];
+  const bin=ids.filter(i=>!i.includes("-")),okx=ids.filter(i=>i.includes("-"));
+  ensureWS(bin);
+  if(!ids.length)return;
+  try{if(bin.length&&Date.now()-wsAlive>5000){const r=await fetch(`https://data-api.binance.vision/api/v3/ticker/price?symbols=${encodeURIComponent(JSON.stringify(bin))}`);
+    if(r.ok)for(const x of await r.json())LIVE[x.symbol]=+x.price;}}catch(e){}
+  await Promise.all(okx.map(async id=>{try{const j=await (await fetch(`https://www.okx.com/api/v5/market/ticker?instId=${id}`)).json();if(j.data&&j.data[0])LIVE[id]=+j.data[0].last;}catch(e){}}));
+  paintLive();
+}
+// ---------- live trade tracking ----------
+// Each live price tick updates the forming candle (high/low/close) of every signal on screen and re-runs its entry,
+// stop and target checks, so a fill, a missed move, Target 1 or a stop shows up immediately instead of at the next scan.
+let LIVE_HITS=[];
+const trkSig=o=>o?[o.status,o.trig,o.t1,o.t2,o.stop,o.missed,o.failed,o.deep].join(","):"";
+function liveTrack(){
+  LIVE_HITS=LIVE_HITS.filter(r=>r.el.isConnected);
+  for(const r of LIVE_HITS){
+    const h=r.h,p=LIVE[h.id];if(p==null||!h.after||!h.lv)continue;
+    const ms=TF_MS(h.tf),now=Date.now(),a=h.after,before=trkSig(h.track)+"|"+a.length;
+    let last=a[a.length-1];
+    if(!last){if(now<h.sigTime)continue;last={t:h.sigTime+Math.floor((now-h.sigTime)/ms)*ms,h:p,l:p,c:p};a.push(last);}
+    else if(now>=last.t+ms){last={t:last.t+Math.floor((now-last.t)/ms)*ms,h:p,l:p,c:p};a.push(last);}
+    else{last.h=Math.max(last.h,p);last.l=Math.min(last.l,p);last.c=p;}
+    h.live=p;track(h);
+    if(trkSig(h.track)+"|"+a.length===before)continue;
+    const k=sigKey(h);
+    r.el.querySelectorAll(`[data-sk="${CSS.escape(k)}"]`).forEach(w=>{
+      const open=[...w.querySelectorAll("details")].map(d=>d.open),tmp=document.createElement("div");tmp.innerHTML=signalHTML(h);
+      const nw=tmp.firstElementChild;[...nw.querySelectorAll("details")].forEach((d,i)=>{if(open[i])d.open=true;});w.replaceWith(nw);});
+    r.el.querySelectorAll(`[data-tp="${CSS.escape(k)}"]`).forEach(x=>x.innerHTML=trackPill(h));
+    if(r.top){h.chk=checklist(h,r.sty);
+      const ce=r.el.querySelector("details.x-check");if(ce){const tmp=document.createElement("div");tmp.innerHTML=checkHTML(h.chk);const nc=tmp.firstElementChild;nc.open=ce.open;ce.replaceWith(nc);}
+      const tg=r.el.querySelector("[data-ckt]");if(tg)tg.innerHTML=ckTag(h.chk);}
+  }
+}
+function paintLive(){
+  liveTrack();
+  document.querySelectorAll("[data-live]").forEach(el=>{
+    const p=LIVE[el.dataset.live];if(p==null)return;const prev=parseFloat(el.dataset.prev);el.dataset.prev=p;
+    if(el.textContent===fmtP(p))return;el.textContent=fmtP(p);
+    if(Number.isFinite(prev)){el.classList.remove("tick-up","tick-dn");void el.offsetWidth;el.classList.add(p>prev?"tick-up":"tick-dn");}
+  });
+  document.querySelectorAll("[data-dist]").forEach(el=>{
+    const p=LIVE[el.dataset.dist];if(p!=null)el.textContent=`${pctTxt(+el.dataset.entry,p)} from live`;
+  });
+  document.querySelectorAll("[data-late]").forEach(el=>{
+    const p=LIVE[el.dataset.late];if(p==null)return;const e=+el.dataset.entry,t1=+el.dataset.t1,pr=(p-e)/(t1-e);
+    el.hidden=pr<0.25;if(pr>=0.25)el.textContent=lateTxt(pr);
+  });
+  document.querySelectorAll("[data-pct]").forEach(el=>{
+    const p=LIVE[el.dataset.pct];if(p==null)return;const v=+el.dataset.lvl;el.textContent=pctTxt(v,p);el.className=v>p?"pos":"neg";
+  });
+}
+setInterval(pollLive,3000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)pollLive();});
+$("closeall").onclick=()=>document.querySelectorAll("#results details").forEach(d=>d.open=false);
+</script>
+</body>
+</html>
