@@ -250,7 +250,7 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .links a{font:600 13px var(--display);color:var(--accent);text-decoration:none}
 .empty{text-align:center;color:var(--muted);padding:20px 10px}
 .ahead{font-size:13.5px;color:var(--muted);margin:0 2px 10px}.ahead b{color:var(--bull)}
-.near{margin-top:4px}.near>.secbody{gap:10px;padding:0 8px 8px}
+.near{margin-top:4px}.near.risk>summary{color:var(--gold)}.near>.secbody{gap:10px;padding:0 8px 8px}
 .tag.aplus{color:var(--bull);background:var(--bullbg);font-weight:800}
 .pill.gold{color:var(--gold);background:var(--goldbg)}
 .chk{gap:6px;font-size:13px}.chk>div{display:flex;gap:8px;align-items:baseline}.chk b{width:14px;flex:none}
@@ -346,7 +346,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
     <div class="bar"><i id="prog"></i></div>
     <div class="status" id="status">Scan the top 50, or check one coin.</div>
     <div class="tools">
-      <label class="auto" id="autoWrap"><input type="checkbox" id="auto"> Rescan every 15 min</label>
+      <label class="auto" id="autoWrap"><input type="checkbox" id="auto"> Rescan every 5 min</label>
       <button class="link" id="closeall">Collapse all</button>
     </div>
   </div>
@@ -664,6 +664,18 @@ async function fillCore(s,id,at){
     if(k.length>=100)m[tf]=structure(analyse(k));}catch(e){}}));
 }
 // Every requirement for a full-quality setup. All must pass for "All checks met".
+// Can someone who is not in yet still act on this signal? [ok, text if ok, text if not]
+function actionableOf(h){
+  const tk=h.track;
+  if(!tk||tk.status==="pending")return [true,"Still actionable (waiting for entry)",""];
+  if(tk.status!=="open")return [false,"",trackInfo(h)[0]];
+  if(tk.t1>=0)return [false,"","Target 1 already hit, too late to enter"];
+  const pr=h.lv?((h.live||h.close)-h.lv.entry)/(h.lv.t1-h.lv.entry):0,bad=(invChecks(h)||[]).find(i=>!i.ok);
+  if(bad)return [false,"",bad.txt];
+  return pr>=0.5?[false,"",`Too late to enter: ${Math.round(pr*100)}% of the way to Target 1`]:[true,`Still actionable (in trade, ${Math.max(0,Math.round(pr*100))}% of the way to Target 1)`,""];
+}
+// Alert tiers: every check met, or score 50+ and still actionable (enter at your own risk), or neither.
+const tierOf=h=>!h.chk||!h.sc?"other":h.chk.all?"aplus":h.sc.score>=50&&actionableOf(h)[0]?"risk":"other";
 function checklist(h,sty){
   const bull=dirOf(h.type)==="bull",D=bull?1:-1,f=(h.sc&&h.sc.flags)||{},tk=h.track,mk=REG&&REG.mkt;
   const items=[
@@ -681,12 +693,7 @@ function checklist(h,sty){
       if(av&&av.cls===opp)return [false,"",`Alts are ${av.tile.toLowerCase()} (${REG.alts.rot.lead.label.toLowerCase()}), against the trade`];
       return [true,`Market ${mk.state.toLowerCase()}${av?`, alts ${av.tile.toLowerCase()}`:""}: not against the trade`,""];})(),
     [h.sc&&h.sc.verdict==="take",`Score ${h.sc?h.sc.score:0} (70 or more)`,`Score ${h.sc?h.sc.score:0} (needs 70)`],
-    (()=>{if(!tk||tk.status==="pending")return [true,"Still actionable (waiting for entry)",""];
-      if(tk.status!=="open")return [false,"",trackInfo(h)[0]];
-      if(tk.t1>=0)return [false,"","Target 1 already hit, too late to enter"];
-      const pr=h.lv?((h.live||h.close)-h.lv.entry)/(h.lv.t1-h.lv.entry):0,bad=(invChecks(h)||[]).find(i=>!i.ok);
-      if(bad)return [false,"",bad.txt];
-      return pr>=0.5?[false,"",`Too late to enter: ${Math.round(pr*100)}% of the way to Target 1`]:[true,`Still actionable (in trade, ${Math.max(0,Math.round(pr*100))}% of the way to Target 1)`,""];})()
+    actionableOf(h)
   ].map(([ok,g,b])=>({ok:!!ok,txt:ok?g:b}));
   const n=items.filter(i=>i.ok).length;
   return {items,n,total:items.length,all:n===items.length};
@@ -1244,6 +1251,7 @@ function signalHTML(h){
       <div class="ph"><span class="pill ${bull?"bull":"bear"}">${bull?"Long":"Short"}</span><span class="mu">${h.tf} · ${LABEL[h.type]} · signal ${fmtDate(h.sigTime)}</span></div>
       <div class="rec"><b>Entry: ${MNAME[h.rec.m]}</b>${h.rec.why?` · ${esc(h.rec.why)}`:""}</div>
       ${(()=>{const y=!h.out&&!closed&&STRUCT[h.id]?tradeType(h,styleOf(STRUCT[h.id])):null;return y?`<div class="rec${y.counter?" gold":""}"><b>${y.label}</b> · ${esc(y.txt)}</div>`:"";})()}
+      ${!closed&&h.chk&&tierOf(h)==="risk"?`<div class="rec gold"><b>⚠️ Enter at your own risk</b> · ${h.chk.n}/${h.chk.total} checks met${(()=>{const m=h.chk.items.filter(i=>!i.ok).map(i=>i.txt).slice(0,3);return m.length?`. Missing: ${esc(m.join("; "))}`:"";})()}. If you take it, use half size and take profit at Target 1.</div>`:""}
       ${closed?`<div class="donebn ${ti[1]==="gold"?"flat":ti[1]}"><b>${ti[0]}${h.track.trig>=0?" · "+rTxt(h.track.r):""}</b><span>${esc(ti[2])}</span></div>`:ti?`<div class="tr">${ti[2]}</div>`:""}
       <div class="${closed?"dim":""}">
       ${row(isLive?"Live price":"Price then",fmtP(L),"","",isLive?` data-live="${h.id}"`:"")}
@@ -1447,14 +1455,15 @@ function renderScan(hits,at){
       lv:{tf:top.tf,sr:top.sr,vp:top.vp,live:top.live||top.close}});
   };
   LAST_SCAN=coins;
-  const best=coins.filter(c=>c.top.chk.all),near=coins.filter(c=>!c.top.chk.all);
+  const best=coins.filter(c=>tierOf(c.top)==="aplus"),risk=coins.filter(c=>tierOf(c.top)==="risk"),rest=coins.filter(c=>tierOf(c.top)==="other");
   const head=document.createElement("div");head.className="ahead";
-  head.innerHTML=best.length?`<b>${best.length} setup${best.length>1?"s":""} meet${best.length>1?"":"s"} every requirement</b>`:`No signal meets every requirement right now.${near.length?" The closest ones are below.":""}`;
+  head.innerHTML=best.length?`<b>${best.length} setup${best.length>1?"s":""} meet${best.length>1?"":"s"} every requirement</b>`:`No signal meets every requirement right now.`;
   box.appendChild(head);
   best.forEach(c=>box.appendChild(card(c)));
-  if(near.length){const d=document.createElement("details");d.className="sec near";d.open=!best.length;
-    d.innerHTML=`<summary>Close, but not every check (${near.length})</summary><div class="secbody"></div>`;
-    near.forEach(c=>d.lastElementChild.appendChild(card(c)));box.appendChild(d);}
+  const sec=(cls,title,arr,open)=>{if(!arr.length)return;const d=document.createElement("details");d.className="sec near "+cls;d.open=open;
+    d.innerHTML=`<summary>${title} (${arr.length})</summary><div class="secbody"></div>`;arr.forEach(c=>d.lastElementChild.appendChild(card(c)));box.appendChild(d);};
+  sec("risk","⚠️ High risk: enter at your own risk",risk,true);
+  sec("other","Other signals: weak, closed or too late",rest,!best.length&&!risk.length);
   return coins.length;
 }
 
@@ -1957,15 +1966,15 @@ setInterval(()=>{if(MODE==="live"&&!document.hidden&&Date.now()-regAt>10*60000)l
 // ---------- auto rescan ----------
 let timer=null;const seen=new Set();
 function notify(hits){
-  const fresh=hits.filter(h=>h.chk&&h.chk.all).filter(h=>{const k=h.id+h.tf+h.type+h.time;if(seen.has(k))return false;seen.add(k);return true;});
+  const fresh=hits.filter(h=>tierOf(h)!=="other").filter(h=>{const k=h.id+h.tf+h.type+h.time;if(seen.has(k))return false;seen.add(k);return true;});
   if(!$("auto").checked||!fresh.length||!("Notification"in window)||Notification.permission!=="granted")return;
-  try{new Notification("Crypto Grabber · all checks met",{body:fresh.slice(0,5).map(h=>`${h.sym} ${h.tf}: ${LABEL[h.type]} · ${h.sc.score}`).join("\n")});}catch(e){}
+  try{new Notification("Crypto Grabber",{body:fresh.slice(0,5).map(h=>`${tierOf(h)==="risk"?"⚠️ ":"✓ "}${h.sym} ${h.tf}: ${LABEL[h.type]} · ${h.sc.score}`).join("\n")});}catch(e){}
 }
 $("auto").onchange=async e=>{
   clearInterval(timer);
   if(e.target.checked){
     if("Notification"in window&&Notification.permission==="default"){try{await Notification.requestPermission();}catch(err){}}
-    timer=setInterval(scan,15*60*1000);
+    timer=setInterval(()=>{if(!busy)scan();},5*60*1000);
   }
 };
 // ---------- headless hook for the Telegram alert bot (bot/alert.js) ----------
@@ -1982,7 +1991,7 @@ window.cgBot=async(o={})=>{
       const tk=h.track,lv=h.lv,bull=dirOf(h.type)==="bull",live=h.live||h.close,ti=trackInfo(h);
       const f=v=>v==null?null:fmtP(v),pc=v=>lv?((v/lv.entry-1)*100):null;
       return {key:[h.id,h.tf,h.type,h.time].join("|"),sym:h.sym,tf:h.tf,label:LABEL[h.type],dir:bull?"long":"short",
-        score:h.sc.score,verdict:VERDICT[h.sc.verdict][0],checks:`${h.chk.n}/${h.chk.total}`,all:h.chk.all,
+        score:h.sc.score,verdict:VERDICT[h.sc.verdict][0],checks:`${h.chk.n}/${h.chk.total}`,all:h.chk.all,tier:tierOf(h),actionable:actionableOf(h)[0],
         missing:h.chk.items.filter(i=>!i.ok).map(i=>i.txt),style:sty?tradeType(h,sty).label:"",styleTxt:sty?tradeType(h,sty).txt:"",
         method:lv?MNAME[lv.method]:"",why:h.rec.why,status:tk?tk.status:null,missed:!!tk&&!!tk.missed,t1hit:!!tk&&tk.t1>=0,
         filledAt:tk&&tk.status==="open"?(tk.atClose?h.sigTime:tk.tt):null,stateTxt:ti?ti[0]:"",detail:ti?ti[2]:"",
