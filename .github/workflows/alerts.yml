@@ -1,0 +1,68 @@
+name: Telegram alerts
+
+# Runs the Crypto Grabber scan every 15 minutes and sends Telegram alerts.
+# Needs two repository secrets: TELEGRAM_TOKEN and TELEGRAM_CHAT_ID.
+# Optional repository variables: ALERT_MIN (all | take | any) and ALERT_TFS (e.g. 1h,4h,1d).
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      test:
+        description: "Also send a test message"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telegram-alerts
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      ALERT_MIN: ${{ vars.ALERT_MIN || 'all' }}
+      ALERT_TFS: ${{ vars.ALERT_TFS || '1h,4h,1d' }}
+      TZ_NAME: America/Toronto
+      TEST: ${{ github.event_name == 'workflow_dispatch' && inputs.test }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Restore alert memory
+        uses: actions/cache/restore@v4
+        with:
+          path: bot/state.json
+          key: alert-state-${{ github.run_id }}
+          restore-keys: alert-state-
+
+      - name: Cache browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-1.48.2
+
+      - name: Install
+        working-directory: bot
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Scan and alert
+        run: node bot/alert.js
+
+      - name: Save alert memory
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: bot/state.json
+          key: alert-state-${{ github.run_id }}
