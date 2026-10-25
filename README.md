@@ -1,6 +1,6 @@
 # Crypto Grabber
 
-A crypto RSI-divergence scanner (the website) plus Telegram alerts that run on GitHub every 15 minutes, free.
+A crypto RSI-divergence scanner (the website) plus Telegram alerts that run on GitHub every 5 minutes, free.
 
 ## What's in this folder
 
@@ -9,17 +9,19 @@ A crypto RSI-divergence scanner (the website) plus Telegram alerts that run on G
 | `index.html` | The Crypto Grabber app (the website) |
 | `manifest.webmanifest`, `sw.js`, `icon-192.png`, `icon-512.png` | Let you add the site to your phone's home screen |
 | `bot/alert.js`, `bot/package.json` | The alert bot: runs the app's own scan and messages you on Telegram |
-| `.github/workflows/alerts.yml` | Tells GitHub to run the bot every 15 minutes |
+| `.github/workflows/alerts.yml` | Tells GitHub to run the bot every 5 minutes |
 | `run-alerts.bat` | Backup: runs the bot from your Windows PC instead of GitHub |
 
 ## Alerts you will get
 
-- 🟡 **Setup ready**: a setup that meets all 9 checks has appeared and is waiting for its entry (with entry, stop, targets, and how long it stays valid)
+- 🟡 **Setup ready**: a setup has appeared and is waiting for its entry (with entry, stop, targets, and how long it stays valid)
 - 🟢/🔴 **Enter now**: the recommended entry just triggered
 - 🎯 **Target 1 hit**: take half, move the stop to entry
 - ⚪ **Closed**: Target 2 hit, stopped, missed, or expired
 
-Each alert is sent once. Alerts arrive within about 15 minutes of the event (GitHub's scheduler can run a few minutes late at busy times).
+Setups that meet all 9 checks come with 🟢/🔴/🟡. Setups scoring 50+ that miss some checks come marked ⚠️ **High risk**, with what's missing; if you take one, use half size and take profit at Target 1.
+
+Each alert is sent once. Alerts arrive within about 5 minutes of the event. GitHub's scheduler is best-effort, so at busy times a run can start late or be skipped.
 
 ## One-time setup (about 15 minutes)
 
@@ -48,7 +50,7 @@ Secrets are encrypted and never visible in the repository, even though it is pub
 1. Click the **Actions** tab. If asked, click **I understand my workflows, go ahead and enable them**.
 2. Click **Telegram alerts** on the left → **Run workflow** → **Run workflow**.
 3. Within 2–3 minutes you should get "✅ Crypto Grabber alerts connected" on Telegram, with the current BTC / alts / market read.
-4. From then on it runs by itself every 15 minutes.
+4. From then on it runs by itself every 5 minutes.
 
 ### 5. Turn on the website (optional, same repository)
 1. **Settings → Pages**. Source: **Deploy from a branch**. Branch: **main**, folder **/(root)**. **Save**.
@@ -61,8 +63,9 @@ In **Settings → Secrets and variables → Actions → Variables tab → New re
 
 | Name | Value | Effect |
 |---|---|---|
-| `ALERT_MIN` | `all` (default) | Only setups that meet all 9 checks |
-| | `take` | Any setup scoring 70+ |
+| `ALERT_MIN` | `risk` (default) | All-checks setups, plus ⚠️ high-risk ones scoring 50+ |
+| | `all` | Only setups that meet all 9 checks |
+| | `take` | All-checks setups, plus any scoring 70+ |
 | | `any` | Every signal (noisy; good for checking it works) |
 | `ALERT_TFS` | `1h,4h,1d` (default) | Timeframes to scan, e.g. `15m,1h,4h` |
 
@@ -84,7 +87,7 @@ Free. GitHub Actions minutes are unlimited for public repositories, Telegram bot
 
 - **No test message**: open the run in the Actions tab and read the "Scan and alert" step. "chat not found" means you didn't press Start on your bot, or the chat id is wrong. "Unauthorized" means the token is wrong.
 - **Message says "Couldn't reach Binance or OKX"**: the exchanges are blocking GitHub's servers. Use the Windows backup below.
-- **Few alerts**: requiring all 9 checks is strict on purpose. Set `ALERT_MIN` to `take` for more.
+- **Too many alerts**: set `ALERT_MIN` to `take` (70+) or `all` (only setups that meet every check).
 
 ## Windows backup (runs from your PC)
 
@@ -92,8 +95,8 @@ Only needed if GitHub can't reach the exchanges. Your PC must be on for alerts.
 
 1. Install **Node.js LTS** from nodejs.org.
 2. Double-click `run-alerts.bat`. The first time, it asks for your token and chat id (saved in your user folder, not in this folder), installs what it needs, and sends the test message.
-3. To run it every 15 minutes: open **Command Prompt** in this folder and run:
+3. To run it every 5 minutes: open **Command Prompt** in this folder and run:
    ```
-   schtasks /create /sc minute /mo 15 /tn "Crypto Grabber alerts" /tr "\"%CD%\run-alerts.bat\""
+   schtasks /create /sc minute /mo 5 /tn "Crypto Grabber alerts" /tr "\"%CD%\run-alerts.bat\""
    ```
    Remove it later with `schtasks /delete /tn "Crypto Grabber alerts" /f`.

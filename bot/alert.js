@@ -6,19 +6,21 @@
 //
 // Environment:
 //   TELEGRAM_TOKEN, TELEGRAM_CHAT_ID  from @BotFather / @userinfobot (GitHub secrets). Without them it only prints.
-//   ALERT_MIN   all  = only setups that meet every check (default)
-//               take = score 70 or more
+//   ALERT_MIN   risk = setups that meet every check, plus high-risk ones scoring 50+ (marked ⚠️) (default)
+//               all  = only setups that meet every check
+//               take = every check, or a score of 70+
 //               any  = every signal (handy to confirm alerts work)
 //   ALERT_TFS   timeframes to scan, default "1h,4h,1d"
 //   TZ_NAME     time zone for times in messages, default America/Toronto
 //   SITE_URL    link added to messages (defaults to the GitHub Pages address of this repo)
 //   TEST=true   also send a "connected" test message
+//   BROWSER_CHANNEL=chrome  use the installed Google Chrome instead of Playwright's Chromium
 const http = require("http"), fs = require("fs"), path = require("path");
 const { chromium } = require("playwright");
 
 const ROOT = path.join(__dirname, ".."), STATE = path.join(__dirname, "state.json");
 const TOKEN = process.env.TELEGRAM_TOKEN || "", CHAT = process.env.TELEGRAM_CHAT_ID || "";
-const MIN = (process.env.ALERT_MIN || "all").toLowerCase();
+const MIN = (process.env.ALERT_MIN || "risk").toLowerCase();
 const TFS = (process.env.ALERT_TFS || "1h,4h,1d").split(",").map(s => s.trim()).filter(Boolean);
 const TZ = process.env.TZ_NAME || "America/Toronto";
 const repo = process.env.GITHUB_REPOSITORY || "";
@@ -59,11 +61,13 @@ function serve() {
   return new Promise(r => srv.listen(0, "127.0.0.1", () => r(srv)));
 }
 
+const risky = s => !s.all;
 function head(s, kind) {
-  const icon = kind === "enter" ? (s.dir === "long" ? "🟢" : "🔴") : kind === "ready" ? "🟡" : "⚪";
-  const title = kind === "enter" ? `ENTER ${s.dir.toUpperCase()} NOW` : kind === "ready" ? `SETUP READY · ${s.dir}` : "UPDATE";
-  return `${icon} <b>${title} · ${esc(s.sym)} ${esc(s.tf)}</b>\n${esc(s.label)} · ${esc(s.style)} · score ${s.score} · ${s.checks} checks${s.all ? " ✓" : ""}`;
+  const icon = risky(s) ? "⚠️" : kind === "enter" ? (s.dir === "long" ? "🟢" : "🔴") : kind === "ready" ? "🟡" : "⚪";
+  const title = (risky(s) ? "HIGH RISK · " : "") + (kind === "enter" ? `ENTER ${s.dir.toUpperCase()} NOW` : kind === "ready" ? `SETUP READY · ${s.dir}` : "UPDATE");
+  return `${icon} <b>${title} · ${esc(s.sym)} ${esc(s.tf)}</b>\n${esc(s.label)} · ${esc(s.style)} · score ${s.score} · ${s.all ? "✓ all 9 checks" : `${s.checks} checks`}`;
 }
+const riskNote = s => risky(s) ? `⚠️ Enter at your own risk. Missing: ${esc(s.missing.slice(0, 3).join("; "))}.\nIf you take it: half size, take profit at Target 1.\n` : "";
 function plan(s) {
   return `Entry: <b>${esc(s.entry)}</b> (${esc(s.method)})\nStop: ${esc(s.stop)} (${pct(s.stopPct)})\n` +
     `Target 1: ${esc(s.t1)} (${pct(s.t1Pct)}, ${s.rr1 != null ? s.rr1.toFixed(1) : "?"}R) · Target 2: ${esc(s.t2)} (${pct(s.t2Pct)})\nPrice now: ${esc(s.live)}`;
@@ -72,10 +76,10 @@ function links(s) {
   return [SITE && `<a href="${esc(SITE)}">Crypto Grabber</a>`, s.chart && `<a href="${esc(s.chart)}">Chart</a>`].filter(Boolean).join(" · ");
 }
 function msgReady(s) {
-  return `${head(s, "ready")}\n\n${esc(s.detail || s.why)}\n\n${plan(s)}\n\n${s.all ? "" : `Not met: ${esc(s.missing.join("; "))}\n`}You'll get an <b>Enter now</b> alert when the entry triggers.\n${links(s)}`;
+  return `${head(s, "ready")}\n\n${esc(s.detail || s.why)}\n\n${plan(s)}\n\n${riskNote(s)}You'll get an <b>Enter now</b> alert when the entry triggers.\n${links(s)}`;
 }
 function msgEnter(s) {
-  return `${head(s, "enter")}\n\n${esc(s.why)}\n${s.filledAt ? `Triggered ${when(s.filledAt)}` : ""}\n\n${plan(s)}\n\n${s.all ? "" : `Not met: ${esc(s.missing.join("; "))}\n`}${links(s)}`;
+  return `${head(s, "enter")}\n\n${esc(s.why)}\n${s.filledAt ? `Triggered ${when(s.filledAt)}` : ""}\n\n${plan(s)}\n\n${riskNote(s)}${links(s)}`;
 }
 function msgDone(s) {
   const t = s.missed ? "Missed: price ran to Target 1 without the entry. Don't chase it." : { t2: "✅ Target 2 hit", t1_be: "Target 1 hit, rest closed at entry", stopped: "❌ Stopped out", no_trigger: "Entry never triggered, setup expired", timeout: "Closed (time limit)" }[s.status] || s.stateTxt;
@@ -86,7 +90,13 @@ function msgDone(s) {
   let state = {}, fresh = false;
   try { state = JSON.parse(fs.readFileSync(STATE, "utf8")); } catch (e) { fresh = true; }
   const srv = await serve(), port = srv.address().port;
-  const browser = await chromium.launch();
+  // On GitHub, use the Chrome that is already installed (fast); otherwise Playwright's own Chromium.
+  let browser;
+  try { browser = await chromium.launch(process.env.BROWSER_CHANNEL ? { channel: process.env.BROWSER_CHANNEL } : {}); }
+  catch (e) {
+    try { browser = await chromium.launch(); }
+    catch (e2) { console.error("No browser available:", e2.message.split("\n")[0]); srv.close(); process.exit(3); }
+  }
   const page = await browser.newPage({ timezoneId: TZ });
   page.on("pageerror", e => console.error("page error:", e.message));
   if (process.env.CG_MOCK) await require(path.resolve(process.env.CG_MOCK)).install(page);
@@ -101,11 +111,11 @@ function msgDone(s) {
   const now = +process.env.MOCK_NOW || Date.now(), sent = [];   // MOCK_NOW is only used by tests
   if (TEST || fresh) {
     const m = out.market;
-    await send(`✅ <b>Crypto Grabber alerts connected</b>\nChecking ${TFS.join(", ")} every 15 minutes. Alerting on ${MIN === "all" ? "setups that meet every check" : MIN === "take" ? "scores of 70+" : "every signal"}.\n` +
+    await send(`✅ <b>Crypto Grabber alerts connected</b>\nChecking ${TFS.join(", ")} every 5 minutes. Alerting on ${MIN === "all" ? "setups that meet every check" : MIN === "take" ? "setups that meet every check or score 70+" : MIN === "risk" ? "setups that meet every check, plus high-risk ones scoring 50+ (marked ⚠️)" : "every signal"}.\n` +
       (m ? `\nBTC: ${esc(m.btc)} (${esc(m.btcStyle)}) · Alts: ${esc(m.alts)} · Market: ${esc(m.mkt)}\n${esc(m.lead)}, ${esc(m.pace).toLowerCase()}` : "") +
       `\n${esc(out.status)}`);
   }
-  const ok = s => MIN === "any" ? true : MIN === "take" ? s.score >= 70 : s.all;
+  const ok = s => MIN === "any" ? true : s.all ? true : MIN === "take" ? s.score >= 70 && s.actionable : MIN === "risk" ? s.tier === "risk" : false;
   for (const s of out.setups) {
     const st = state[s.key] || {};
     if (process.env.BOT_DEBUG) console.log(`  · ${s.sym} ${s.tf} ${s.dir} ${s.status} (${s.stateTxt}) checks ${s.checks} score ${s.score} method ${s.method}`);
