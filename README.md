@@ -14,14 +14,20 @@ A crypto RSI-divergence scanner (the website) plus Telegram alerts that run on G
 
 ## Alerts you will get
 
-- 🟡 **Setup ready**: a setup has appeared and is waiting for its entry (with entry, stop, targets, and how long it stays valid)
-- 🟢/🔴 **Enter now**: the recommended entry just triggered
-- 🎯 **Target 1 hit**: take half, move the stop to entry
-- ⚪ **Closed**: Target 2 hit, stopped, missed, or expired
+- 🟡 **Setup ready**: a setup is waiting for its entry and price is now close to it (within about 1 ATR)
+- 🟢/🔴 **Enter now**: the entry filled. Entries come in two halves: the first at the middle of the fair value gap the move left behind (or the top of the order block), the second at the middle of the order block. The message says which half filled and where the other limit sits.
+- 🎯 **Target 1 hit**: take half, move the stop to the average entry
+- ⚪ **Closed**: Target 2 hit, back to entry, or stopped. Only for trades that actually filled.
 
-Setups that meet all 9 checks come with 🟢/🔴/🟡. Setups scoring 50+ that miss some checks come marked ⚠️ **High risk**, with what's missing; if you take one, use half size and take profit at Target 1.
+Setups that never fill (missed or expired), pay under 1:1, or need a spike-wide stop are not alerted and not shown in the app.
 
-Each alert is sent once. Alerts arrive within about 5 minutes of the event. GitHub's scheduler is best-effort, so at busy times a run can start late or be skipped.
+Setups that meet all 5 checks come with 🟢/🔴/🟡. Setups scoring 50+ that miss some checks come marked ⚠️ **High risk**, with what's missing; if you take one, use half size and take profit at Target 1.
+
+Setups that would long into 4h / 1d / 1w resistance (or short into support) closer than 1R are skipped too.
+
+📊 **Daily BTC brief** at the New York open (9:30 am ET, once a day): trend by timeframe, Asia / London / previous day / week / month highs and lows and which were swept, top-down support and resistance, liquidity, and the day's bias with an invalidation level. To get one now: **Actions → Telegram alerts → Run workflow**, tick **Send the daily BTC brief now**.
+
+Each alert is sent once. GitHub's scheduler is best-effort, so at busy times a run can start late or be skipped (the brief can land anywhere from 9:30 to about 10:30).
 
 ## One-time setup (about 15 minutes)
 
@@ -64,7 +70,7 @@ In **Settings → Secrets and variables → Actions → Variables tab → New re
 | Name | Value | Effect |
 |---|---|---|
 | `ALERT_MIN` | `risk` (default) | All-checks setups, plus ⚠️ high-risk ones scoring 50+ |
-| | `all` | Only setups that meet all 9 checks |
+| | `all` | Only setups that meet all 5 checks |
 | | `take` | All-checks setups, plus any scoring 70+ |
 | | `any` | Every signal (noisy; good for checking it works) |
 | `ALERT_TFS` | `1h,4h,1d` (default) | Timeframes to scan, e.g. `15m,1h,4h` |
