@@ -10,11 +10,11 @@
 //               all  = only setups that meet every check
 //               take = every check, or a score of 70+
 //               any  = every signal (handy to confirm alerts work)
-//   ALERT_TFS   timeframes to scan, default "1h,4h,1d"
+//   ALERT_TFS   timeframes to scan, default "1h,4h,1d,3d,1w"
 //   TZ_NAME     time zone for times in messages, default America/Toronto
 //   SITE_URL    link added to messages (defaults to the GitHub Pages address of this repo)
 //   TEST=true   also send a "connected" test message
-//   BRIEF=true  send the daily BTC brief now (otherwise it goes out once a day, on the first run after 9:25 am New York time)
+//   BRIEF=true  send the daily BTC, ETH and alts briefs now (otherwise once a day, on the first run after 9:25 am New York time)
 //   SCORECARD=true  send the weekly scorecard now (otherwise once a week, on the first run after 6 pm New York time on Sunday)
 //   BROWSER_CHANNEL=chrome  use the installed Google Chrome instead of Playwright's Chromium
 const http = require("http"), fs = require("fs"), path = require("path");
@@ -23,7 +23,7 @@ const { chromium } = require("playwright");
 const ROOT = path.join(__dirname, ".."), STATE = path.join(__dirname, "state.json");
 const TOKEN = process.env.TELEGRAM_TOKEN || "", CHAT = process.env.TELEGRAM_CHAT_ID || "";
 const MIN = (process.env.ALERT_MIN || "risk").toLowerCase();
-const TFS = (process.env.ALERT_TFS || "1h,4h,1d").split(",").map(s => s.trim()).filter(Boolean);
+const TFS = (process.env.ALERT_TFS || "1h,4h,1d,3d,1w").split(",").map(s => s.trim()).filter(Boolean);
 const TZ = process.env.TZ_NAME || "America/Toronto";
 const repo = process.env.GITHUB_REPOSITORY || "";
 const SITE = process.env.SITE_URL || (repo ? `https://${repo.split("/")[0].toLowerCase()}.github.io/${repo.split("/")[1]}/` : "");
@@ -160,7 +160,7 @@ function scorecard(list, grades, now) {
   const page = await browser.newPage({ timezoneId: TZ });
   page.on("pageerror", e => console.error("page error:", e.message));
   if (process.env.CG_MOCK) await require(path.resolve(process.env.CG_MOCK)).install(page);
-  let out, brief = null;
+  let out, briefs = [];
   const ny = nyNow(+process.env.MOCK_NOW || Date.now());
   const briefDue = BRIEF || (ny.hm >= "09:25" && ny.hm < "12:00" && !(state.__brief && state.__brief.date === ny.date));
   const J = state.__journal = state.__journal && Array.isArray(state.__journal.list) ? state.__journal : { list: [] };
@@ -169,7 +169,9 @@ function scorecard(list, grades, now) {
   try {
     await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" });
     out = await page.evaluate(tfs => window.cgBot({ tfs }), TFS);
-    if (briefDue) { try { brief = await page.evaluate(() => window.cgBrief()); } catch (e) { console.error("brief failed:", e.message); } }
+    if (briefDue) for (const [name, fn] of [["BTC", () => window.cgBrief("BTC")], ["ETH", () => window.cgBrief("ETH")], ["Alts", () => window.cgAltBrief()]]) {
+      try { briefs.push({ name, ...(await page.evaluate(fn)) }); } catch (e) { console.error(`${name} brief failed:`, e.message); }
+    }
     if (weekDue) { try { grades = await page.evaluate(([l, n]) => window.cgGrade(l, n), [J.list, SIZE]); } catch (e) { console.error("scorecard failed:", e.message); } }
   } finally { await browser.close(); srv.close(); }
 
@@ -182,7 +184,8 @@ function scorecard(list, grades, now) {
       (m ? `\nBTC: ${esc(m.btc)} (${esc(m.btcStyle)}) · Alts: ${esc(m.alts)} · Market: ${esc(m.mkt)}\n${esc(m.lead)}, ${esc(m.pace).toLowerCase()}` : "") +
       `\n${esc(out.status)}`);
   }
-  if (brief) { if (await send(brief.html + (SITE ? `\n<a href="${esc(SITE)}">Crypto Grabber</a>` : ""))) { state.__brief = { date: ny.date, seen: now }; sent.push("daily brief"); } }
+  // daily briefs: BTC, ETH, then alts; counted as sent once the BTC one goes out
+  for (const b of briefs) if (await send(b.html + (SITE && b.name === "Alts" ? `\n<a href="${esc(SITE)}">Crypto Grabber</a>` : ""))) { if (b.name === "BTC" || !state.__brief || state.__brief.date !== ny.date) state.__brief = { date: ny.date, seen: now }; sent.push(`${b.name} brief`); }
   if (grades) { if (await send(scorecard(J.list, grades, now))) { state.__week = { date: ny.date, seen: now }; sent.push("weekly scorecard"); } }
   // every alerted trade goes into the journal with its fixed plan, so the scorecard can grade it later
   const jot = s => { if (s.plan && !J.list.some(x => x.key === s.key)) J.list.push({ key: s.key, sym: s.sym, tf: s.tf, dir: s.dir, all: !!s.all, score: s.score, sigTime: s.sigTime, at: now, plan: s.plan }); };

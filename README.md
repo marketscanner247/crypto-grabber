@@ -25,7 +25,11 @@ Setups that meet all 5 checks come with 🟢/🔴/🟡. Setups scoring 50+ that 
 
 Setups that would long into 4h / 1d / 1w resistance or the 4h / 1d EMA 200 (or short into support) closer than 1R are skipped too. An entry sitting on the 4h / 1d EMA 50 or 200 counts as a good location.
 
-📊 **Daily BTC brief** at the New York open (9:30 am ET, once a day): trend by timeframe, Asia / London / previous day / week / month highs and lows and which were swept, top-down support and resistance, liquidity, and the day's bias with an invalidation level. To get one now: **Actions → Telegram alerts → Run workflow**, tick **Send the daily BTC brief now**.
+📊 **Daily briefs** at the New York open (9:30 am ET, once a day), three short messages:
+- **BTC** and **ETH**: trend by timeframe, Asia / London / previous day / week / month highs and lows and which were swept, top-down support and resistance (with the 4h / 1d EMAs), liquidity, and the day's bias with an invalidation level. ETH also gets its ETH/BTC read.
+- **Alts**: whether alts are worth trading today, who is leading (BTC or alts), BTC dominance, ALT/BTC and ETH/BTC, alt season, breadth, and the strongest / weakest alts this week.
+
+To get them now: **Actions → Telegram alerts → Run workflow**, tick **Send the daily BTC, ETH and alts briefs now**.
 
 📈 **Weekly scorecard** on Sunday evening (first run after 6 pm New York time): every trade alerted in the last 7 days, replayed on real prices as a $1,000 position. How many were entered, won, hit the stop loss, and the profit after an estimated 0.1% fee each side, split by all-5-checks vs high risk and by timeframe, plus the last 4 weeks. Trades are managed the way the app plans them (entry in two halves, half off at Target 1 with the stop moved to the average entry, the rest to Target 2). To get one now: **Run workflow**, tick **Send the weekly scorecard now**. It only counts alerts sent after this version is uploaded.
 
@@ -75,7 +79,7 @@ In **Settings → Secrets and variables → Actions → Variables tab → New re
 | | `all` | Only setups that meet all 5 checks |
 | | `take` | All-checks setups, plus any scoring 70+ |
 | | `any` | Every signal (noisy; good for checking it works) |
-| `ALERT_TFS` | `1h,4h,1d` (default) | Timeframes to scan, e.g. `15m,1h,4h` |
+| `ALERT_TFS` | `1h,4h,1d,3d,1w` (default) | Timeframes to scan, e.g. `15m,1h,4h` |
 
 ## Updating the app
 
