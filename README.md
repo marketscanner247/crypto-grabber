@@ -27,6 +27,8 @@ Setups that would long into 4h / 1d / 1w resistance or the 4h / 1d EMA 200 (or s
 
 📊 **Daily BTC brief** at the New York open (9:30 am ET, once a day): trend by timeframe, Asia / London / previous day / week / month highs and lows and which were swept, top-down support and resistance, liquidity, and the day's bias with an invalidation level. To get one now: **Actions → Telegram alerts → Run workflow**, tick **Send the daily BTC brief now**.
 
+📈 **Weekly scorecard** on Sunday evening (first run after 6 pm New York time): every trade alerted in the last 7 days, replayed on real prices as a $1,000 position. How many were entered, won, hit the stop loss, and the profit after an estimated 0.1% fee each side, split by all-5-checks vs high risk and by timeframe, plus the last 4 weeks. Trades are managed the way the app plans them (entry in two halves, half off at Target 1 with the stop moved to the average entry, the rest to Target 2). To get one now: **Run workflow**, tick **Send the weekly scorecard now**. It only counts alerts sent after this version is uploaded.
+
 Each alert is sent once. GitHub's scheduler is best-effort, so at busy times a run can start late or be skipped (the brief can land anywhere from 9:30 to about 10:30).
 
 ## One-time setup (about 15 minutes)

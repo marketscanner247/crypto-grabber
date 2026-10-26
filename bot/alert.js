@@ -15,6 +15,7 @@
 //   SITE_URL    link added to messages (defaults to the GitHub Pages address of this repo)
 //   TEST=true   also send a "connected" test message
 //   BRIEF=true  send the daily BTC brief now (otherwise it goes out once a day, on the first run after 9:25 am New York time)
+//   SCORECARD=true  send the weekly scorecard now (otherwise once a week, on the first run after 6 pm New York time on Sunday)
 //   BROWSER_CHANNEL=chrome  use the installed Google Chrome instead of Playwright's Chromium
 const http = require("http"), fs = require("fs"), path = require("path");
 const { chromium } = require("playwright");
@@ -28,10 +29,12 @@ const repo = process.env.GITHUB_REPOSITORY || "";
 const SITE = process.env.SITE_URL || (repo ? `https://${repo.split("/")[0].toLowerCase()}.github.io/${repo.split("/")[1]}/` : "");
 const TEST = String(process.env.TEST || "").toLowerCase() === "true";
 const BRIEF = String(process.env.BRIEF || "").toLowerCase() === "true";
+const SCORECARD = String(process.env.SCORECARD || "").toLowerCase() === "true";
+const SIZE = 1000, FEE = 0.001;   // scorecard: $1,000 per trade; fee estimate 0.1% per side
 // New York clock (handles daylight saving)
 function nyNow(t) {
-  const p = {}; for (const x of new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(t))) p[x.type] = x.value;
-  return { date: `${p.year}-${p.month}-${p.day}`, hm: `${p.hour}:${p.minute}` };
+  const p = {}; for (const x of new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", weekday: "short", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(t))) p[x.type] = x.value;
+  return { date: `${p.year}-${p.month}-${p.day}`, hm: `${p.hour}:${p.minute}`, wd: p.weekday };
 }
 
 const esc = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -98,6 +101,51 @@ function msgDone(s) {
   return `⚪ <b>${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b>: ${esc(t)}\n${esc(s.detail || "")}`;
 }
 
+// Weekly scorecard: every alerted trade of the last 7 days, re-played on real prices with a $1,000 position.
+const usd = v => `${v >= 0 ? "+" : "−"}$${Math.abs(v).toFixed(2)}`;
+const day = t => new Date(t).toLocaleDateString("en-CA", { timeZone: TZ, month: "short", day: "numeric" });
+function scorecard(list, grades, now) {
+  const G = Object.fromEntries(grades.map(g => [g.key, g]));
+  const rows = list.map(t => ({ ...t, g: G[t.key] })).filter(t => t.g && !t.g.err);
+  const CLOSED = ["t2", "t1_be", "stopped", "timeout"];
+  const stats = a => {
+    const ent = a.filter(t => t.g.fill > 0), closed = ent.filter(t => CLOSED.includes(t.g.status)), open = ent.filter(t => t.g.status === "open");
+    const pnl = closed.reduce((x, t) => x + t.g.usd, 0), fees = closed.reduce((x, t) => x + t.g.fill * SIZE * FEE * 2, 0);
+    return { n: a.length, ent: ent.length, closed: closed.length, open: open.length,
+      t2: closed.filter(t => t.g.status === "t2").length, be: closed.filter(t => t.g.status === "t1_be").length,
+      stop: closed.filter(t => t.g.status === "stopped").length, timeout: closed.filter(t => t.g.status === "timeout").length,
+      wins: closed.filter(t => t.g.usd > 0).length, pnl, fees, net: pnl - fees, unreal: open.reduce((x, t) => x + t.g.usd, 0),
+      avgR: closed.length ? closed.reduce((x, t) => x + t.g.r, 0) / closed.length : null,
+      notFilled: a.filter(t => t.g.status === "no_trigger").length, waiting: a.filter(t => t.g.status === "pending").length };
+  };
+  const wk = rows.filter(t => now - t.at <= 7 * 864e5), m4 = rows.filter(t => now - t.at <= 28 * 864e5);
+  const S = stats(wk), L = [], R = v => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1)}R`;
+  const line = (lab, x) => `${lab}: ${x.ent ? `${x.ent} trade${x.ent === 1 ? "" : "s"} · ${x.wins} won · ${x.stop} stopped${x.open ? ` · ${x.open} open` : ""} · <b>${usd(x.net)}</b>` : "no trades"}`;
+  L.push(`📈 <b>Weekly scorecard · ${day(now - 7 * 864e5)} – ${day(now)}</b>`);
+  L.push(`$1,000 per trade`);
+  L.push("");
+  if (!wk.length) L.push("No trades were alerted this week.");
+  else {
+    L.push(`Entered: <b>${S.ent}</b> of ${S.n} alerts${S.notFilled ? ` (${S.notFilled} never filled)` : ""}${S.waiting ? ` · ${S.waiting} still waiting` : ""}`);
+    if (S.closed) {
+      L.push(`✅ Won: <b>${S.wins}</b>${S.t2 || S.be ? ` (${[S.t2 && `${S.t2} hit Target 2`, S.be && `${S.be} Target 1 then entry`].filter(Boolean).join(", ")})` : ""}`);
+      L.push(`❌ Stop loss: <b>${S.stop}</b>${S.timeout ? ` · ⏱ closed on time limit: ${S.timeout}` : ""}`);
+      L.push(`Win rate: <b>${Math.round(S.wins / S.closed * 100)}%</b> · average ${R(S.avgR)} per trade`);
+      L.push(`Profit: ${usd(S.pnl)} · fees −$${S.fees.toFixed(2)} · <b>Net ${usd(S.net)}</b>`);
+    } else L.push("No trades closed yet.");
+    if (S.open) L.push(`⏳ Still open: ${S.open} (${usd(S.unreal)} right now, counted when closed)`);
+    L.push("");
+    L.push(line("All 5 checks", stats(wk.filter(t => t.all))));
+    L.push(line("⚠️ High risk", stats(wk.filter(t => !t.all))));
+    for (const tf of [...new Set(wk.map(t => t.tf))]) L.push(line(tf, stats(wk.filter(t => t.tf === tf))));
+    const done = wk.filter(t => t.g.fill > 0 && CLOSED.includes(t.g.status)).sort((a, b) => b.g.usd - a.g.usd);
+    if (done.length > 1) { const f = t => `${esc(t.sym)} ${esc(t.tf)} ${t.dir} ${usd(t.g.usd)}`; L.push(""); L.push(`Best: ${f(done[0])} · Worst: ${f(done[done.length - 1])}`); }
+  }
+  const M = stats(m4);
+  if (m4.length > wk.length && M.closed) { L.push(""); L.push(`Last 4 weeks: ${M.ent} trades · ${M.wins} won · <b>Net ${usd(M.net)}</b>`); }
+  return L.join("\n");
+}
+
 (async () => {
   let state = {}, fresh = false;
   try { state = JSON.parse(fs.readFileSync(STATE, "utf8")); } catch (e) { fresh = true; }
@@ -115,10 +163,14 @@ function msgDone(s) {
   let out, brief = null;
   const ny = nyNow(+process.env.MOCK_NOW || Date.now());
   const briefDue = BRIEF || (ny.hm >= "09:25" && ny.hm < "12:00" && !(state.__brief && state.__brief.date === ny.date));
+  const J = state.__journal = state.__journal && Array.isArray(state.__journal.list) ? state.__journal : { list: [] };
+  const weekDue = SCORECARD || (ny.wd === "Sun" && ny.hm >= "18:00" && !(state.__week && state.__week.date === ny.date));
+  let grades = null;
   try {
     await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" });
     out = await page.evaluate(tfs => window.cgBot({ tfs }), TFS);
     if (briefDue) { try { brief = await page.evaluate(() => window.cgBrief()); } catch (e) { console.error("brief failed:", e.message); } }
+    if (weekDue) { try { grades = await page.evaluate(([l, n]) => window.cgGrade(l, n), [J.list, SIZE]); } catch (e) { console.error("scorecard failed:", e.message); } }
   } finally { await browser.close(); srv.close(); }
 
   console.log(`${out.status} · ${out.setups.length} setup(s)`);
@@ -131,6 +183,9 @@ function msgDone(s) {
       `\n${esc(out.status)}`);
   }
   if (brief) { if (await send(brief.html + (SITE ? `\n<a href="${esc(SITE)}">Crypto Grabber</a>` : ""))) { state.__brief = { date: ny.date, seen: now }; sent.push("daily brief"); } }
+  if (grades) { if (await send(scorecard(J.list, grades, now))) { state.__week = { date: ny.date, seen: now }; sent.push("weekly scorecard"); } }
+  // every alerted trade goes into the journal with its fixed plan, so the scorecard can grade it later
+  const jot = s => { if (s.plan && !J.list.some(x => x.key === s.key)) J.list.push({ key: s.key, sym: s.sym, tf: s.tf, dir: s.dir, all: !!s.all, score: s.score, sigTime: s.sigTime, at: now, plan: s.plan }); };
   const ok = s => MIN === "any" ? true : s.all ? true : MIN === "take" ? s.score >= 70 && s.actionable : MIN === "risk" ? s.tier === "risk" : false;
   for (const s of out.setups) {
     const st = state[s.key] || {};
@@ -138,10 +193,10 @@ function msgDone(s) {
     if (!ok(s) && !st.ready && !st.enter) continue;
     const recent = s.filledAt && now - s.filledAt <= Math.max(2 * s.tfMs, 45 * 60e3);
     if (s.status === "open" && !s.t1hit && !st.enter && (ok(s) || st.ready)) {
-      if (recent && (s.prog == null || s.prog < 0.5)) { if (await send(msgEnter(s))) { st.enter = now; sent.push(`enter ${s.sym} ${s.tf}`); } }
+      if (recent && (s.prog == null || s.prog < 0.5)) { if (await send(msgEnter(s))) { st.enter = now; jot(s); sent.push(`enter ${s.sym} ${s.tf}`); } }
       else st.enter = st.enter || -1;   // too late to chase; remember so it is not sent later
     } else if (s.status === "pending" && !st.ready && ok(s) && s.near) {
-      if (await send(msgReady(s))) { st.ready = now; sent.push(`ready ${s.sym} ${s.tf}`); }
+      if (await send(msgReady(s))) { st.ready = now; jot(s); sent.push(`ready ${s.sym} ${s.tf}`); }
     } else if (st.enter > 0 && !st.t1 && s.t1hit && s.status === "open") {
       if (await send(`🎯 <b>${esc(s.sym)} ${esc(s.tf)} ${s.dir}: Target 1 hit (${esc(s.t1)})</b>\nTake half off and move the stop to entry (${esc(s.entry)}). Target 2: ${esc(s.t2)}.\n${links(s)}`)) { st.t1 = now; sent.push(`t1 ${s.sym} ${s.tf}`); }
     } else if (st.enter > 0 && !st.done && ["t2", "t1_be", "stopped", "timeout"].includes(s.status)) {
@@ -150,6 +205,7 @@ function msgDone(s) {
     if (Object.keys(st).length) state[s.key] = { ...st, seen: now };
   }
   // forget anything older than 10 days
+  J.list = J.list.filter(t => now - t.at <= 35 * 864e5); J.seen = now;
   for (const k of Object.keys(state)) if (now - (state[k].seen || 0) > 10 * 864e5) delete state[k];
   fs.writeFileSync(STATE, JSON.stringify(state));
   console.log(sent.length ? `Sent: ${sent.join(", ")}` : "No new alerts.");

@@ -370,12 +370,13 @@ const TF_MIN={"1m":1,"3m":3,"5m":5,"15m":15,"30m":30,"1h":60,"2h":120,"4h":240,"
 const OKX_BAR={"1m":"1m","3m":"3m","5m":"5m","15m":"15m","30m":"30m","1h":"1H","2h":"2H","4h":"4H","6h":"6Hutc","12h":"12Hutc","1d":"1Dutc","3d":"3Dutc","1w":"1Wutc","1M":"1Mutc"};
 const STD_MA=[9,21,50,200];
 const TOP_N=50,VOL_MULT=1.5,VOL_LEN=20,MAX_FAV=10;
-let S={favs:["15m","1h","4h","1d","1w"],tfs:["1h","4h","1d"],maType:"ema",slots:[...STD_MA],periods:[...STD_MA],off:[],theme:"auto",pal:"teal",entry:"close",stopMode:"wick"};
+let S={f3d:true,favs:["15m","1h","4h","1d","3d","1w"],tfs:["1h","4h","1d"],maType:"ema",slots:[...STD_MA],periods:[...STD_MA],off:[],theme:"auto",pal:"teal",entry:"close",stopMode:"wick"};
 const okP=v=>{const n=Number(v);return v!==""&&v!=null&&Number.isInteger(n)&&n>=2&&n<=300?n:null;};
 const fromSlots=sl=>[...new Set(sl.filter(n=>n!=null))].sort((x,y)=>x-y);
 try{
   const o=JSON.parse(localStorage.getItem("cgrab")||"{}");
   if(Array.isArray(o.favs))S.favs=o.favs.filter(t=>ALL_TF.includes(t)).slice(0,MAX_FAV);
+  if(Array.isArray(o.favs)&&!o.f3d&&!S.favs.includes("3d")&&S.favs.length<MAX_FAV)S.favs.push("3d");   // 3d added once for existing users
   if(Array.isArray(o.tfs))S.tfs=o.tfs.filter(t=>S.favs.includes(t));
   if(o.maType==="ema"||o.maType==="sma")S.maType=o.maType;
   if(Array.isArray(o.slots)&&o.slots.length===4){const sl=o.slots.map(okP);if(sl.some(n=>n!=null)){S.slots=sl;S.periods=fromSlots(sl);}}
@@ -843,7 +844,10 @@ function levels(d,x,sr,vp,method="ob"){
 }
 // Setups that aren't worth trading at all: no plan, a spike-wide stop, or Target 1 paying under 1R.
 // Setups that ended without a fill (missed, expired, invalid) are not shown anywhere.
-const unfilledOf=h=>!!h.track&&!h.out&&h.track.status==="no_trigger";
+// GONE: setups the live price showed as missed this session (price touched Target 1 before the entry), so a
+// re-render from closed candles doesn't bring them back. key → {why, at}
+const GONE=new Map();
+const unfilledOf=h=>(!!h.track&&!h.out&&h.track.status==="no_trigger")||(!h.out&&GONE.has([h.id,h.tf,h.type,h.time].join("|")));
 // Never long into resistance, never short into support: the first 4h/1d/1w level in the trade's path (above the signal
 // timeframe) must be at least 1R away. Not applied in backtests (those levels would come from the future).
 function roomOf(h){
@@ -888,8 +892,8 @@ function pickPlan(h){
   let m=sw.ok?"ob":"sweep",why;
   if(!h.plans[m])m=METHODS.find(k=>h.plans[k])||"ob";
   const p=h.plans[m];
-  if(m==="ob")why=!p?sw.txt:`${sw.txt}. Buy half at the ${p.e1src} (${fmtP(p.e1)})${p.split?` and half at the order block middle (${fmtP(p.e2)})`:""}; stop just past the sweep.`;
-  if(m==="ob"&&p&&!bull)why=why.replace("Buy half","Sell half");
+  if(m==="ob"){why=!p?sw.txt:`${sw.txt}. Buy half at the ${p.e1src} (${fmtP(p.e1)})${p.split?` and half at the order block middle (${fmtP(p.e2)})`:""}; stop just past the sweep.`;
+    if(p&&!bull)why=why.replace("Buy half","Sell half");}
   else why=`${sw.txt}. Wait for a ${bull?"dip below":"pop above"} ${p?fmtP(p.pivot):"the pivot"} that closes back ${bull?"above":"below"} it (the stop hunt), then enter.`;
   h.rec={m,why,swept:sw};h.lv=p||null;h.tm=h.lv?timing(h.lv,h):null;
 }
@@ -1007,7 +1011,7 @@ const BINANCE={
     const r=await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${id}&interval=${tf}&limit=400`);
     if(!r.ok)throw new Error(r.status);
     const rows=await r.json(),out=rows.slice(0,-1).map(x=>[x[0],x[1],x[2],x[3],x[4],x[7]]);
-    if(rows.length)out.live=+rows[rows.length-1][4];
+    if(rows.length){const f=rows[rows.length-1];out.live=+f[4];out.form={t:+f[0],h:+f[2],l:+f[3],c:+f[4]};}
     return out;
   },
   async raw(id,tf,limit,at){
@@ -1032,7 +1036,7 @@ const OKX={
     if(!r.ok)throw new Error(r.status);
     const j=await r.json(); if(j.code&&j.code!=="0")throw new Error(j.msg||"OKX");
     const out=j.data.filter(x=>x[8]==="1").reverse().map(x=>[+x[0],x[1],x[2],x[3],x[4],x[7]]);
-    if(j.data.length)out.live=+j.data[0][4];
+    if(j.data.length){const f=j.data[0];out.live=+f[4];if(f[8]!=="1")out.form={t:+f[0],h:+f[2],l:+f[3],c:+f[4]};}
     return out;
   },
   async raw(id,tf,limit,at){
@@ -1459,7 +1463,7 @@ function makeCard(o){
     box.innerHTML=flowHTML(sp,fu);fl.dataset.ok="1";
   });
   [t,...(o.others||[])].forEach(x=>{if(x)HIT_BY_KEY[sigKey(x)]=x;});
-  if(!o.asOf&&MODE==="live")[t,...(o.others||[])].forEach(x=>{if(x&&x.track&&!x.out)LIVE_HITS.push({h:x,el,top:x===t,sty});});
+  if(!o.asOf&&MODE==="live")[t,...(o.others||[])].forEach(x=>{if(x&&x.track&&!x.out)LIVE_HITS.push({h:x,el,top:x===t,sty,check:!!o.check});});
   return el;
 }
 
@@ -1493,7 +1497,7 @@ async function scan(){
           (STRUCT[c.id]=STRUCT[c.id]||{})[tf]=structure(d);noteHTF(c.id,tf,d);
           const hs=divergences(d).map(x=>buildSignal(d,x,c,tf));
           if(hs.length){
-            hs.forEach(h=>{h.live=k.live||d.close[d.close.length-1];pickPlan(h);if(!bt)track(h);});
+            hs.forEach(h=>{h.live=k.live||d.close[d.close.length-1];pickPlan(h);if(!bt){track(h);if(k.live)applyLive(h,k.live,Date.now(),k.form);}});
             if(bt)await attachOutcomes(hs,src,c.id,tf,lastCt);
             hits.push(...hs);}}
       }catch(e){fails++;}
@@ -1564,11 +1568,13 @@ async function checkCoin(){
     if(k.length<60)return {tf};
     const d=analyse(k),f=filters(d),sr=srLevels(d),vp=volumeProfile(d),hs=divergences(d).map(x=>buildSignal(d,x,c,tf));
     (STRUCT[c.id]=STRUCT[c.id]||{})[tf]=structure(d);noteHTF(c.id,tf,d,sr);
-    const live=k.live||d.close[d.close.length-1];hs.forEach(h=>{h.live=live;pickPlan(h);if(!bt)track(h);});
+    const live=k.live||d.close[d.close.length-1];hs.forEach(h=>{h.live=live;pickPlan(h);if(!bt){track(h);if(k.live)applyLive(h,k.live,Date.now(),k.form);}});
     if(bt&&hs.length)await attachOutcomes(hs,used,c.id,tf,ct);
     return {tf,d,f,sr,vp,hs,live};
   }));
   setStatus(`Checking ${base} structure…`);await fillCore(used,c.id,at,STRUCT_TF);
+  // the latest setup that was missed (price hit Target 1 before the entry), to explain an empty check in one line
+  const missedLast=at?null:prep.flatMap(p=>p.hs||[]).filter(h=>!ignoredOf(h)&&h.track&&h.track.missed).sort((a,b)=>b.sigTime-a.sigTime)[0]||null;
   for(const p of prep)if(p.hs)p.hs=p.hs.filter(h=>!ignoredOf(h)&&(at||!unfilledOf(h)));   // under 1:1, spike-wide, missed or expired: not shown
   const res=resolveSignals(prep.flatMap(p=>p.hs||[])),all=res.kept,top=res.top;
   for(const p of prep)if(p.hs)p.hs=p.hs.filter(h=>all.includes(h));
@@ -1584,6 +1590,10 @@ async function checkCoin(){
   }).join("");
   const conf=!!top&&all.some(o=>o!==top&&o.tf!==top.tf&&dirOf(o.type)===dirOf(top.type));
   const box=$("results");box.textContent="";
+  if(!bt&&!top){const g=[...GONE].filter(([k])=>k.startsWith(c.id+"|")).slice(-1)[0];
+    const txt=g&&Date.now()-g[1].at<30*60e3?`${base} ${g[0].split("|")[1]} setup dropped: ${g[1].why}. No active setup right now.`
+      :missedLast?`${base} ${missedLast.tf} setup missed: price reached Target 1 (${fmtP(missedLast.lv.t1)}) before the entry (${fmtP(missedLast.lv.e1)}) filled, so there was no trade. Don't chase it.`:"";
+    if(txt){const n=document.createElement("div");n.className="rec gold";n.textContent=txt;box.appendChild(n);}}
   box.appendChild(makeCard({sym:base,id:c.id,s:used,top,conf,check:true,open:true,asOf:at,struct:STRUCT[c.id],others:all.filter(h=>h!==top),rows:rowsHTML,rowsN:prep.length,
     lv:lvFrom&&{tf:lvFrom.tf,sr:lvFrom.sr,vp:lvFrom.vp,live:lvFrom.live}}));
   setStatus(`${base}${bt?` as of ${fmtDate(at)}`:""}: ${all.length} divergence(s) on ${tfs.join(", ")} · ${used.name}`);
@@ -1665,8 +1675,9 @@ function viewAt(D,t){
 // Two-part order block entry: half fills at e1, the rest at e2; R is measured against the full planned position.
 // Half the open position is taken at Target 1 (stop to the average entry), the rest at Target 2.
 function simulateOB(lv,bull,fwd,fee){
-  const o={trig:-1,t1:-1,t2:-1,stop:-1,fill:0},dir=bull?1:-1,win=CFG.trigger;
-  const reach=(c,p)=>bull?c.h>=p:c.l<=p,back=(c,p)=>bull?c.l<=p:c.h>=p,closedPast=(c,p)=>bull?c.c<p:c.c>p;
+  const o={trig:-1,t1:-1,t2:-1,stop:-1,fill:0},dir=bull?1:-1,win=CFG.trigger,nC=fwd.reduce((n,c)=>n+(c.live?0:1),0);
+  // c.live = the candle still forming: its price can touch levels, but it has no close yet
+  const reach=(c,p)=>bull?c.h>=p:c.l<=p,back=(c,p)=>bull?c.l<=p:c.h>=p,closedPast=(c,p)=>!c.live&&(bull?c.c<p:c.c>p);
   const Rf=Math.abs(lv.entry-lv.stop);let f=0,avg=0,i0=0;
   const add=(p,q)=>{avg=(avg*f+p*q)/(f+q);f+=q;};
   if(lv.atClose){add(lv.e1,lv.split?0.5:1);o.trig=0;o.atClose=true;}
@@ -1675,7 +1686,7 @@ function simulateOB(lv,bull,fwd,fee){
       if(back(c,lv.e1)){add(lv.e1,lv.split?0.5:1);o.trig=i;i0=i;break;}
       if(reach(c,lv.t1)){o.missed=true;o.missT=c.t;break;}
       if(closedPast(c,lv.pivot)){o.failed=true;o.failT=c.t;break;}}
-    if(o.trig<0){o.status=o.missed||o.failed?"no_trigger":fwd.length<win?"pending":"no_trigger";o.r=0;o.done=false;return o;}
+    if(o.trig<0){o.status=o.missed||o.failed?"no_trigger":nC<win?"pending":"no_trigger";o.r=0;o.done=false;return o;}
   }
   let stopLvl=lv.stop,real=0,rem=f;const end=Math.min(fwd.length,o.trig+200),hard=lvl=>lvl-dir*0.5*Rf;
   for(let i=i0;i<end;i++){const c=fwd[i];
@@ -1696,20 +1707,20 @@ function simulateOB(lv,bull,fwd,fee){
 }
 function simulate(lv,bull,fwd,fee){
   if(lv.method==="ob")return simulateOB(lv,bull,fwd,fee);
-  const R=Math.abs(lv.entry-lv.stop),dir=bull?1:-1,o={trig:-1,t1:-1,t2:-1,stop:-1};
-  const reach=(c,p)=>bull?c.h>=p:c.l<=p, back=(c,p)=>bull?c.l<=p:c.h>=p, closedPast=(c,p)=>bull?c.c<p:c.c>p;
+  const R=Math.abs(lv.entry-lv.stop),dir=bull?1:-1,o={trig:-1,t1:-1,t2:-1,stop:-1},nC=fwd.reduce((n,c)=>n+(c.live?0:1),0);
+  const reach=(c,p)=>bull?c.h>=p:c.l<=p, back=(c,p)=>bull?c.l<=p:c.h>=p, closedPast=(c,p)=>!c.live&&(bull?c.c<p:c.c>p);
   const win=lv.method==="sweep"?CFG.sweepWin:CFG.trigger;
   let start;
   if(lv.method==="close"||(lv.method==="ob"&&lv.atClose)){o.trig=0;o.atClose=true;start=0;
     if(!fwd.length){o.status="open";o.r=-fee/lv.riskPct;o.done=false;return o;}}
   else if(lv.method==="sweep"){
     for(let i=0;i<Math.min(win,fwd.length);i++){const c=fwd[i];
-      if((bull?c.l<lv.pivot:c.h>lv.pivot)&&!closedPast(c,lv.entry)){
+      if(!c.live&&(bull?c.l<lv.pivot:c.h>lv.pivot)&&!closedPast(c,lv.entry)){   // the reclaim needs a closed candle
         if(back(c,lv.stop)){o.deep=true;o.deepT=c.t;break;}   // the sweep ran past our stop level: setup invalid
         o.trig=i;break;}
       if(reach(c,lv.t1)){o.missed=true;o.missT=c.t;break;}     // ran to Target 1 without the sweep: move missed
     }
-    if(o.trig<0){o.status=o.deep||o.missed?"no_trigger":fwd.length<win?"pending":"no_trigger";o.r=0;o.done=false;return o;}
+    if(o.trig<0){o.status=o.deep||o.missed?"no_trigger":nC<win?"pending":"no_trigger";o.r=0;o.done=false;return o;}
     start=o.trig+1;   // filled at the reclaim close
   }else{
     const fill=lv.method==="pullback"||lv.method==="ob"?back:reach;
@@ -1718,7 +1729,7 @@ function simulate(lv,bull,fwd,fee){
       if(reach(fwd[i],lv.t1)){o.missed=true;o.missT=fwd[i].t;break;}   // ran to Target 1 without filling: move missed
       if(closedPast(fwd[i],lv.pivot)){o.failed=true;o.failT=fwd[i].t;break;}   // closed past the pivot first: divergence failed
     }
-    if(o.trig<0){o.status=o.missed||o.failed?"no_trigger":fwd.length<win?"pending":"no_trigger";o.r=0;o.done=false;return o;}
+    if(o.trig<0){o.status=o.missed||o.failed?"no_trigger":nC<win?"pending":"no_trigger";o.r=0;o.done=false;return o;}
     start=o.trig;
   }
   // Stop on touch: exit at the stop. Stop on close: exit at the close beyond the stop, with a hard stop 0.5R further out.
@@ -2025,33 +2036,32 @@ function paintRegime(){
   set("mkt",mkt,`${mkt.breadth.toFixed(0)}% > EMA50`);
   const open=document.querySelector('.rt[aria-expanded="true"]');if(open)showRegDetail(open.dataset.reg);
 }
+const lc1=t=>t?t.charAt(0).toLowerCase()+t.slice(1):"";
 function showRegDetail(k){
   const box=$("regDetail");if(!REG){box.hidden=true;return;}
   const r=REG[k],when=MODE==="bt"?` · as of ${fmtDate(REG.at)}`:"";
   const lines={
-    btc:()=>[`<b>BTC · ${r.state}</b>${when}`,
-      r.st.last?`Daily structure: last break was a ${r.st.last.kind} ${r.st.last.dir>0?"up":"down"} at ${fmtP(r.st.last.lvl)}, ${r.st.ago} days ago${r.st.chop?" (repeated CHoCHs, so choppy)":""}`:"Daily structure: no breaks yet",
-      `Swings ${swPills(r.st)} ${seqOf(r.st)[0]}`,
-      r.st.trend>0?`Uptrend holds while price stays above ${fmtP(r.st.swingLow)}. A daily close below is a CHoCH down.`:r.st.trend<0?`Downtrend holds while price stays below ${fmtP(r.st.swingHigh)}. A daily close above is a CHoCH up.`:"",
-      r.st.rng?`Daily range ${fmtP(r.st.rng.bot)} – ${fmtP(r.st.rng.top)} · price in ${r.st.rng.inOte?"the OTE zone":r.st.rng.zone.toLowerCase()} (${Math.round(r.st.rng.pos*100)}%)`:"",
-      eqTxt(r.st.eqH,true,fmtP),eqTxt(r.st.eqL,false,fmtP),
-      r.st.fvgBear?`Unfilled daily FVG above ${fmtP(r.st.fvgBear.lo)} – ${fmtP(r.st.fvgBear.hi)}`:"",r.st.fvgBull?`Unfilled daily FVG below ${fmtP(r.st.fvgBull.lo)} – ${fmtP(r.st.fvgBull.hi)}`:"",
-      r.st.sfpH?`Swept the daily swing high at ${fmtP(r.st.sfpH.lvl)} ${r.st.sfpH.ago}d ago (SFP)`:"",r.st.sfpL?`Swept the daily swing low at ${fmtP(r.st.sfpL.lvl)} ${r.st.sfpL.ago}d ago (SFP)`:"",
-      REG.mkt.style?`<b>BTC by timeframe</b> → ${REG.mkt.style.label}<br>${sortTf(Object.keys(REG.mkt.btcMap)).map(t=>`${t}: ${STR_TXT(REG.mkt.btcMap[t])} ${swPills(REG.mkt.btcMap[t])}`).join(" · ")}`:"",
-      r.liq?`Liquidation pools (est.): ${r.liq.above[0]?`above ${fmtP(r.liq.above[0].p)} (+${r.liq.above[0].dist.toFixed(1)}%, ${usdTxt(r.liq.above[0].usd)})`:"none above"} · ${r.liq.below[0]?`below ${fmtP(r.liq.below[0].p)} (${r.liq.below[0].dist.toFixed(1)}%, ${usdTxt(r.liq.below[0].usd)})`:"none below"} → ${r.liq.magnet==="both"?"balanced":`bigger pull ${r.liq.magnet}`}`:"",
-      `ADX ${r.adx.toFixed(1)} (25+ strong trend, under 18 counts as a range) · price ${r.vs50>=0?"above":"below"} EMA 50 by ${Math.abs(r.vs50).toFixed(1)}%`,
-      r.cls==="side"?`30-day range ${fmtP(r.range[0])} – ${fmtP(r.range[1])}`:""],
-    alts:()=>{const R=r.rot,sg=v=>v==null?"–":(v>=0?"+":"")+v.toFixed(1)+"%",pp=v=>v.toFixed(1)+"%";return [`<b>Alts · ${r.view.txt}</b>${when}`,`Equal-weight index of the top ${REG.nAlts} altcoins by volume`,
-      `<b>${R.lead.label}</b> (rotation score ${R.votes.v>0?"+":""}${R.votes.v} from ${R.votes.n} checks below)`,
-      r.btcd!=null?`BTC dominance ${pp(r.btcd)} now${R.dom7!=null?` · about ${pp(R.dom7)} a week ago · ${pp(R.dom30)} a month ago → ${r.btcd-R.dom7>=0.3?"rising, money favouring BTC":r.btcd-R.dom7<=-0.3?"falling, money rotating into alts":"flat"}`:""}${R.ethd!=null?` · ETH dominance ${pp(R.ethd)} · alts (all ex-BTC) ${pp(100-r.btcd)}`:""}`:"BTC dominance: live value not available (backtest or CoinGecko unreachable)",
-      `ALT/BTC ratio: ${R.st.trend>0&&!R.st.chop?"uptrend, alts gaining on BTC":R.st.trend<0&&!R.st.chop?"downtrend, alts losing to BTC":"ranging"}${R.st.last?` (last ${R.st.last.kind} ${R.st.last.dir>0?"↑":"↓"} ${R.st.ago}d ago)`:""}`,
-      `Pace: ${R.pace.txt}. 7 days: alts ${sg(R.alt7)} vs BTC ${sg(R.btc7)} · 30 days: alts ${sg(R.alt30)} vs BTC ${sg(R.btc30)}`,
-      R.eth?`ETH/BTC: ${STR_TXT(R.eth.st).toLowerCase()}, ${sg(R.eth.ch30)} over 30 days (ETH usually leads alt rotations)`:"",
-      R.s90?`Altcoin season index: ${R.s90.v}/100 over 90 days, ${R.s30?R.s30.v+"/100 over 30 days":""} (share of top alts beating BTC; 75+ is alt season, 25 or less is Bitcoin season) → <b>${R.season}</b>`:"",
-      r.st.last?`Daily structure: last ${r.st.last.kind} ${r.st.last.dir>0?"up":"down"}, ${r.st.ago} days ago${r.st.chop?" (choppy)":""} · swings ${swPills(r.st)} ${seqOf(r.st)[0]}`:"",
-      r.st.eqH?`${eqName(r.st.eqH,true)} on the alt index${r.st.eqH.status==="swept"?" (swept)":""}`:"",r.st.eqL?`${eqName(r.st.eqL,false)} on the alt index${r.st.eqL.status==="swept"?" (swept)":""}`:"",
-      `Index ADX ${r.adx.toFixed(1)} · ${r.vs50>=0?"above":"below"} its EMA 50 by ${Math.abs(r.vs50).toFixed(1)}%`];},
-    mkt:()=>[`<b>Market · ${r.state}</b>${when}`,`${r.breadth.toFixed(0)}% of the top ${r.n} coins are above their EMA 50 (over 60% is broad strength, under 40% broad weakness)`,`BTC: ${REG.btc.state} · Alts: ${REG.alts.view.txt}`,`Rotation: ${REG.alts.rot.lead.label} · ${REG.alts.rot.pace.txt}${REG.alts.rot.season?` · ${REG.alts.rot.season}`:""}`]
+    // Short on purpose: trend, the level that flips it, where price sits, and where the liquidity is.
+    btc:()=>{const st=r.st,P=v=>`<b>${fmtP(v)}</b>`,m=REG.mkt.btcMap||{},liq=[],seen=new Set();
+      const tfw=t=>`${t} ${({up:"up",down:"down",side:"range"})[STR_CLS(m[t])]}`;
+      const lv=(e,hi)=>{if(!e||seen.has(fmtP(e.lvl)))return;seen.add(fmtP(e.lvl));
+        liq.push(e.status==="swept"?`${hi?"highs":"lows"} at ${P(e.lvl)} <b>swept</b>`:`stops ${hi?"above":"below"} ${P(e.lvl)}`);};
+      lv(st.eqH,true);lv(st.eqL,false);
+      if(st.sfpH)lv({lvl:st.sfpH.lvl,status:"swept"},true);if(st.sfpL)lv({lvl:st.sfpL.lvl,status:"swept"},false);
+      return [`<b>BTC · ${r.state}</b>${when}`,
+        REG.mkt.style?`<b>Trend:</b> ${REG.mkt.style.label} · ${["4h","1d","3d","1w"].filter(t=>m[t]).map(tfw).join(" · ")}`:"",
+        st.trend>0?`<b>Key level:</b> uptrend holds above ${P(st.swingLow)}; a daily close below flips it`:st.trend<0?`<b>Key level:</b> downtrend holds below ${P(st.swingHigh)}; a daily close above flips it`:"",
+        st.rng?`<b>Range:</b> ${fmtP(st.rng.bot)} – ${fmtP(st.rng.top)} · price in <b>${st.rng.inOte?"the OTE zone":st.rng.zone.toLowerCase()}</b>`:r.cls==="side"?`<b>Range:</b> ${fmtP(r.range[0])} – ${fmtP(r.range[1])}`:"",
+        liq.length?`<b>Liquidity:</b> ${liq.join(" · ")}`:"",
+        r.liq&&r.liq.magnet!=="both"&&r.liq[r.liq.magnet]&&r.liq[r.liq.magnet][0]?`<b>Liquidations:</b> bigger pull <b>${r.liq.magnet}</b>, near ${fmtP(r.liq[r.liq.magnet][0].p)} (${usdTxt(r.liq[r.liq.magnet][0].usd)})`:""];},
+    alts:()=>{const R=r.rot,sg=v=>v==null?"–":(v>=0?"+":"")+v.toFixed(1)+"%",dd=R.dom7!=null&&r.btcd!=null?r.btcd-R.dom7:null;
+      return [`<b>Alts · ${r.view.txt}</b>${when}`,
+        `<b>${R.lead.label}</b> · ${lc1(R.pace.txt)}`,
+        r.btcd!=null?`<b>BTC dominance:</b> ${r.btcd.toFixed(1)}%${dd!=null?`, ${dd>=0.3?"<b>rising</b> (money favours BTC)":dd<=-0.3?"<b>falling</b> (money moving into alts)":"flat"} this week`:""}`:"",
+        `<b>7 days:</b> alts ${sg(R.alt7)} vs BTC ${sg(R.btc7)}`,
+        R.season?`<b>Season:</b> ${R.season}${R.s90?` (index ${R.s90.v}/100)`:""}`:""];},
+    mkt:()=>[`<b>Market · ${r.state}</b>${when}`,`<b>${r.breadth.toFixed(0)}%</b> of the top ${r.n} coins are above their EMA 50 (above 60% strong, under 40% weak)`,
+      `BTC ${REG.btc.state} · Alts ${lc1(REG.alts.view.txt)} · ${lc1(REG.alts.rot.lead.label)}`]
   }[k]().filter(Boolean);
   box.innerHTML=lines.map(l=>`<span>${l}</span>`).join("");box.hidden=false;
 }
@@ -2099,7 +2109,24 @@ window.cgBot=async(o={})=>{
         e1:lv&&f(lv.e1),e2:lv&&f(lv.e2),e1src:lv?lv.e1src:"",split:!!lv&&!!lv.split,fill:tk&&tk.fill!=null?tk.fill:null,avg:tk&&tk.avg?f(tk.avg):null,
         near:!!lv&&Math.abs(live-(lv.e1??lv.entry))<=lv.atr,
         live:f(live),entry:lv&&f(lv.entry),stop:lv&&f(lv.stop),t1:lv&&f(lv.t1),t2:lv&&f(lv.t2),
-        stopPct:lv&&pc(lv.stop),t1Pct:lv&&pc(lv.t1),t2Pct:lv&&pc(lv.t2),rr1:lv&&lv.rr1,rr2:lv&&lv.rr2,chart:src.tv(h.id)};})};
+        stopPct:lv&&pc(lv.stop),t1Pct:lv&&pc(lv.t1),t2Pct:lv&&pc(lv.t2),rr1:lv&&lv.rr1,rr2:lv&&lv.rr2,chart:src.tv(h.id),
+        plan:lv?{method:lv.method,pivot:lv.pivot,atClose:lv.atClose,e1:lv.e1,e2:lv.e2,split:lv.split,stopMode:lv.stopMode,entry:lv.entry,stop:lv.stop,t1:lv.t1,t2:lv.t2,rr1:lv.rr1,rr2:lv.rr2,riskPct:lv.riskPct,atr:lv.atr}:null};})};
+};
+// ---------- weekly scorecard ----------
+// Re-plays each alerted trade from its signal candle with the same engine as the app (entry halves, half off at
+// Target 1 with the stop to the average entry, rest to Target 2), on a $1,000 position. Prices only, before fees.
+window.cgGrade=async(list,size=1000)=>{
+  const s=src||BINANCE,cache={},out=[];
+  for(const t of list){
+    try{const id=s.id(t.sym),ck=id+"|"+t.tf;
+      if(!cache[ck])cache[ck]=await s.candles(id,t.tf);
+      const fwd=cache[ck].filter(r=>+r[0]>=t.sigTime).map(r=>({t:+r[0],h:+r[2],l:+r[3],c:+r[4]}));
+      const lv=t.plan,o=simulate(lv,t.dir==="long",fwd,0),fill=o.fill!=null?o.fill:o.trig>=0?1:0;
+      const usd=o.r*Math.abs(lv.entry-lv.stop)*size/lv.entry;
+      out.push({key:t.key,status:o.status,missed:!!o.missed,fill,r:o.r,usd,t1:o.t1>=0,enteredAt:o.tt||null,closedAt:o.t2t||o.st||null});
+    }catch(e){out.push({key:t.key,err:String(e&&e.message||e)});}
+  }
+  return out;
 };
 // ---------- daily BTC brief (New York open) ----------
 // Trend by timeframe, levels from the higher timeframes down, session ranges (Asia 8 pm–midnight, London 2–5 am,
@@ -2239,19 +2266,29 @@ async function pollLive(){
 // stop and target checks, so a fill, a missed move, Target 1 or a stop shows up immediately instead of at the next scan.
 let LIVE_HITS=[];
 const trkSig=o=>o?[o.status,o.trig,o.t1,o.t2,o.stop,o.missed,o.failed,o.deep].join(","):"";
+// Feed the live price into the candle that is still forming (marked live: no close yet), then re-check the trade.
+// form = the exchange's forming candle (with its real high and low so far), passed on the first call.
+function applyLive(h,p,now=Date.now(),form=null){
+  const a=h.after;if(!a||!h.lv||p==null)return false;const ms=TF_MS(h.tf);let last=a[a.length-1];
+  const mk=t=>form&&form.t===t?{t,h:Math.max(form.h,p),l:Math.min(form.l,p),c:p,live:true}:{t,h:p,l:p,c:p,live:true};
+  if(!last){if(now<h.sigTime)return false;a.push(mk(h.sigTime+Math.floor((now-h.sigTime)/ms)*ms));}
+  else if(now>=last.t+ms){last.live=false;a.push(mk(last.t+Math.floor((now-last.t)/ms)*ms));}
+  else{last.h=Math.max(last.h,p);last.l=Math.min(last.l,p);last.c=p;}
+  h.live=p;track(h);return true;
+}
+const goneWhy=h=>h.track&&h.track.missed?"price reached Target 1 before the entry filled":h.track&&h.track.failed?"price closed past the divergence low/high":h.track&&h.track.deep?"the sweep ran through the stop level":"the entry window ran out";
 function liveTrack(){
   LIVE_HITS=LIVE_HITS.filter(r=>r.el.isConnected);
   for(const r of LIVE_HITS){
     const h=r.h,p=LIVE[h.id];if(p==null||!h.after||!h.lv)continue;
-    const ms=TF_MS(h.tf),now=Date.now(),a=h.after,before=trkSig(h.track)+"|"+a.length;
-    let last=a[a.length-1];
-    if(!last){if(now<h.sigTime)continue;last={t:h.sigTime+Math.floor((now-h.sigTime)/ms)*ms,h:p,l:p,c:p};a.push(last);}
-    else if(now>=last.t+ms){last={t:last.t+Math.floor((now-last.t)/ms)*ms,h:p,l:p,c:p};a.push(last);}
-    else{last.h=Math.max(last.h,p);last.l=Math.min(last.l,p);last.c=p;}
-    h.live=p;track(h);
-    if(trkSig(h.track)+"|"+a.length===before)continue;
+    const before=trkSig(h.track)+"|"+h.after.length;
+    if(!applyLive(h,p))continue;
+    if(trkSig(h.track)+"|"+h.after.length===before)continue;
     const k=sigKey(h);
-    if(unfilledOf(h)){if(r.top)r.el.hidden=true;else r.el.querySelectorAll(`[data-sk="${CSS.escape(k)}"]`).forEach(w=>{const row=w.closest(".tfrow");(row||w).hidden=true;});continue;}
+    if(unfilledOf(h)){GONE.set(k,{why:goneWhy(h),at:Date.now()});
+      // a coin check never goes blank: redraw the coin without the setup, with a line saying what happened
+      if(r.check){if(!busy&&$("q").value.trim().toUpperCase().replace(/[^A-Z0-9]/g,"").replace(/(USDT|USD)$/,"")===h.sym)setTimeout(checkCoin,0);continue;}
+      if(r.top)r.el.hidden=true;else r.el.querySelectorAll(`[data-sk="${CSS.escape(k)}"]`).forEach(w=>{const row=w.closest(".tfrow");(row||w).hidden=true;});continue;}
     r.el.querySelectorAll(`[data-sk="${CSS.escape(k)}"]`).forEach(w=>{
       const open=[...w.querySelectorAll("details")].map(d=>d.open),tmp=document.createElement("div");tmp.innerHTML=signalHTML(h);
       const nw=tmp.firstElementChild;[...nw.querySelectorAll("details")].forEach((d,i)=>{if(open[i])d.open=true;});w.replaceWith(nw);});
