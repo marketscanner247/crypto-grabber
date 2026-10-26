@@ -6,8 +6,8 @@
 //
 // Environment:
 //   TELEGRAM_TOKEN, TELEGRAM_CHAT_ID  from @BotFather / @userinfobot (GitHub secrets). Without them it only prints.
-//   ALERT_MIN   risk = setups that meet every check, plus high-risk ones scoring 50+ (marked ⚠️) (default)
-//               all  = only setups that meet every check
+//   ALERT_MIN   all  = only setups that meet every check (default)
+//               risk = setups that meet every check, plus high-risk ones scoring 50+ (marked ⚠️)
 //               take = every check, or a score of 70+
 //               any  = every signal (handy to confirm alerts work)
 //   ALERT_TFS   timeframes to scan, default "1h,4h,1d,3d,1w"
@@ -22,7 +22,7 @@ const { chromium } = require("playwright");
 
 const ROOT = path.join(__dirname, ".."), STATE = path.join(__dirname, "state.json");
 const TOKEN = process.env.TELEGRAM_TOKEN || "", CHAT = process.env.TELEGRAM_CHAT_ID || "";
-const MIN = (process.env.ALERT_MIN || "risk").toLowerCase();
+const MIN = (process.env.ALERT_MIN || "all").toLowerCase();
 const TFS = (process.env.ALERT_TFS || "1h,4h,1d,3d,1w").split(",").map(s => s.trim()).filter(Boolean);
 const TZ = process.env.TZ_NAME || "America/Toronto";
 const repo = process.env.GITHUB_REPOSITORY || "";
@@ -30,7 +30,11 @@ const SITE = process.env.SITE_URL || (repo ? `https://${repo.split("/")[0].toLow
 const TEST = String(process.env.TEST || "").toLowerCase() === "true";
 const BRIEF = String(process.env.BRIEF || "").toLowerCase() === "true";
 const SCORECARD = String(process.env.SCORECARD || "").toLowerCase() === "true";
-const SIZE = 1000, FEE = 0.001;   // scorecard: $1,000 per trade; fee estimate 0.1% per side
+const DAILY = String(process.env.DAILY || "").toLowerCase() === "true";   // send today's scoreboard now (otherwise just after midnight, for the day that ended)
+const SIZE = 1000, FEE = 0.001;
+const RISK = +process.env.RISK_USD || 10;              // $ lost if the stop is hit: sets the position size shown in alerts
+const MAX_OPEN = +process.env.MAX_OPEN || 3;           // no new "Enter now" while this many alerted trades are open
+const MAX_DAILY_STOPS = +process.env.MAX_DAILY_STOPS || 3;   // no new entries for the rest of the day after this many stops   // scorecard: $1,000 per trade; fee estimate 0.1% per side
 // New York clock (handles daylight saving)
 function nyNow(t) {
   const p = {}; for (const x of new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", weekday: "short", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(t))) p[x.type] = x.value;
@@ -80,6 +84,12 @@ function head(s, kind) {
 const riskNote = s => risky(s) ? `⚠️ Enter at your own risk. Missing: ${esc(s.missing.slice(0, 3).join("; "))}.\nIf you take it: half size, take profit at Target 1.\n` : "";
 function plan(s) {
   const w = s.dir === "long" ? "Buy" : "Sell";
+  if (s.confirm) {   // top-down entry: zone on the setup's timeframe, entry on a lower-timeframe CHoCH
+    const up = s.dir === "long", rr = s.rr1Now ?? s.rr1;
+    const ent = s.entryNow ? `${w} at <b>${esc(s.entryNow)}</b> (${esc(s.confirm)} CHoCH ${up ? "up" : "down"})\nStop: <b>${esc(s.stopNow)}</b> (${pct(s.stopNowPct)}, past the ${esc(s.confirm)} ${up ? "low" : "high"})`
+      : `Zone: <b>${esc(s.poi)}</b>. Entry after a ${esc(s.confirm)} CHoCH ${up ? "up (a close above its last lower high" : "down (a close below its last higher low"}${s.touched && s.chochLvl ? `, now ${esc(s.chochLvl)}` : ""}).\nStop: set at the CHoCH, just past the ${esc(s.confirm)} ${up ? "low" : "high"} (about ${esc(s.stop)})`;
+    return `${ent}\nTarget 1: ${esc(s.t1)} (${rr != null ? (s.entryNow ? "" : "about ") + rr.toFixed(1) : "?"}R) · Target 2: ${esc(s.t2)}\nPrice now: ${esc(s.live)}`;
+  }
   const ent = s.split
     ? `${w} half at <b>${esc(s.e1)}</b> (${esc(s.e1src)}) + half at <b>${esc(s.e2)}</b> (order block middle) · average ${esc(s.entry)}`
     : `Entry: <b>${esc(s.entry)}</b> (${esc(s.method)})`;
@@ -91,18 +101,24 @@ function plan(s) {
   return `${ent}\n${stop}\n` +
     `Target 1: ${esc(s.t1)} (${pct(s.t1Pct)}, ${rr != null ? rr.toFixed(1) : "?"}R) · Target 2: ${esc(s.t2)} (${pct(s.t2Pct)})\nPrice now: ${esc(s.live)}`;
 }
+function sizeLine(s) {
+  const p = Math.abs(s.stopNowPct ?? s.stopPct); if (!p) return "";
+  const pos = RISK / (p / 100);
+  return `\nSize: risk $${RISK} → $${pos >= 1000 ? Math.round(pos).toLocaleString("en-US") : pos.toFixed(0)} position${s.confirm && !s.entryNow ? " (estimate, final at the CHoCH)" : ""}`;
+}
+const ctxLines = s => s.notes && s.notes.length ? `\n${s.notes.map(esc).join("\n")}` : "";
 function links(s) {
   return [SITE && `<a href="${esc(SITE)}">Crypto Grabber</a>`, s.chart && `<a href="${esc(s.chart)}">Chart</a>`].filter(Boolean).join(" · ");
 }
 function msgReady(s) {
-  return `${head(s, "ready")}\n\n${esc(s.detail || s.why)}\n\n${plan(s)}\n\n${riskNote(s)}Price is close to the entry. You'll get an <b>Enter now</b> alert when it fills.\n${links(s)}`;
+  return `${head(s, "ready")}\n\n${esc(s.detail || s.why)}\n\n${plan(s)}${sizeLine(s)}${ctxLines(s)}\n\n${riskNote(s)}Price is close to the ${s.confirm ? "zone" : "entry"}. You'll get an <b>Enter now</b> alert when it ${s.confirm ? `confirms on the ${esc(s.confirm)}` : "fills"}.\n${links(s)}`;
 }
 function msgEnter(s) {
   const fillTxt = s.split && s.fill != null ? (s.fill < 1 ? `First half filled at ${esc(s.e1)}. Keep the second half as a limit at ${esc(s.e2)}.` : `Both halves filled, average ${esc(s.avg || s.entry)}.`) : "";
-  return `${head(s, "enter")}\n\n${s.filledAt ? `Triggered ${when(s.filledAt)}` : ""}${s.filledAt && fillTxt ? " · " : ""}${fillTxt}\n\n${plan(s)}\n\n${riskNote(s)}${links(s)}`;
+  return `${head(s, "enter")}\n\n${s.filledAt ? `Triggered ${when(s.filledAt)}` : ""}${s.filledAt && fillTxt ? " · " : ""}${fillTxt}\n\n${plan(s)}${sizeLine(s)}${ctxLines(s)}\n\n${riskNote(s)}${links(s)}`;
 }
 function msgDone(s) {
-  const t = s.missed ? "Missed: price ran to Target 1 without the entry. Don't chase it." : { t2: "✅ Target 2 hit", t1_be: "Target 1 hit, rest closed at entry", stopped: "❌ Stopped out", no_trigger: "Entry never triggered, setup expired", timeout: "Closed (time limit)" }[s.status] || s.stateTxt;
+  const t = s.missed ? "Missed: price ran to Target 1 without the entry. Don't chase it." : s.early ? "↩️ Closed early: the lower timeframe broke structure against the trade before Target 1" : { t2: "✅ Target 2 hit", t1_be: "Target 1 hit, rest closed at entry", stopped: "❌ Stopped out", no_trigger: "Entry never triggered, setup expired", timeout: "Closed (time limit)" }[s.status] || s.stateTxt;
   return `⚪ <b>${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b>: ${esc(t)}\n${esc(s.detail || "")}`;
 }
 
@@ -151,6 +167,31 @@ function scorecard(list, grades, now) {
   return L.join("\n");
 }
 
+// Daily scoreboard: what closed today, what is open now, and what is waiting (near the zone / waiting for the CHoCH).
+function daily(list, grades, setups, now, date) {
+  const G = Object.fromEntries(grades.map(g => [g.key, g]));
+  const rows = list.map(t => ({ ...t, g: G[t.key] })).filter(t => t.g && !t.g.err);
+  const CLOSED = ["t2", "t1_be", "stopped", "timeout"], isToday = t => t && nyNow(t).date === date;
+  const today = rows.filter(t => t.g.fill > 0 && CLOSED.includes(t.g.status) && isToday(t.g.closedAt || t.at));
+  const open = rows.filter(t => t.g.fill > 0 && t.g.status === "open");
+  const pnl = today.reduce((a, t) => a + t.g.usd - t.g.fill * SIZE * FEE * 2, 0), R = today.reduce((a, t) => a + t.g.r, 0);
+  const ok = s => MIN === "any" ? true : s.all ? true : MIN === "take" ? s.score >= 70 && s.actionable : MIN === "risk" ? s.tier === "risk" : false;
+  const pend = setups.filter(s => s.status === "pending" && ok(s));
+  const waiting = pend.filter(s => s.confirm && s.touched), ready = pend.filter(s => !(s.confirm && s.touched) && s.near);
+  const tag = t => `${esc(t.sym)} ${esc(t.tf)} ${t.dir}`, rTxt = v => `${v >= 0 ? "+" : ""}${v.toFixed(2)}R`;
+  const ic = { t2: "✅", t1_be: "🎯", stopped: "❌", timeout: "⏱" };
+  const L = [`📋 <b>Daily scoreboard · ${new Date(date + "T12:00:00Z").toLocaleDateString("en-CA", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" })}</b>`, ""];
+  L.push(`<b>Closed that day: ${today.length}</b>${today.length ? ` · ${today.filter(t => t.g.r > 0).length} won · ${today.filter(t => t.g.status === "stopped").length} stopped · <b>${rTxt(R)}</b> · ${usd(pnl)} at $1,000 a trade` : ""}`);
+  for (const t of today) L.push(`${t.g.early ? "↩️" : ic[t.g.status] || "·"} ${tag(t)} ${rTxt(t.g.r)}`);
+  L.push("", `<b>Right now · in trades: ${open.length}</b>${open.length ? ` (limit ${MAX_OPEN})` : ""}`);
+  for (const t of open) L.push(`⏳ ${tag(t)} · ${t.g.t1 ? "Target 1 hit, stop at entry · " : ""}now ${rTxt(t.g.r)}`);
+  L.push("", `<b>Waiting for confirmation: ${waiting.length}</b>`);
+  for (const s of waiting) L.push(`👀 ${tag(s)} · in the zone, needs a ${esc(s.confirm)} close ${s.dir === "long" ? "above" : "below"} ${esc(s.chochLvl || "its last swing")}`);
+  L.push("", `<b>Ready (price near the zone): ${ready.length}</b>`);
+  for (const s of ready) L.push(`🟡 ${tag(s)} · zone ${esc(s.poi || s.e1 || s.entry)} · price ${esc(s.live)}`);
+  return L.join("\n");
+}
+
 (async () => {
   let state = {}, fresh = false;
   try { state = JSON.parse(fs.readFileSync(STATE, "utf8")); } catch (e) { fresh = true; }
@@ -169,6 +210,11 @@ function scorecard(list, grades, now) {
   const ny = nyNow(+process.env.MOCK_NOW || Date.now());
   const briefDue = BRIEF || (ny.hm >= "09:30" && ny.hm < "12:00" && !(state.__brief && state.__brief.date === ny.date));
   const J = state.__journal = state.__journal && Array.isArray(state.__journal.list) ? state.__journal : { list: [] };
+  // at the first check after midnight (New York / Toronto time), report the day that just ended
+  const [hh, mm] = ny.hm.split(":").map(Number), nowT = +process.env.MOCK_NOW || Date.now();
+  const yday = nyNow(nowT - (hh * 60 + mm + 1) * 60e3).date;
+  const dayDue = DAILY || (ny.hm < "06:00" && !(state.__day && state.__day.date === yday) && !fresh);
+  const repDate = DAILY ? ny.date : yday;
   const weekDue = SCORECARD || (ny.wd === "Sun" && ny.hm >= "18:00" && !(state.__week && state.__week.date === ny.date));
   let grades = null;
   try {
@@ -180,7 +226,7 @@ function scorecard(list, grades, now) {
     for (const b of briefs) if (await send(b.html + (SITE && b.name === "Alts" ? `\n<a href="${esc(SITE)}">Crypto Grabber</a>` : ""))) { b.sent = true; if (!state.__brief || state.__brief.date !== ny.date) state.__brief = { date: ny.date, seen: Date.now() }; }
     if (briefs.some(b => b.sent)) try { fs.writeFileSync(STATE, JSON.stringify(state)); } catch (e) {}   // don't resend if the scan fails
     out = await page.evaluate(tfs => window.cgBot({ tfs }), TFS);
-    if (weekDue) { try { grades = await page.evaluate(([l, n]) => window.cgGrade(l, n), [J.list, SIZE]); } catch (e) { console.error("scorecard failed:", e.message); } }
+    if (weekDue || dayDue) { try { grades = await page.evaluate(([l, n]) => window.cgGrade(l, n), [J.list, SIZE]); } catch (e) { console.error("scorecard failed:", e.message); } }
   } finally { await browser.close(); srv.close(); }
 
   console.log(`${out.status} · ${out.setups.length} setup(s)`);
@@ -193,24 +239,33 @@ function scorecard(list, grades, now) {
       `\n${esc(out.status)}`);
   }
   for (const b of briefs) if (b.sent) sent.push(`${b.name} brief`);
-  if (grades) { if (await send(scorecard(J.list, grades, now))) { state.__week = { date: ny.date, seen: now }; sent.push("weekly scorecard"); } }
+  if (grades && weekDue) { if (await send(scorecard(J.list, grades, now))) { state.__week = { date: ny.date, seen: now }; sent.push("weekly scorecard"); } }
+  if (grades && dayDue) { if (await send(daily(J.list, grades, out.setups, now, repDate))) { if (!DAILY) state.__day = { date: repDate, seen: now }; sent.push("daily scoreboard"); } }
   // every alerted trade goes into the journal with its fixed plan, so the scorecard can grade it later
   const jot = s => { if (s.plan && !J.list.some(x => x.key === s.key)) J.list.push({ key: s.key, sym: s.sym, tf: s.tf, dir: s.dir, all: !!s.all, score: s.score, sigTime: s.sigTime, at: now, plan: s.plan }); };
   const ok = s => MIN === "any" ? true : s.all ? true : MIN === "take" ? s.score >= 70 && s.actionable : MIN === "risk" ? s.tier === "risk" : false;
+  // risk caps: count the alerted trades still open, and today's stop-outs (New York day)
+  const openN = () => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && v.enter > 0 && !v.done).length;
+  const stopsToday = () => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && v.res === "stopped" && v.done && nyNow(v.done).date === ny.date).length;
   for (const s of out.setups) {
     const st = state[s.key] || {};
     if (process.env.BOT_DEBUG) console.log(`  · ${s.sym} ${s.tf} ${s.dir} ${s.status} (${s.stateTxt}) checks ${s.checks} score ${s.score} method ${s.method}`);
     if (!ok(s) && !st.ready && !st.enter) continue;
     const recent = s.filledAt && now - s.filledAt <= Math.max(2 * s.tfMs, 45 * 60e3);
     if (s.status === "open" && !s.t1hit && !st.enter && (ok(s) || st.ready)) {
-      if (recent && (s.prog == null || s.prog < 0.5)) { if (await send(msgEnter(s))) { st.enter = now; jot(s); sent.push(`enter ${s.sym} ${s.tf}`); } }
+      if (recent && (s.prog == null || s.prog < 0.5)) {
+        const capOpen = openN() >= MAX_OPEN, capDay = stopsToday() >= MAX_DAILY_STOPS;
+        if (capOpen || capDay) {
+          if (await send(`⛔ <b>Skipped: ${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b>\n${capDay ? `${MAX_DAILY_STOPS} stop-outs today: no new entries until tomorrow (New York time).` : `${MAX_OPEN} alerted trades are already open (limit ${MAX_OPEN}).`}`)) { st.enter = -2; sent.push(`skipped ${s.sym} ${s.tf}`); }
+        } else if (await send(msgEnter(s))) { st.enter = now; jot(s); sent.push(`enter ${s.sym} ${s.tf}`); }
+      }
       else st.enter = st.enter || -1;   // too late to chase; remember so it is not sent later
     } else if (s.status === "pending" && !st.ready && ok(s) && s.near) {
       if (await send(msgReady(s))) { st.ready = now; jot(s); sent.push(`ready ${s.sym} ${s.tf}`); }
     } else if (st.enter > 0 && !st.t1 && s.t1hit && s.status === "open") {
       if (await send(`🎯 <b>${esc(s.sym)} ${esc(s.tf)} ${s.dir}: Target 1 hit (${esc(s.t1)})</b>\nTake half off and move the stop to entry (${esc(s.entry)}). Target 2: ${esc(s.t2)}.\n${links(s)}`)) { st.t1 = now; sent.push(`t1 ${s.sym} ${s.tf}`); }
     } else if (st.enter > 0 && !st.done && ["t2", "t1_be", "stopped", "timeout"].includes(s.status)) {
-      if (await send(msgDone(s))) { st.done = now; sent.push(`done ${s.sym} ${s.tf}`); }
+      if (await send(msgDone(s))) { st.done = now; st.res = s.status; sent.push(`done ${s.sym} ${s.tf}`); }
     }
     if (Object.keys(st).length) state[s.key] = { ...st, seen: now };
   }

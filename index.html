@@ -189,6 +189,8 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .schip[data-pop],.tag[data-pop]{cursor:pointer}
 .pop{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;z-index:60;padding:0}
 .pop[hidden]{display:none}
+.tvbox iframe{width:100%;height:440px;border:0;border-radius:10px;display:block;background:var(--panel,transparent)}
+@media (max-width:640px){.tvbox iframe{height:360px}}
 .popc{position:relative;background:var(--panel);color:var(--fg);width:min(520px,100%);max-height:80vh;overflow:auto;border-radius:16px 16px 0 0;padding:16px 16px 20px;border:1px solid var(--line)}
 .popx{position:absolute;top:8px;right:10px;border:0;background:transparent;color:var(--muted);font-size:24px;line-height:1;cursor:pointer;min-height:auto;padding:4px 8px}
 .poph{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:14px;margin:0 30px 12px 0}.poph .schip{margin-left:auto}
@@ -329,6 +331,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
         <div class="seg" role="group" aria-label="Stop type"><button data-stop="wick">Touch</button><button data-stop="close">Candle close</button></div></div>
     </div>
     <div class="row">
+      <div class="rowhead"><span class="lbl">Risk per trade</span>
+        <span class="fee">$ <input class="field" id="riskUsd" type="number" min="1" step="1" inputmode="decimal" aria-label="Dollars to lose if the stop is hit" style="width:90px"></span></div>
+      <span class="status" style="margin:0">What you lose if the stop is hit. Each plan shows the position size for it.</span>
+    </div>
+    <div class="row">
       <div class="rowhead"><span class="lbl">Theme</span>
         <div class="seg" role="group" aria-label="Theme"><button data-theme-opt="auto">Auto</button><button data-theme-opt="light">Light</button><button data-theme-opt="dark">Dark</button></div></div>
     </div>
@@ -370,7 +377,7 @@ const TF_MIN={"1m":1,"3m":3,"5m":5,"15m":15,"30m":30,"1h":60,"2h":120,"4h":240,"
 const OKX_BAR={"1m":"1m","3m":"3m","5m":"5m","15m":"15m","30m":"30m","1h":"1H","2h":"2H","4h":"4H","6h":"6Hutc","12h":"12Hutc","1d":"1Dutc","3d":"3Dutc","1w":"1Wutc","1M":"1Mutc"};
 const STD_MA=[9,21,50,200];
 const TOP_N=50,VOL_MULT=1.5,VOL_LEN=20,MAX_FAV=10;
-let S={f3d:true,favs:["15m","1h","4h","1d","3d","1w"],tfs:["1h","4h","1d"],maType:"ema",slots:[...STD_MA],periods:[...STD_MA],off:[],theme:"auto",pal:"teal",entry:"close",stopMode:"wick"};
+let S={f3d:true,favs:["15m","1h","4h","1d","3d","1w"],tfs:["1h","4h","1d"],maType:"ema",slots:[...STD_MA],periods:[...STD_MA],off:[],theme:"auto",pal:"teal",entry:"close",stopMode:"close",fClose:true,risk:10};
 const okP=v=>{const n=Number(v);return v!==""&&v!=null&&Number.isInteger(n)&&n>=2&&n<=300?n:null;};
 const fromSlots=sl=>[...new Set(sl.filter(n=>n!=null))].sort((x,y)=>x-y);
 try{
@@ -382,8 +389,9 @@ try{
   if(Array.isArray(o.slots)&&o.slots.length===4){const sl=o.slots.map(okP);if(sl.some(n=>n!=null)){S.slots=sl;S.periods=fromSlots(sl);}}
   if(["auto","light","dark"].includes(o.theme))S.theme=o.theme;
   if(["close","pullback","breakout","sweep"].includes(o.entry))S.entry=o.entry;
-  if(["wick","close"].includes(o.stopMode))S.stopMode=o.stopMode;
+  if(["wick","close"].includes(o.stopMode)&&o.fClose)S.stopMode=o.stopMode;   // older saved "touch" settings move to candle close once
   if(["teal","blue","violet","amber","rose"].includes(o.pal))S.pal=o.pal;
+  if(+o.risk>0)S.risk=+o.risk;
   if(Array.isArray(o.off))S.off=o.off.filter(p=>S.periods.includes(p));
 }catch(e){}
 const save=()=>{try{const {periods,...keep}=S;localStorage.setItem("cgrab",JSON.stringify(keep));}catch(e){}};
@@ -428,6 +436,7 @@ function applySlots(sl,msg){
   S.slots=sl;S.periods=fromSlots(sl);S.off=S.off.filter(p=>S.periods.includes(p));save();renderMa();if(msg)setStatus(msg);
 }
 const readSlots=()=>[0,1,2,3].map(i=>okP($("ma"+i).value));
+$("riskUsd").value=S.risk;$("riskUsd").onchange=e=>{const v=+e.target.value;if(v>0){S.risk=v;save();}else e.target.value=S.risk;};
 $("saveMa").onclick=()=>{const sl=readSlots();applySlots(sl,`Saved: ${maName()} ${fromSlots(sl).join(" · ")}`);};
 document.querySelectorAll(".rs").forEach(b=>b.onclick=()=>{
   const i=+b.dataset.i,sl=readSlots();sl[i]=STD_MA[i];applySlots(sl,null);setStatus("");
@@ -659,6 +668,7 @@ function tradeType(h,sty){
   if((sty.kind==="swing"||sty.kind==="wait"||sty.kind==="scalp")&&sty.dir===-D)
     return {label:`Counter-trend ${w}`,cls:"gold",counter:true,
       txt:`The ${sty.kind==="scalp"?"4h":"3d"} trend is ${u(-D)}, against this ${w}. Treat it as a scalp: take profit at Target 1 and skip Target 2.`};
+  if(sty.kind==="swing"&&CTX[h.id]&&CTX[h.id].v&&CTX[h.id].v.label==="Leverage-led")return {label:`Swing ${w}`,cls:col,txt:`With the 4h and 3d trend, but the move is leverage-led (futures driving it), so take profit at Target 1.`};
   if(sty.kind==="swing")return {label:`Swing ${w}`,cls:col,txt:h.sc&&h.sc.checks&&!h.sc.checks.every(c=>c.ok)?`With the 4h and 3d trend, but checks are missing, so take profit at Target 1.`:`With the 4h and 3d trend, so you can hold for Target 2.`};
   if(sty.kind==="wait")return {label:`Swing ${w} forming`,cls:"gold",txt:`3d trend is ${u(D)} but 4h hasn't turned yet. Take profit at Target 1 unless 4h turns ${u(D)}.`};
   if(sty.kind==="scalp")return {label:`Scalp ${w}`,cls:col,txt:`4h agrees but the 3d has no trend. Take profit at Target 1.`};
@@ -717,7 +727,7 @@ function popHTML(h){
   const row=(ok,lab,val)=>`<div class="pr2"><span>${lab}</span><b class="${ok===true?"pos":ok===false?"neg":"mu"}">${ok===true?"✓":ok===false?"✗":"~"} ${esc(val)}</b></div>`;
   return `<div class="poph"><b>${esc(h.sym)} ${h.tf}</b><span class="schip ${vc}"><b>${sc.score}</b> ${vt}</span></div>
     ${sc.checks.map(c=>row(c.ok?true:c.partial?null:false,c.label.replace("Liquidity sweep","Sweep").replace("Structure shift","Structure"),c.short)).join("")}
-    ${q?row(null,"Quality",`${q.pts}/${q.max}`):""}${sc.pen.map(p=>row(false,"Penalty",p.txt.replace("Opposite signal on","opposite on")+(p.pts?` (−${p.pts})`:""))).join("")}
+    ${q?row(null,"Quality",`${q.pts}/${q.max}`):""}${(sc.plus||[]).map(p=>row(true,"Bonus",`${p.txt} (+${p.pts})`)).join("")}${sc.pen.map(p=>row(false,"Penalty",p.txt.replace("Opposite signal on","opposite on")+(p.pts?` (−${p.pts})`:""))).join("")}${(sc.notes||[]).map(n=>row(null,"Note",n)).join("")}
     <div class="legend">70+ Take · 50–69 High risk · under 50 Skip</div>`;
 }
 function openPop(html){const p=$("pop");p.querySelector(".popb").innerHTML=html;p.hidden=false;}
@@ -802,16 +812,28 @@ function volumeProfile(d,N=200,B=40){
 // Entry: break of the last closed candle. Stop: beyond the divergence pivot + 1/4 ATR.
 // Targets come from real levels (S/R clusters, POC, value area, volume nodes):
 // T1 = first level at least 1R away; T2 = first level at least 0.5R beyond T1. Fallbacks use R multiples.
-function levels(d,x,sr,vp,method="ob"){
+let STOP_BUF=0.5,STOP_MIN=1.0;   // in ATR (the average candle range); was 0.1 and 0.3, too tight for normal wicks
+// Top-down entries: the setup's timeframe gives the zone, a lower timeframe gives the entry. Price must reach the zone,
+// then the lower timeframe must break structure the trade's way (a CHoCH: a close beyond its last swing). Entry at that
+// close, stop just past the lowest low (highest high) the lower timeframe made in the zone.
+const LTF_OF={"5m":"1m","15m":"1m","1h":"5m","4h":"15m","1d":"1h","3d":"4h","1w":"1d"};
+let CONFIRM=true;
+// Entry rules on the lower timeframe: EMA 9 above 21 at the CHoCH (below for shorts), CHoCH candle volume vs its
+// 20-candle average (0 = not required), skip on the 3rd test of the sweep low, and exit early before Target 1 if the
+// lower timeframe breaks structure against the trade.
+const CF={ema:true,vol:0,maxSweeps:3,earlyExit:true};
+function levels(d,x,sr,vp,method="ob",tf=null){
   const L=d.close.length-1,a=d.atr[L],bull=x.type.endsWith("bull"),c=d.close[L];
   // The pivot candle is where liquidity was taken: it is the order block.
   // Order block entry in two halves: the first at the middle of the fair value gap the move left behind (if it left one),
   // otherwise at the block's near edge; the second at the block's middle. If price is already past a level at the signal,
-  // that half enters at the close. Stop just beyond the sweep low/high (0.1 ATR), never closer than 0.3 ATR.
-  // Sweep & reclaim (no sweep yet): wait for a dip past the pivot that closes back inside; stop 0.5 ATR past the pivot.
+  // that half enters at the close. Stop STOP_BUF ATR beyond the sweep low/high, and at least STOP_MIN ATR past the
+  // deeper entry, so ordinary wicks around the sweep don't take it out.
+  // Sweep & reclaim (no sweep yet): wait for a dip past the pivot that closes back inside; stop STOP_MIN ATR past the pivot
+  // to start with, moved to STOP_BUF ATR past the actual sweep wick if it runs further.
   const pivotX=bull?d.low[x.bi]:d.high[x.bi],zone=[d.low[x.bi],d.high[x.bi]],mid=(zone[0]+zone[1])/2;
   let entry,stop,atClose=false,e1,e2,e1src="order block top",fvg=null;
-  if(method==="sweep"){entry=e1=e2=pivotX+(bull?0.1:-0.1)*a;stop=pivotX+(bull?-0.5:0.5)*a;e1src="reclaim of the pivot";}
+  if(method==="sweep"){entry=e1=e2=pivotX+(bull?0.1:-0.1)*a;stop=pivotX+(bull?-STOP_MIN:STOP_MIN)*a;e1src="reclaim of the pivot";}
   else{
     const top=bull?zone[1]:zone[0];
     for(let i=x.bi+2;i<=L;i++){
@@ -823,7 +845,20 @@ function levels(d,x,sr,vp,method="ob"){
     if(bull?c<=e1:c>=e1){e1=c;atClose=true;e1src="signal close";}
     if(bull?c<=e2:c>=e2)e2=c;
     entry=(e1+e2)/2;
-    stop=bull?Math.min(zone[0]-0.1*a,e2-0.3*a):Math.max(zone[1]+0.1*a,e2+0.3*a);}
+    stop=bull?Math.min(zone[0]-STOP_BUF*a,e2-STOP_MIN*a):Math.max(zone[1]+STOP_BUF*a,e2+STOP_MIN*a);}
+  // Equal lows (highs) just past the stop are where stops cluster and get hunted: put the stop beyond them.
+  {const s0=structure(d),eq=bull?s0.eqL:s0.eqH;
+    if(eq&&eq.status==="intact"&&(bull?eq.lvl<entry&&eq.lvl>stop-STOP_BUF*a:eq.lvl>entry&&eq.lvl<stop+STOP_BUF*a))
+      stop=bull?Math.min(stop,eq.lvl-STOP_BUF*a):Math.max(stop,eq.lvl+STOP_BUF*a);}
+  // Confirmation entry: estimate the trade from the zone (entry at the zone, stop a quarter candle past the sweep) so the
+  // 1:1 and room checks still work before the lower timeframe has confirmed; the real entry and stop come at the CHoCH.
+  let cf=null;
+  if(CONFIRM&&tf&&LTF_OF[tf]&&(method==="ob"||method==="sweep")){
+    const poi=method==="ob"?e1:pivotX;
+    cf={confirm:LTF_OF[tf],tf,poi,win:method==="sweep"?CFG.sweepWin:CFG.trigger+3,deepLvl:pivotX-(bull?1.5:-1.5)*a,
+      emaOk:CF.ema,volMin:CF.vol,maxSweeps:CF.maxSweeps,earlyExit:CF.earlyExit,sweeps0:method==="ob"?1:0};
+    entry=poi;stop=pivotX-(bull?1:-1)*(method==="sweep"?STOP_MIN:0.25)*a;atClose=false;
+  }
   if(bull?stop>=entry:stop<=entry)return null;
   const R=Math.abs(entry-stop),rr=p=>Math.abs(p-entry)/R;
   // Targets: real levels beyond the current price (levels between entry and price were already broken on the way).
@@ -841,7 +876,7 @@ function levels(d,x,sr,vp,method="ob"){
   if(!bull&&t2.p<=0)t2={p:t1.p*0.6,src:"no level beyond T1"};
   const block=weak.filter(beyond).find(q=>rr(q.p)>=0.2&&rr(q.p)<rr(t1.p)*0.8);
   // A stop more than 3 ATR away means the pivot was a spike wick: too wide to trade (normal is about 1-2 ATR).
-  return {method,pivot:pivotX,zone,atClose,e1,e2,e1src,fvg,split:Math.abs(e1-e2)>1e-12,stopMode:S.stopMode,entry,stop,t1:t1.p,t2:t2.p,t1src:t1.src,t2src:t2.src,rr1:rr(t1.p),rr2:rr(t2.p),riskPct:R/entry*100,atr:a,block,ratr:R/a,wide:R>3*a};
+  return {...(cf||{}),method,pivot:pivotX,zone,atClose,e1,e2,e1src,fvg,split:!cf&&Math.abs(e1-e2)>1e-12,stopMode:S.stopMode,entry,stop,t1:t1.p,t2:t2.p,t1src:t1.src,t2src:t2.src,rr1:rr(t1.p),rr2:rr(t2.p),riskPct:R/entry*100,atr:a,block,ratr:R/a,wide:R>3*a};
 }
 // Setups that aren't worth trading at all: no plan, a spike-wide stop, or Target 1 paying under 1R.
 // Setups that ended without a fill (missed, expired, invalid) are not shown anywhere.
@@ -893,18 +928,19 @@ function pickPlan(h){
   let m=sw.ok?"ob":"sweep",why;
   if(!h.plans[m])m=METHODS.find(k=>h.plans[k])||"ob";
   const p=h.plans[m];
-  if(m==="ob"){why=!p?sw.txt:`${sw.txt}. Buy half at the ${p.e1src} (${fmtP(p.e1)})${p.split?` and half at the order block middle (${fmtP(p.e2)})`:""}; stop just past the sweep.`;
+  if(p&&p.confirm)why=`${sw.txt}. ${m==="ob"?`When price comes back to ${fmtP(p.poi)} (${p.e1src})`:`When price ${bull?"dips below":"pops above"} ${fmtP(p.pivot)} (the stop hunt)`}, wait for a ${p.confirm} CHoCH ${bull?"up":"down"} and enter on that close; stop just past the ${p.confirm} ${bull?"low":"high"}.`;
+  else if(m==="ob"){why=!p?sw.txt:`${sw.txt}. Buy half at the ${p.e1src} (${fmtP(p.e1)})${p.split?` and half at the order block middle (${fmtP(p.e2)})`:""}; stop just past the sweep.`;
     if(p&&!bull)why=why.replace("Buy half","Sell half");}
   else why=`${sw.txt}. Wait for a ${bull?"dip below":"pop above"} ${p?fmtP(p.pivot):"the pivot"} that closes back ${bull?"above":"below"} it (the stop hunt), then enter.`;
   h.rec={m,why,swept:sw};h.lv=p||null;h.tm=h.lv?timing(h.lv,h):null;
 }
 function track(h){
   h.tracks={};const bull=dirOf(h.type)==="bull";
-  for(const m of METHODS)if(h.plans[m])h.tracks[m]=simulate(h.plans[m],bull,h.after,BT.fee);
+  for(const m of METHODS)if(h.plans[m])h.tracks[m]=simulate(h.plans[m],bull,h.after,BT.fee,h.ltf);
   h.track=h.tracks[h.rec.m]||null;
 }
 function buildHit(d,f,x,c,tf,sr,vp){
-  const L=d.close.length-1,plans={},st=structure(d),loc=legLoc(d,st,x,dirOf(x.type)==="bull");for(const m of METHODS)plans[m]=levels(d,x,sr,vp,m);
+  const L=d.close.length-1,plans={},st=structure(d),loc=legLoc(d,st,x,dirOf(x.type)==="bull");for(const m of METHODS)plans[m]=levels(d,x,sr,vp,m,tf);
   const lv=plans.ob||plans.sweep||null;
   const out={...x,lv,plans,rec:{m:lv?lv.method:"ob",why:""},tm:lv?timing(lv,x):null,sym:c.base,id:c.id,tf,close:d.close[L],rsiNow:d.rsi[L],vx:f.vx,
     longP:S.periods[S.periods.length-1],e200:d.maOk[S.periods[S.periods.length-1]]?(d.close[L]/d.ma[S.periods[S.periods.length-1]][L]-1)*100:null,macdUp:d.hist[L]>d.hist[L-1],aboveList:f.aboveList,
@@ -967,11 +1003,30 @@ function scoreHit(h,conf){
   if(cx.against.length)pen.push({pts:Math.min(10,5*cx.against.length),txt:`Opposite signal on ${cx.against.join(", ")}`});
   if(h.conflict)pen.push({pts:10,txt:"Opposite divergence on the same timeframe"});
   if(lv&&lv.block)pen.push({pts:5,txt:`${lv.block.src} in the way at ${fmtP(lv.block.p)}`});
-  const score=Math.max(0,Math.min(100,checks.reduce((a,c)=>a+c.pts,0)+quality.pts-pen.reduce((a,p)=>a+p.pts,0)));
+  // Context. Daily golden / death cross (EMA 50 vs 200) as the big-picture regime; works in backtests too.
+  const plus=[],notes=[],d1=HTFL[h.id]&&HTFL[h.id]["1d"]&&HTFL[h.id]["1d"].ema;
+  if(d1&&d1[50]!=null&&d1[200]!=null){const reg=d1[50]>d1[200]?1:-1;
+    if(reg===-D)pen.push({pts:5,txt:`Daily ${reg>0?"golden":"death"} cross: EMA 50 ${reg>0?"above":"below"} 200, against the trade`});}
+  // Live only (no history for these): BTC turning against an alt trade, funding crowding, spot-led vs leverage-led.
+  if(!h.bt&&!h.pit){
+    const bid=src&&src.id?src.id("BTC"):"BTCUSDT",bm=STRUCT[bid];
+    if(h.id!==bid&&bm){const b1=bm["1h"],b4=bm["4h"];
+      if((b1&&b1.last&&b1.last.kind==="CHoCH"&&b1.last.dir===-D&&b1.ago<=6)||(b4&&b4.last&&b4.last.dir===-D&&b4.ago<=3))
+        pen.push({pts:5,txt:`BTC is turning ${D>0?"down":"up"} (${b1&&b1.last&&b1.last.dir===-D&&b1.ago<=6?`1h ${b1.last.kind} ${b1.ago} candles ago`:`4h ${b4.last.kind} ${b4.ago} candles ago`})`});}
+    const cx2=CTX[h.id];
+    if(cx2&&cx2.fu&&cx2.fu.funding!=null){const fp=cx2.fu.funding*100,crowd=D>0?fp>=0.03:fp<=-0.03,fuel=D>0?fp<=-0.01:fp>=0.03;
+      notes.push(`Funding ${fp>=0?"+":""}${fp.toFixed(3)}% (${fp>0?"longs paying, more longs open":fp<0?"shorts paying, more shorts open":"neutral"})`);
+      if(crowd)pen.push({pts:5,txt:`${D>0?"Longs":"Shorts"} crowded: funding ${fp>=0?"+":""}${fp.toFixed(3)}%`});
+      else if(fuel)plus.push({pts:3,txt:`${D>0?"Shorts":"Longs"} paying funding (${fp.toFixed(3)}%): squeeze fuel for this trade`});}
+    if(cx2&&cx2.v){const lab=cx2.v.label;notes.push(`Flow: ${lab}`);
+      if(lab==="Spot-led"&&(D>0?(cx2.sp.taker??0.5)>=0.5:(cx2.sp.taker??0.5)<0.5))plus.push({pts:3,txt:`Spot-led move: real ${D>0?"buying":"selling"}, more likely to run to Target 2`});
+      else if(lab==="Leverage-led")pen.push({pts:3,txt:"Leverage-led move: futures driving price, take profit at Target 1"});}
+  }
+  const score=Math.max(0,Math.min(100,checks.reduce((a,c)=>a+c.pts,0)+quality.pts+plus.reduce((a,p)=>a+p.pts,0)-pen.reduce((a,p)=>a+p.pts,0)));
   let verdict=score>=70?"take":score>=50?"risk":"skip";
   if(ignoredOf(h))verdict="skip";
   const pros=checks.filter(c=>c.ok).map(c=>c.txt),cons=[...pen.map(p=>p.txt),...checks.filter(c=>!c.ok).map(c=>c.txt)];
-  return {score,verdict,checks,quality,pen,pros:pros.slice(0,3),cons:cons.slice(0,3),flags:{},key:[h.id,h.tf,h.type,h.time].join("|")};
+  return {score,verdict,checks,quality,pen,plus,notes,pros:pros.slice(0,3),cons:cons.slice(0,3),flags:{},key:[h.id,h.tf,h.type,h.time].join("|")};
 }
 const VERDICT={take:["Take","bull"],risk:["High risk","gold"],skip:["Skip","bear"]};
 const LABEL={regular_bull:"Regular bullish",hidden_bull:"Hidden bullish",regular_bear:"Regular bearish",hidden_bear:"Hidden bearish"};
@@ -1194,6 +1249,14 @@ const FUT=[
     return {perpVol:+x.volCcy24h*+x.last,funding:+f.data[0].fundingRate,oiChg:a.length>1?(a[a.length-1]/a[0]-1)*100:null};
   }}
 ];
+// Funding and spot/futures flow for coins with setups (live only, refreshed every 10 minutes).
+const CTX={};
+async function loadCtx(ids){
+  const q=ids.filter(id=>!CTX[id]||Date.now()-CTX[id].at>10*60e3);
+  await Promise.all(Array.from({length:4},async()=>{while(q.length){const id=q.shift(),base=id.replace(/-?USDT$/,"");
+    try{const [fu,sp]=await Promise.all([futuresInfo(base).catch(()=>null),spotInfo(base).catch(()=>null)]);
+      CTX[id]={fu,sp,v:sp?flowVerdict(sp,fu):null,at:Date.now()};}catch(e){}}}));
+}
 async function futuresInfo(base){
   for(const f of FUT){try{const r=await f.get(base);if(r&&r.perpVol>0)return {...r,src:f.name};}catch(e){}}
   return null;
@@ -1278,16 +1341,25 @@ function trackInfo(h){
   const o=h.track;if(!o)return null;
   const bull=dirOf(h.type)==="bull",until=fmtDate(h.sigTime+CFG.trigger*TF_MS(h.tf));
   switch(o.status){
-    case "pending":return ["Waiting for entry","flat",`${h.lv.method==="ob"?`Waiting for price to come back to ${fmtP(h.lv.e1)} (${h.lv.e1src})${h.lv.split?`, then ${fmtP(h.lv.e2)}`:""}`:h.lv.method==="pullback"?"Waiting for the pullback":h.lv.method==="sweep"?`Waiting for a ${bull?"dip below":"pop above"} ${fmtP(h.lv.pivot)} that closes back ${bull?"above":"below"} ${fmtP(h.lv.entry)}`:"Waiting for the breakout"} · valid until ${h.lv.method==="sweep"?fmtDate(h.sigTime+CFG.sweepWin*TF_MS(h.tf)):until}`];
+    case "pending":if(h.lv.confirm)return ["Waiting for entry","flat",o.touched>=0
+        ?`In the zone${o.sweeps>1?` (${o.sweeps} sweeps of the low so far)`:""}. Waiting for a ${h.lv.confirm} close ${bull?"above":"below"} ${o.chochLvl!=null?fmtP(o.chochLvl):`the last ${h.lv.confirm} swing ${bull?"high":"low"}`} (CHoCH)${h.lv.emaOk?` with EMA 9 ${bull?"above":"below"} 21`:""}${h.lv.volMin?` on ${h.lv.volMin}× volume`:""} to enter.${o.waitEma?" The last break came without the EMA cross.":""}${o.waitVol?" The last break came on low volume.":""}`
+        :`Waiting for price to reach ${fmtP(h.lv.poi)}, then a ${h.lv.confirm} CHoCH ${bull?"up":"down"} to enter.`];
+      return ["Waiting for entry","flat",`${h.lv.method==="ob"?`Waiting for price to come back to ${fmtP(h.lv.e1)} (${h.lv.e1src})${h.lv.split?`, then ${fmtP(h.lv.e2)}`:""}`:h.lv.method==="pullback"?"Waiting for the pullback":h.lv.method==="sweep"?`Waiting for a ${bull?"dip below":"pop above"} ${fmtP(h.lv.pivot)} that closes back ${bull?"above":"below"} ${fmtP(h.lv.entry)}`:"Waiting for the breakout"} · valid until ${h.lv.method==="sweep"?fmtDate(h.sigTime+CFG.sweepWin*TF_MS(h.tf)):until}`];
     case "no_trigger":
       if(o.missed)return ["Closed · missed","flat",`Price reached Target 1 (${fmtP(h.lv.t1)}) without ${h.lv.method==="pullback"||h.lv.method==="ob"?"pulling back to":h.lv.method==="sweep"?"sweeping for":"breaking"} the entry. No trade; don't chase it.`];
       if(o.failed)return ["Closed · invalid","flat",`Price closed ${bull?"below":"above"} the pivot (${fmtP(h.lv.pivot)}) before the entry, so the divergence failed. No trade.`];
+      if(o.noRoom)return ["Closed · no room","flat",`The ${h.lv.confirm} confirmed too far from the zone: Target 1 would pay under 1:1. No trade.`];
+      if(h.lv.confirm&&o.thirdTest)return ["Closed · invalid","flat",`The ${bull?"low":"high"} at ${fmtP(h.lv.pivot)} was tested a third time before the ${h.lv.confirm} turned; third tests usually break. No trade.`];
+      if(h.lv.confirm&&o.deep)return ["Closed · invalid","flat",`Price fell through the zone to ${fmtP(h.lv.deepLvl)} before the ${h.lv.confirm} turned. No trade.`];
+      if(h.lv.confirm&&!o.failed&&!o.missed)return ["Closed · expired","flat",o.touched>=0?`Price reached the zone but the ${h.lv.confirm} never turned in time. No trade.`:"Price never came back to the zone in time. No trade."];
       return ["Closed · "+(o.deep?"invalid":"expired"),"flat",o.deep?"The sweep ran so far that a stop past it would pay under 1:1, so the setup is cancelled. No trade.":"The entry was not reached in time. No trade."];
     case "open":{const ent=o.avg||h.lv.entry,part=h.lv.split&&o.fill!=null?(o.fill<1?`First half filled at ${fmtP(h.lv.e1)}; second half still waiting at ${fmtP(h.lv.e2)}.`:`Both halves filled, average ${fmtP(ent)}.`):"";
+      if(o.confirm&&o.t1<0)return ["In trade","gold",`Entered ${fmtDate(o.tt)} at ${fmtP(o.entryP)} on a ${o.confirm} CHoCH. Stop ${fmtP(o.stopA)}.`];
       return o.t1>=0?["T1 hit · stop at entry","bull",`Target 1 reached ${fmtDate(o.t1t)}. Half taken, stop moved to the average entry (${fmtP(ent)}), aiming for Target 2.`]:["In trade","gold",`${o.atClose?`Entered at the signal close (${fmtDate(h.sigTime)}).`:`Entry filled ${fmtDate(o.tt)}.`} ${part}`.trim()];}
     case "t2":return ["Closed · T2 hit","bull",`Both targets reached (${fmtDate(o.t2t)}). Trade closed.`];
     case "t1_be":return ["Closed · at entry","flat","Target 1 hit, then price came back to the entry. Trade closed with half the profit."];
-    case "stopped":return ["Closed · stopped","bear",o.wick?`Stopped by a wick ${fmtDate(o.st)}. The candle closed back inside the stop, which looks like a stop hunt. Trade closed.`:`Stop hit ${fmtDate(o.st)}. Trade closed.`];
+    case "stopped":if(o.early)return ["Closed · early exit",o.r>=0?"flat":"bear",`The ${o.confirm} broke structure against the trade before Target 1 (${fmtDate(o.st)}), so it was closed early at ${o.r>=0?"+":""}${o.r.toFixed(2)}R instead of waiting for the stop.`];
+      return ["Closed · stopped","bear",o.wick?`Stopped by a wick ${fmtDate(o.st)}. The candle closed back inside the stop, which looks like a stop hunt. Trade closed.`:`Stop hit ${fmtDate(o.st)}. Trade closed.`];
     default:return ["Closed · time limit","flat","No result within 200 candles. Trade closed."];
   }
 }
@@ -1296,13 +1368,14 @@ function invChecks(h){
   const o=h.track,lv=h.lv;if(!o||!lv)return null;
   const bull=dirOf(h.type)==="bull",D=bull?1:-1,items=[];
   if(o.status==="pending"){
-    items.push({ok:true,txt:`Entry window open until ${fmtDate(h.sigTime+(lv.method==="sweep"?CFG.sweepWin:CFG.trigger)*TF_MS(h.tf))}`});
+    items.push({ok:true,txt:`Entry window open until ${fmtDate(h.sigTime+(lv.confirm?lv.win:lv.method==="sweep"?CFG.sweepWin:CFG.trigger)*TF_MS(h.tf))}`});
     items.push({ok:true,txt:`Target 1 (${fmtP(lv.t1)}) not reached yet; if it is reached first, the move is missed`});
     items.push({ok:true,txt:`Pivot ${fmtP(lv.pivot)} holding; a ${h.tf} close ${bull?"below":"above"} it cancels the setup`});
-    if(lv.method==="sweep"&&o&&o.lim!=null)items.push({ok:true,txt:`Sweep stays inside ${fmtP(o.lim)}; past that, a stop beyond the wick would pay under 1:1 and the setup is cancelled`});
+    if(lv.confirm)items.push({ok:true,txt:`Price stays ${bull?"above":"below"} ${fmtP(lv.deepLvl)}; ${bull?"falling":"rising"} through it cancels the setup`});
+    else if(lv.method==="sweep"&&o&&o.lim!=null)items.push({ok:true,txt:`Sweep stays inside ${fmtP(o.lim)}; past that, a stop beyond the wick would pay under 1:1 and the setup is cancelled`});
   }else if(o.status==="open"){
-    const since=o.atClose?h.after.length:h.after.length-1-o.trig,hard=lv.stop-D*0.5*Math.abs(lv.entry-lv.stop);
-    items.push({ok:true,txt:o.t1>=0?`Stop at entry (${fmtP(lv.entry)}) since Target 1`:`Stop ${fmtP(lv.stop)} not hit${lv.stopMode==="close"?` (exits on a ${h.tf} close past it; hard stop ${fmtP(hard)})`:""}`});
+    const E=o.entryP??o.avg??lv.entry,SP=o.stopA??lv.stop,since=o.atClose?h.after.length:h.after.length-1-o.trig,hard=SP-D*0.5*Math.abs(E-SP);
+    items.push({ok:true,txt:o.t1>=0?`Stop at entry (${fmtP(E)}) since Target 1`:`Stop ${fmtP(SP)} not hit${lv.stopMode==="close"?` (exits on a ${lv.confirm||h.tf} close past it; hard stop ${fmtP(hard)})`:""}`});
     const st=STRUCT[h.id]&&STRUCT[h.id][h.tf];
     if(st){const bad=st.last&&st.last.kind==="CHoCH"&&st.last.dir===-D&&st.ago<=since;
       items.push({ok:!bad,txt:bad?`${h.tf} structure turned ${bull?"down":"up"} (CHoCH at ${fmtP(st.last.lvl)}, ${st.ago} candle${st.ago===1?"":"s"} ago). Consider exiting.`:`No ${h.tf} CHoCH against the trade since entry`});}
@@ -1322,6 +1395,13 @@ const lateTxt=pr=>pr>=1?"Price has reached Target 1. If you're in, take half and
   pr>=0.5?`Too late to enter now: price is ${Math.round(pr*100)}% of the way to Target 1. Only manage it if you're already in.`:
   `Late: price is ${Math.round(pr*100)}% of the way to Target 1, so entering now cuts the reward.`;
 const sigKey=h=>[h.id,h.tf,h.type,h.time].join("|");
+// TradingView's free embeddable chart: the coin on the signal's timeframe, with RSI (where divergences show).
+const TV_INT={"1m":"1","3m":"3","5m":"5","15m":"15","30m":"30","1h":"60","2h":"120","4h":"240","6h":"360","8h":"480","12h":"720","1d":"D","3d":"3D","1w":"W","1M":"M"};
+function tvEmbed(s,id,tf){
+  const sym=s&&s.name==="OKX"?`OKX:${id.replace("-","")}`:`BINANCE:${id}${typeof PERP!=="undefined"&&PERP.has(id)?".P":""}`;
+  const dark=document.documentElement.dataset.theme==="dark"||(document.documentElement.dataset.theme!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches);
+  return `https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(sym)}&interval=${TV_INT[tf]||"240"}&theme=${dark?"dark":"light"}&style=1&timezone=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone)}&studies=${encodeURIComponent("RSI@tv-basicstudies")}&hide_side_toolbar=0&withdateranges=1&locale=en`;
+}
 function signalHTML(h){
   const bull=h.type.endsWith("bull"),L=h.live||h.close,lv=h.lv;
   let html=h.out?outcomeHTML(h):"";
@@ -1329,14 +1409,14 @@ function signalHTML(h){
     const fromEntry=p=>pctTxt(p,lv.entry);
     const ENTRY_LBL={ob:["Buy at the order block","Sell at the order block"],close:["Entry (signal close)","Entry (signal close)"],pullback:["Buy on dip to","Sell on bounce to"],sweep:["Buy on reclaim of","Sell on reclaim of"],breakout:["Buy above","Sell below"]};
     const elab=!h.out&&h.track&&h.track.trig>=0?"Entered at":lv.atClose?"Entry (at the order block now)":ENTRY_LBL[lv.method][bull?0:1];
-    const prog=(L-lv.entry)/(lv.t1-lv.entry);   // share of the way from entry to Target 1 already covered
+    const E0=h.track&&h.track.entryP!=null?h.track.entryP:lv.entry,prog=(L-E0)/(lv.t1-E0);   // share of the way from entry to Target 1 already covered
     const inTrade=!h.out&&!!h.track&&h.track.status==="open"&&h.track.t1<0,late=inTrade&&prog>=0.25,inv=h.out?null:invChecks(h);
     const closed=!h.out&&isClosed(h.track),ti=trackInfo(h);
     const row=(k,v,note,cls,va,na)=>`<div class="pr"><span class="pk">${k}</span><span class="pv ${cls||""}"${va||""}>${v}</span><span class="pn"${na||""}>${note}</span></div>`;
     const isLive=MODE==="live";
     html+=`<div class="plan2">
       <div class="ph"><span class="pill ${bull?"bull":"bear"}">${bull?"Long":"Short"}</span><span class="mu">${h.tf} · ${LABEL[h.type]} · signal ${fmtDate(h.sigTime)}</span></div>
-      <div class="rec"><b>Entry: ${MNAME[h.rec.m]}</b>${h.rec.why?` · ${esc(h.rec.why)}`:""}</div>
+      <div class="rec"><b>Entry: ${lv.confirm?`${h.rec.m==="ob"?"Order block":"Sweep"} + ${lv.confirm} CHoCH`:MNAME[h.rec.m]}</b>${h.rec.why?` · ${esc(h.rec.why)}`:""}</div>
       ${(()=>{const y=!h.out&&!closed&&STRUCT[h.id]?tradeType(h,styleOf(STRUCT[h.id])):null;return y?`<div class="rec${y.counter?" gold":""}"><b>${y.label}</b> · ${esc(y.txt)}</div>`:"";})()}
       ${!closed&&lv.wide?`<div class="rec gold"><b>⚠️ Skip: stop too wide</b> · The pivot was a spike, so the stop sits ${lv.riskPct.toFixed(0)}% away (${lv.ratr.toFixed(1)} ATR; normal is 1–2). Targets that far out aren't realistic.</div>`:""}
       ${!closed&&h.chk&&tierOf(h)==="risk"?`<div class="rec gold"><b>⚠️ Enter at your own risk</b> · ${h.chk.n}/${h.chk.total} checks met${(()=>{const m=h.chk.items.filter(i=>!i.ok).map(i=>i.txt).slice(0,3);return m.length?`. Missing: ${esc(m.join("; "))}`:"";})()}. If you take it, use half size and take profit at Target 1.</div>`:""}
@@ -1344,17 +1424,25 @@ function signalHTML(h){
       <div class="${closed?"dim":""}">
       ${row(isLive?"Live price":"Price then",fmtP(L),"","",isLive?` data-live="${h.id}"`:"")}
       ${(()=>{const tk=!h.out&&h.track,filled=tk&&tk.trig>=0;
+        if(lv.confirm){const oo=h.out||tk;
+          if(oo&&oo.trig>=0)return row("Entered at",fmtP(oo.entryP),`${lv.confirm} CHoCH · ${fmtDate(oo.tt)}`);
+          if(closed)return row("Zone",fmtP(lv.poi),"never confirmed");
+          return row("Zone",fmtP(lv.poi),`${pctTxt(lv.poi,L)} from ${isLive?"live":"price then"} · then a ${lv.confirm} CHoCH`,"","",isLive?` data-dist="${h.id}" data-entry="${lv.poi}"`:"")+
+            row("Entry",tk&&tk.touched>=0?"in the zone":"after CHoCH",tk&&tk.chochLvl!=null&&tk.touched>=0?`on a ${lv.confirm} close ${bull?"above":"below"} ${fmtP(tk.chochLvl)}`:`a ${lv.confirm} close ${bull?"above its last lower high":"below its last higher low"}`);}
         if(filled)return row("Entered at",fmtP(tk.avg||lv.entry),lv.split&&tk.fill!=null?(tk.fill<1?`first half · second half waits at ${fmtP(lv.e2)}`:"both halves (average)"):tk.atClose?"at the signal close":`filled ${fmtDate(tk.tt)}`);
         if(closed)return row(elab,fmtP(lv.entry),"never filled");
         if(lv.method==="ob"&&lv.split){const w=bull?"Buy":"Sell";
           return row(`${w} half at`,fmtP(lv.e1),`${lv.e1src} · ${pctTxt(lv.e1,L)} from ${isLive?"live":"price then"}`,"","",isLive?` data-dist="${h.id}" data-entry="${lv.e1}"`:"")+row(`${w} half at`,fmtP(lv.e2),`order block middle · average ${fmtP(lv.entry)}`);}
         return row(elab,fmtP(lv.entry),`${pctTxt(lv.entry,L)} from ${isLive?"live":"price then"}`,"","",isLive?` data-dist="${h.id}" data-entry="${lv.entry}"`:"");})()}
-      ${(()=>{const sa=h.track&&h.track.stopA,sp=sa??lv.stop,rk=Math.abs(lv.entry-sp)/lv.entry*100,sw=lv.method==="sweep"&&sa==null;
-        return row(sw?"Stop (at least)":"Stop",fmtP(sp),`${fromEntry(sp)} · risk ${rk.toFixed(1)}%${sw?` · moves just past the sweep ${bull?"low":"high"} if it goes further`:""}${lv.stopMode==="close"?` · on close, hard ${fmtP(sp-(bull?1:-1)*0.5*Math.abs(lv.entry-sp))}`:""}`,"neg");})()}
-      ${row("Target 1",fmtP(lv.t1),`${fromEntry(lv.t1)} · ${(h.track&&h.track.stopA!=null?h.track.rr1:lv.rr1).toFixed(1)}R · ${esc(lv.t1src)}`,"pos")}
-      ${row("Target 2",fmtP(lv.t2),`${fromEntry(lv.t2)} · ${lv.rr2.toFixed(1)}R · ${esc(lv.t2src)}`,"pos")}
+      ${(()=>{const oo=h.out||h.track,sa=oo&&oo.stopA,E=oo&&oo.entryP!=null?oo.entryP:lv.entry,sp=sa??lv.stop,rk=Math.abs(E-sp)/E*100,sw=lv.method==="sweep"&&sa==null&&!lv.confirm;
+        if(lv.confirm&&sa==null)return row("Stop (est.)",fmtP(sp),`set at the CHoCH: just past the lowest ${lv.confirm} ${bull?"low":"high"} in the zone`,"neg");
+        return row(sw?"Stop (at least)":"Stop",fmtP(sp),`${fromEntry(sp)} · risk ${rk.toFixed(1)}%${sw?` · moves just past the sweep ${bull?"low":"high"} if it goes further`:""}${lv.stopMode==="close"?` · on close, hard ${fmtP(sp-(bull?1:-1)*0.5*Math.abs(E-sp))}`:""}`,"neg");})()}
+      ${(()=>{const oo=h.out||h.track,E=oo&&oo.entryP!=null?oo.entryP:lv.entry,sp=(oo&&oo.stopA)??lv.stop,dp=Math.abs(E-sp)/E,pos=S.risk/dp;
+        return row("Size",`$${pos>=1000?Math.round(pos).toLocaleString():pos.toFixed(0)}`,`risking $${S.risk} with a ${(dp*100).toFixed(1)}% stop${lv.confirm&&!(oo&&oo.stopA!=null)?" · estimate until the CHoCH sets the stop":""}`);})()}
+      ${(()=>{const oo=h.out||h.track,real=oo&&oo.stopA!=null;return row("Target 1",fmtP(lv.t1),`${pctTxt(lv.t1,real&&oo.entryP!=null?oo.entryP:lv.entry)} · ${real?"":lv.confirm?"about ":""}${(real?oo.rr1:lv.rr1).toFixed(1)}R · ${esc(lv.t1src)}`,"pos");})()}
+      ${(()=>{const oo=h.out||h.track,real=oo&&oo.stopA!=null,E=real&&oo.entryP!=null?oo.entryP:lv.entry,R2=real?Math.abs(lv.t2-E)/(oo.Rp||Math.abs(E-oo.stopA)):lv.rr2;return row("Target 2",fmtP(lv.t2),`${pctTxt(lv.t2,E)} · ${!real&&lv.confirm?"about ":""}${R2.toFixed(1)}R · ${esc(lv.t2src)}`,"pos");})()}
       </div>
-      ${inTrade?`<div class="late"${late?"":" hidden"}${isLive?` data-late="${h.id}" data-entry="${lv.entry}" data-t1="${lv.t1}"`:""}>${late?lateTxt(prog):""}</div>`:""}
+      ${inTrade?`<div class="late"${late?"":" hidden"}${isLive?` data-late="${h.id}" data-entry="${E0}" data-t1="${lv.t1}"`:""}>${late?lateTxt(prog):""}</div>`:""}
       ${inv?`<div class="inv"><b>Invalidation checks</b>${inv.map(i=>`<div class="${i.ok?"ok":"no"}"><b>${i.ok?"✓":"✗"}</b><span>${esc(i.txt)}</span></div>`).join("")}</div>`:""}
       <div class="pt">Levels fixed at the signal · T1 ~${dur(h.tm.t1[0],h.tf)}–${dur(h.tm.t1[1],h.tf)} · T2 ~${dur(h.tm.t2[0],h.tf)}–${dur(h.tm.t2[1],h.tf)}</div>
     </div>`;
@@ -1422,6 +1510,7 @@ function makeCard(o){
   if(t)h+=signalHTML(t);
   if(sty)h+=structHTML(o.struct,sty,t);
   const lvTfs=o.lv?sortTf([...new Set([...S.favs,o.lv.tf])]):[];
+  if(!o.asOf)h+=`<details class="sec tvsec"><summary>Chart (TradingView)</summary><div class="secbody"><div class="tvbox"></div></div></details>`;
   if(o.lv)h+=`<details class="sec lvsec x-levels"><summary>Key levels${o.asOf?" at that time":""}</summary><div class="secbody">
     <div class="chips lvtf" role="group" aria-label="Key levels timeframe">${lvTfs.map(tf=>`<button class="chip" data-lvtf="${tf}" aria-pressed="${tf===o.lv.tf}">${tf}</button>`).join("")}</div>
     <div class="lvbox">${ladderHTML(lvx,null)}</div></div></details>`;
@@ -1430,6 +1519,10 @@ function makeCard(o){
   if(o.rows)h+=`<details class="sec x-tfs"><summary>${o.check?"All timeframes":"Other timeframes"} (${o.rowsN})</summary><div class="secbody">${o.rows}</div></details>`;
   h+=`<div class="links"><a target="_blank" rel="noopener" href="${liqURL(o.sym)}">Liquidation heatmap ↗</a><a target="_blank" rel="noopener" href="${o.s.tv(o.id)}">Chart ↗</a></div></div>`;
   el.innerHTML=h;
+  const tvs=el.querySelector("details.tvsec");
+  if(tvs)tvs.addEventListener("toggle",()=>{if(!tvs.open||tvs.dataset.ok)return;tvs.dataset.ok="1";
+    tvs.querySelector(".tvbox").innerHTML=`<iframe title="${esc(o.sym)} chart" loading="lazy" src="${tvEmbed(o.s,o.id,t?t.tf:(o.lv&&o.lv.tf)||"4h")}"></iframe>
+      <div class="legend">${t&&t.lv?`Entry ${fmtP(t.lv.entry)} · Stop ${fmtP((t.track&&t.track.stopA)??t.lv.stop)} · Target 1 ${fmtP(t.lv.t1)} · Target 2 ${fmtP(t.lv.t2)} (the chart can't draw these lines; use the alert toolbar on TradingView to mark them)`:""}</div>`;});
   const lvs=el.querySelector("details.lvsec");
   if(lvs){
     // Support, resistance and volume are recalculated for whichever timeframe is picked; weekly/monthly/quarterly stay the same.
@@ -1517,7 +1610,11 @@ async function scan(){
     }
   };
   await Promise.all(Array.from({length:6},worker));
+  if(hits.some(h=>h.lv&&h.lv.confirm)){setStatus("Checking lower-timeframe entries…");
+    if(bt)await resimLtf(hits);else{await attachLtf(hits);for(const h of hits)if(h.lv&&h.lv.confirm){track(h);if(h.live)applyLive(h,h.live);}}}
   const ids=[...new Set(hits.map(h=>h.id))];
+  if(ids.length&&src&&!ids.includes(src.id("BTC")))ids.push(src.id("BTC"));
+  if(ids.length&&!bt){setStatus("Checking funding and spot flow…");await loadCtx(ids.filter(i=>i!==src.id("BTC")));}
   if(ids.length){setStatus(`Reading daily, 4h, 1h and 15m structure for ${ids.length} coin(s)…`);const q=ids.slice();
     await Promise.all(Array.from({length:4},async()=>{while(q.length)await fillCore(src,q.shift(),at);}));}
   const coins=renderScan(hits,at);
@@ -1584,7 +1681,10 @@ async function checkCoin(){
     if(bt&&hs.length)await attachOutcomes(hs,used,c.id,tf,ct);
     return {tf,d,f,sr,vp,hs,live};
   }));
+  {const all=prep.flatMap(p=>p.hs||[]);if(all.some(h=>h.lv&&h.lv.confirm)){setStatus(`Checking ${base} lower-timeframe entries…`);
+    if(bt)await resimLtf(all);else{await attachLtf(all);for(const h of all)if(h.lv&&h.lv.confirm){track(h);if(h.live)applyLive(h,h.live);}}}}
   setStatus(`Checking ${base} structure…`);await fillCore(used,c.id,at,STRUCT_TF);
+  if(!bt){const bid=used.id("BTC");if(bid!==c.id)await fillCore(used,bid,null);await loadCtx([c.id]);}
   // the latest setup that was missed (price hit Target 1 before the entry), to explain an empty check in one line
   const killT=o=>o.missT||o.failT||o.deepT||0;
   const missedLast=at?null:prep.flatMap(p=>p.hs||[]).filter(h=>!ignoredOf(h)&&h.track&&(h.track.missed||h.track.failed||h.track.deep)&&Date.now()-killT(h.track)<=6*TF_MS(h.tf))
@@ -1718,7 +1818,74 @@ function simulateOB(lv,bull,fwd,fee){
   const tm=k=>k>=0&&fwd[k]?fwd[k].t:null;o.tt=tm(o.trig);o.t1t=tm(o.t1);o.t2t=tm(o.t2);o.st=tm(o.stop);
   return o;
 }
-function simulate(lv,bull,fwd,fee){
+// Lower-timeframe confirmation entry. fwd = setup-timeframe candles after the signal, ltf = lower-timeframe candles after it.
+function simulateLTF(lv,bull,fwd,ltf,fee){
+  const dir=bull?1:-1,H=TF_MS(lv.tf),Lm=TF_MS(lv.confirm),a=lv.atr,o={trig:-1,t1:-1,t2:-1,stop:-1,fill:0,confirm:lv.confirm,touched:-1};
+  const reach=(c,p)=>bull?c.h>=p:c.l<=p,back=(c,p)=>bull?c.l<=p:c.h>=p,closedPast=(c,p)=>!c.live&&(bull?c.c<p:c.c>p);
+  const start=ltf.sigStart??((fwd[0]&&fwd[0].t)||(ltf[0]&&ltf[0].t));
+  if(start==null){o.status="pending";o.r=0;o.done=false;return o;}
+  const winEnd=start+lv.win*H,hIdx=t=>Math.max(0,Math.min(fwd.length-1,Math.floor((t-start)/H)));
+  // lower-timeframe EMA 9/21 and 20-candle average volume (candles before the signal are warm-up only)
+  const e9=[],e21=[],va=[];{const k9=2/10,k21=2/22;let a9=null,a21=null,vs=[];
+    for(const c of ltf){a9=a9==null?c.c:c.c*k9+a9*(1-k9);a21=a21==null?c.c:c.c*k21+a21*(1-k21);e9.push(a9);e21.push(a21);
+      va.push(vs.length?vs.reduce((x,y)=>x+y,0)/vs.length:null);vs.push(c.v||0);if(vs.length>20)vs.shift();}}
+  let sweeps=lv.sweeps0||0,below=false;
+  let failT=Infinity;for(const c of fwd){if(c.t>=winEnd)break;if(closedPast(c,lv.pivot)){failT=c.t+H;break;}}   // setup candle closed past the pivot
+  let ext=null,piv=[],ent=-1;
+  for(let j=0;j<ltf.length;j++){const c=ltf[j];
+    if(c.t<start)continue;
+    if(c.t>=failT){o.failed=true;o.failT=failT;break;}
+    // each new dip past the sweep low that comes back is another test; the 3rd usually breaks
+    if(back(c,lv.pivot)){if(!below){sweeps++;below=true;}}else if(!c.live&&(bull?c.c>lv.pivot:c.c<lv.pivot))below=false;
+    o.sweeps=sweeps;
+    if(lv.maxSweeps&&sweeps>=lv.maxSweeps){o.thirdTest=true;o.deep=true;o.deepT=c.t;break;}
+    if(c.t>=winEnd)break;
+    if(o.touched<0){if(reach(c,lv.t1)){o.missed=true;o.missT=c.t;break;}
+      if(!back(c,lv.poi))continue;o.touched=j;ext=bull?c.l:c.h;o.touchT=c.t;}
+    ext=bull?Math.min(ext,c.l):Math.max(ext,c.h);
+    if(back(c,lv.deepLvl)){o.deep=true;o.deepT=c.t;break;}       // fell far through the zone: not a sweep any more
+    if(j>=2){const k=j-1,ck=ltf[k],nb=[ltf[k-1],ltf[k+1]];       // lower-timeframe swing (internal: 1 candle each side)
+      if(k>=o.touched-8&&(bull?nb.every(n=>n.h<ck.h):nb.every(n=>n.l>ck.l)))piv.push(k);}
+    const k=piv.length?piv[piv.length-1]:-1,lvl=k>=0?(bull?ltf[k].h:ltf[k].l):null;
+    o.chochLvl=lvl;
+    if(j>o.touched&&reach(c,lv.t1)){o.missed=true;o.missT=c.t;break;}
+    if(lvl!=null&&k<j&&!c.live&&(bull?c.c>lvl:c.c<lvl)){              // CHoCH: a close beyond the last lower-timeframe swing
+      const emaGood=!lv.emaOk||(bull?e9[j]>e21[j]:e9[j]<e21[j]),volGood=!lv.volMin||(va[j]&&c.v>=lv.volMin*va[j]);
+      o.waitEma=!emaGood;o.waitVol=!volGood;
+      if(emaGood&&volGood){ent=j;break;}}
+  }
+  if(ent<0){const lastT=ltf.length?ltf[ltf.length-1].t+Lm:start;
+    o.status=o.failed||o.missed||o.deep?"no_trigger":lastT<winEnd?"pending":"no_trigger";o.r=0;o.done=false;o.lim=lv.deepLvl;return o;}
+  // entry at the CHoCH close; stop past the zone's extreme by half a lower-timeframe candle, at least 0.3 setup candle away
+  const c0=ltf[ent],E=c0.c,la=ltf.slice(Math.max(0,ent-13),ent+1).reduce((s,c)=>s+(c.h-c.l),0)/Math.min(14,ent+1);
+  let stop=ext-dir*0.5*la;if(Math.abs(E-stop)<0.3*a)stop=E-dir*0.3*a;
+  const R=Math.abs(E-stop),rr1=(lv.t1-E)*dir/R,rr2=(lv.t2-E)*dir/R;
+  o.entryP=E;o.stopA=stop;o.avg=E;o.Rp=R;o.rr1=rr1;o.tt=c0.t+Lm;o.trig=hIdx(c0.t);
+  if(rr1<1){o.noRoom=true;o.trig=-1;o.status="no_trigger";o.r=0;o.done=false;return o;}   // too far from the zone by the time it confirmed
+  o.fill=1;
+  // manage the trade: lower-timeframe candles while there are any, then setup-timeframe candles
+  const lastL=ltf.length?ltf[ltf.length-1].t+Lm:0,seq=ltf.slice(ent+1).map((c,i)=>({...c,ms:Lm,j:ent+1+i})).concat(fwd.filter(c=>c.t>=lastL).map(c=>({...c,ms:H})));
+  const endT=o.tt+200*H;let stopLvl=stop,exitP=null,rem=1,real=0,t1hit=false,last=null,ivl=null;
+  const hard=lvl=>lvl-dir*0.5*R;
+  for(const c of seq){if(c.t>=endT)break;last=c;
+    let px=null;
+    // early exit: before Target 1, a lower-timeframe close past its last higher low (lower high for shorts) made after entry
+    if(lv.earlyExit&&!t1hit&&c.j!=null){const k=c.j-1;
+      if(k-1>ent&&ltf[k+1]){const ck=ltf[k];if(bull?ck.l<ltf[k-1].l&&ck.l<ltf[k+1].l:ck.h>ltf[k-1].h&&ck.h>ltf[k+1].h)ivl=bull?ck.l:ck.h;}
+      if(ivl!=null&&!c.live&&(bull?c.c<ivl:c.c>ivl)){real+=rem*(c.c-E)*dir;rem=0;o.stop=hIdx(c.t);o.st=c.t;o.early=true;break;}}
+    if(lv.stopMode==="close"){if(back(c,hard(stopLvl)))px=hard(stopLvl);else if(closedPast(c,stopLvl))px=c.c;}
+    else if(back(c,stopLvl)){px=stopLvl;o.wick=!closedPast(c,stopLvl);}
+    if(px!=null){real+=rem*(px-E)*dir;rem=0;o.stop=hIdx(c.t);o.st=c.t;break;}
+    if(!t1hit&&reach(c,lv.t1)){real+=0.5*(lv.t1-E)*dir;rem=0.5;t1hit=true;o.t1=hIdx(c.t);o.t1t=c.t;stopLvl=E;}
+    if(t1hit&&reach(c,lv.t2)){real+=rem*(lv.t2-E)*dir;rem=0;o.t2=hIdx(c.t);o.t2t=c.t;break;}
+  }
+  const mtm=rem>0&&last?rem*(last.c-E)*dir:0,timedOut=last&&last.t+last.ms>=endT;
+  o.status=o.t2>=0?"t2":o.stop>=0?(t1hit?"t1_be":"stopped"):timedOut?"timeout":"open";
+  o.r=(real+(o.status==="open"||o.status==="timeout"?mtm:0))/R-fee/(R/E*100);o.done=o.status!=="open";
+  return o;
+}
+function simulate(lv,bull,fwd,fee,ltf){
+  if(lv.confirm)return ltf?simulateLTF(lv,bull,fwd,ltf,fee):{status:"pending",trig:-1,t1:-1,t2:-1,stop:-1,r:0,done:false,noLtf:true,confirm:lv.confirm};
   if(lv.method==="ob")return simulateOB(lv,bull,fwd,fee);
   let R=Math.abs(lv.entry-lv.stop);const dir=bull?1:-1,o={trig:-1,t1:-1,t2:-1,stop:-1},nC=fwd.reduce((n,c)=>n+(c.live?0:1),0);
   const reach=(c,p)=>bull?c.h>=p:c.l<=p, back=(c,p)=>bull?c.l<=p:c.h>=p, closedPast=(c,p)=>!c.live&&(bull?c.c<p:c.c>p);
@@ -1727,9 +1894,9 @@ function simulate(lv,bull,fwd,fee){
   if(lv.method==="close"||(lv.method==="ob"&&lv.atClose)){o.trig=0;o.atClose=true;start=0;
     if(!fwd.length){o.status="open";o.r=-fee/lv.riskPct;o.done=false;return o;}}
   else if(lv.method==="sweep"){
-    // The stop goes just past the real sweep wick (0.1 ATR), never closer than the planned stop. The sweep may run as far
+    // The stop goes STOP_BUF ATR past the real sweep wick, never closer than the planned stop. The sweep may run as far
     // as it likes, as long as a stop past it still leaves Target 1 at 1:1 or better and within 3 ATR; beyond that it's cancelled.
-    const a=lv.atr||R,lim=lv.entry-dir*(Math.min(Math.abs(lv.t1-lv.entry),3*a)-0.1*a);let ext=null;
+    const a=lv.atr||R,lim=lv.entry-dir*(Math.min(Math.abs(lv.t1-lv.entry),3*a)-STOP_BUF*a);let ext=null;
     for(let i=0;i<Math.min(win,fwd.length);i++){const c=fwd[i];
       ext=ext==null?(bull?c.l:c.h):bull?Math.min(ext,c.l):Math.max(ext,c.h);
       if(back(c,lim)){o.deep=true;o.deepT=c.t;break;}           // swept too far: a stop past it would pay under 1:1 (a touch counts)
@@ -1738,7 +1905,7 @@ function simulate(lv,bull,fwd,fee){
       if(reach(c,lv.t1)){o.missed=true;o.missT=c.t;break;}     // ran to Target 1 without the sweep: move missed
     }
     if(o.trig<0){o.status=o.deep||o.missed||o.failed?"no_trigger":nC<win?"pending":"no_trigger";o.r=0;o.done=false;o.lim=lim;return o;}
-    o.stopA=bull?Math.min(lv.stop,ext-0.1*a):Math.max(lv.stop,ext+0.1*a);R=Math.abs(lv.entry-o.stopA);
+    o.stopA=bull?Math.min(lv.stop,ext-STOP_BUF*a):Math.max(lv.stop,ext+STOP_BUF*a);R=Math.abs(lv.entry-o.stopA);
     start=o.trig+1;   // filled at the reclaim close
   }else{
     const fill=lv.method==="pullback"||lv.method==="ob"?back:reach;
@@ -1808,16 +1975,41 @@ function statTable(rows){
     rows.map(([lab,hs])=>{const t=statsOf(hs);return `<tr><td>${lab}</td><td>${t.n}</td><td>${t.trig}</td><td>${t.wr==null?"–":t.wr.toFixed(0)+"%"}</td>${rCell(t.avg)}${t.res?rCell(t.sum):"<td>–</td>"}</tr>`;}).join("")}</tbody></table></div>`;
 }
 
+// Lower-timeframe candles from each signal onward (one request per signal), for confirmation entries.
+async function ltfRows(id,tf,start,end){
+  const ms=TF_MS(tf);
+  if(id.includes("-")){const k=await okxEnding(id,tf,end,Math.ceil((end-start)/ms)+2);return k.filter(x=>x.t>=start);}
+  const url=(PERP.has(id)?"https://fapi.binance.com/fapi/v1/klines":"https://data-api.binance.vision/api/v3/klines")+`?symbol=${id}&interval=${tf}&startTime=${Math.floor(start)}&endTime=${Math.floor(end)}&limit=1000`;
+  const r=await fetch(url);if(!r.ok)throw new Error(r.status);
+  return (await r.json()).filter(x=>x[6]<=Math.min(end,Date.now())).map(x=>({t:x[0],h:+x[2],l:+x[3],c:+x[4],v:+x[7]}));
+}
+const LTF_CACHE=new Map();
+async function attachLtf(hits){
+  const q=hits.filter(h=>h.lv&&h.lv.confirm&&!h.ltf);
+  await Promise.all(Array.from({length:8},async()=>{while(q.length){const h=q.shift(),tf=h.lv.confirm,ms=TF_MS(tf),st=(h.sigTime||(h.at+1))-40*ms,key=h.id+"|"+tf+"|"+st;
+    if(LTF_CACHE.has(key))h.ltf=LTF_CACHE.get(key).map(c=>({...c}));
+    else try{h.ltf=await ltfRows(h.id,tf,st,Math.min(Date.now(),st+999*ms));if(h.bt||MODE==="bt")LTF_CACHE.set(key,h.ltf.map(c=>({...c})));}catch(e){h.ltf=[];}
+    h.ltf.sigStart=h.sigTime||(h.at+1);}}));
+}
+// Re-run the outcome of past signals once their lower-timeframe candles are in (backtests).
+async function resimLtf(hits){
+  await attachLtf(hits);
+  for(const h of hits)if(h.lv&&h.lv.confirm){const bull=dirOf(h.type)==="bull";h.outs=h.outs||{};
+    for(const m of METHODS)if(h.plans&&h.plans[m])h.outs[m]=simulate(h.plans[m],bull,h.fw||[],BT.fee,h.ltf||[]);
+    h.out=h.outs[h.rec.m]||h.out;}
+}
 // ---- outcomes for signals found as of a past date
 async function attachOutcomes(hs,s,id,tf,lastCt){
   let fwd=[];try{fwd=(await ending(s,id,tf,lastCt+260*TF_MS(tf),260)).filter(x=>x.t>lastCt);}catch(e){}
-  for(const h of hs){h.at=h.sigTime;h.outs={};const f=(h.after||[]).concat(fwd);
+  for(const h of hs){h.at=h.sigTime;h.outs={};const f=(h.after||[]).concat(fwd);h.fw=f;
     for(const m of METHODS)if(h.plans[m])h.outs[m]=simulate(h.plans[m],dirOf(h.type)==="bull",f,BT.fee);
     h.out=h.outs[h.rec.m]||{status:"broken",r:0,trig:-1};}
 }
 
 // ---- mode 2: history test over the last 1000 candles
-function historyHits(series,c,tf,from=-Infinity,to=Infinity){
+// pit (optional): sets up the higher-timeframe trend, levels and EMAs as they were at the signal's close, so the
+// full live rules (trend check, no trades into levels, EMA location) can be tested without looking ahead.
+function historyHits(series,c,tf,from=-Infinity,to=Infinity,pit=null){
   const D=analyse(toK(series)),n=series.length,out=[];
   const run=(piv,kind)=>{
     for(let j=1;j<piv.length;j++){
@@ -1834,9 +2026,11 @@ function historyHits(series,c,tf,from=-Infinity,to=Infinity){
       if(!x)continue;
       const v=viewAt(D,t),f=filters(v);             // only data up to the signal candle
       const sr=srLevels(v),vp=volumeProfile(v),h=buildHit(v,f,x,c,tf,sr,vp);
-      h.bt=true;if(ignoredOf(h))continue;
+      h.bt=true;if(pit){pit(h,series[t].ct);h.bt=false;h.pit=true;}
+      if(ignoredOf(h)){h.bt=true;continue;}
       h.sc=scoreHit(h,false);h.at=series[t].ct;
-      h.outs={};const fw=series.slice(t+1);
+      if(pit){h.chk=checklist(h);h.tier=tierOf(h);h.styleK=(()=>{const m=STRUCT[h.id];const y=m?styleOf(m):null;return y?tradeType(h,y).label:"";})();h.bt=true;}
+      h.outs={};const fw=series.slice(t+1);h.fw=fw;h.sigTime=series[t].ct+1;
       for(const m of METHODS)if(h.plans[m])h.outs[m]=simulate(h.plans[m],kind==="low",fw,BT.fee);
       h.out=h.outs[h.rec.m]||{status:"broken",r:0,trig:-1};
       out.push(h);
@@ -1877,6 +2071,7 @@ async function runHistory(scope){
     done++;$("prog").style.width=(done/total*100)+"%";setStatus(`Testing ${done}/${total}…`);
   }};
   await Promise.all(Array.from({length:scope==="top"?4:Math.min(3,total)},worker));
+  {const allH=Object.values(by).flat();if(allH.some(h=>h.lv&&h.lv.confirm)){setStatus("Checking lower-timeframe entries…");await resimLtf(allH);}}
   const per=Object.entries(by).map(([base,hs])=>({base,hs:hs.sort((a,b)=>b.at-a.at),stats:statsOf(hs)}));
   const all=per.flatMap(p=>p.hs);
   const box=$("results");box.textContent="";
@@ -2127,11 +2322,13 @@ window.cgBot=async(o={})=>{
         filledAt:tk&&tk.status==="open"?(tk.atClose?h.sigTime:tk.tt):null,stateTxt:ti?ti[0]:"",detail:ti?ti[2]:"",
         sigTime:h.sigTime,tfMs:TF_MS(h.tf),prog:lv?(live-lv.entry)/(lv.t1-lv.entry):null,
         e1:lv&&f(lv.e1),e2:lv&&f(lv.e2),e1src:lv?lv.e1src:"",split:!!lv&&!!lv.split,fill:tk&&tk.fill!=null?tk.fill:null,avg:tk&&tk.avg?f(tk.avg):null,
-        near:!!lv&&Math.abs(live-(lv.e1??lv.entry))<=lv.atr,
+        near:!!lv&&Math.abs(live-(lv.confirm?lv.poi:(lv.e1??lv.entry)))<=lv.atr,
         live:f(live),entry:lv&&f(lv.entry),stop:lv&&f(lv.stop),t1:lv&&f(lv.t1),t2:lv&&f(lv.t2),
         stopPct:lv&&pc(lv.stop),t1Pct:lv&&pc(lv.t1),t2Pct:lv&&pc(lv.t2),rr1:lv&&lv.rr1,rr2:lv&&lv.rr2,chart:src.tv(h.id),
         stopNow:tk&&tk.stopA!=null?f(tk.stopA):null,stopNowPct:tk&&tk.stopA!=null?pc(tk.stopA):null,rr1Now:tk&&tk.stopA!=null?tk.rr1:null,
-        plan:lv?{method:lv.method,pivot:lv.pivot,atClose:lv.atClose,e1:lv.e1,e2:lv.e2,split:lv.split,stopMode:lv.stopMode,entry:lv.entry,stop:lv.stop,t1:lv.t1,t2:lv.t2,rr1:lv.rr1,rr2:lv.rr2,riskPct:lv.riskPct,atr:lv.atr}:null};})};
+        notes:[...(h.sc.notes||[]),...(h.sc.plus||[]).map(p=>"✓ "+p.txt),...(h.sc.pen||[]).filter(p=>/funding|BTC is turning|Leverage-led|cross/.test(p.txt)).map(p=>"✗ "+p.txt)],
+        confirm:lv?lv.confirm||null:null,early:!!tk&&!!tk.early,poi:lv&&lv.poi!=null?f(lv.poi):null,entryNow:tk&&tk.entryP!=null?f(tk.entryP):null,chochLvl:tk&&tk.chochLvl!=null?f(tk.chochLvl):null,touched:!!tk&&tk.touched>=0,
+        plan:lv?{confirm:lv.confirm,poi:lv.poi,deepLvl:lv.deepLvl,win:lv.win,tf:lv.tf,method:lv.method,pivot:lv.pivot,atClose:lv.atClose,e1:lv.e1,e2:lv.e2,split:lv.split,stopMode:lv.stopMode,entry:lv.entry,stop:lv.stop,t1:lv.t1,t2:lv.t2,rr1:lv.rr1,rr2:lv.rr2,riskPct:lv.riskPct,atr:lv.atr}:null};})};
 };
 // ---------- weekly scorecard ----------
 // Re-plays each alerted trade from its signal candle with the same engine as the app (entry halves, half off at
@@ -2142,12 +2339,55 @@ window.cgGrade=async(list,size=1000)=>{
     try{const id=s.id(t.sym),ck=id+"|"+t.tf;
       if(!cache[ck])cache[ck]=await s.candles(id,t.tf);
       const fwd=cache[ck].filter(r=>+r[0]>=t.sigTime).map(r=>({t:+r[0],h:+r[2],l:+r[3],c:+r[4]}));
-      const lv=t.plan,o=simulate(lv,t.dir==="long",fwd,0),fill=o.fill!=null?o.fill:o.trig>=0?1:0;
-      const usd=o.r*(o.Rp||Math.abs(lv.entry-lv.stop))*size/lv.entry;
-      out.push({key:t.key,status:o.status,missed:!!o.missed,fill,r:o.r,usd,t1:o.t1>=0,enteredAt:o.tt||null,closedAt:o.t2t||o.st||null});
+      const lv=t.plan;let lt;
+      if(lv.confirm){const lm=TF_MS(lv.confirm);try{lt=await ltfRows(id,lv.confirm,t.sigTime,Math.min(Date.now(),t.sigTime+999*lm));}catch(e){lt=[];}}
+      const o=simulate(lv,t.dir==="long",fwd,0,lt),fill=o.fill!=null?o.fill:o.trig>=0?1:0;
+      const usd=o.r*(o.Rp||Math.abs(lv.entry-lv.stop))*size/(o.entryP||lv.entry);
+      out.push({key:t.key,status:o.status,missed:!!o.missed,early:!!o.early,fill,r:o.r,usd,t1:o.t1>=0,enteredAt:o.tt||null,closedAt:o.t2t||o.st||null});
     }catch(e){out.push({key:t.key,err:String(e&&e.message||e)});}
   }
   return out;
+};
+// ---------- full-rules backtest (run on the alert server: cg backtest) ----------
+// Replays the last `days` of the top coins with today's rules, each signal judged only with data available at its close,
+// for several stop settings, and reports filled trades, win rate and R by alert tier and timeframe.
+window.cgBacktest=async(o={})=>{
+  const days=o.days||120,tfs=o.tfs||["1h","4h","1d"],top=o.top||50,now=Date.now(),from=now-days*864e5,CTX=["4h","1d","3d","1w"];
+  const N={ema:false,vol:0,maxSweeps:0,earlyExit:false};
+  const variants=o.variants||[{name:"1 old: tight stops, on touch",buf:0.1,min:0.3,mode:"wick",confirm:false},
+    {name:"2 wider stops, on candle close",buf:0.5,min:1.0,mode:"close",confirm:false},
+    {name:"3 lower-timeframe CHoCH entry",buf:0.5,min:1.0,mode:"close",confirm:true,cf:{...N}},
+    {name:"4 + EMA 9/21 at the CHoCH",buf:0.5,min:1.0,mode:"close",confirm:true,cf:{...N,ema:true}},
+    {name:"5 + skip third tests",buf:0.5,min:1.0,mode:"close",confirm:true,cf:{...N,ema:true,maxSweeps:3}},
+    {name:"6 + early exit (new default)",buf:0.5,min:1.0,mode:"close",confirm:true,cf:{ema:true,vol:0,maxSweeps:3,earlyExit:true}},
+    {name:"7 + CHoCH on 1.5× volume",buf:0.5,min:1.0,mode:"close",confirm:true,cf:{ema:true,vol:1.5,maxSweeps:3,earlyExit:true}}];
+  const t0=Date.now();while((!REG||regBusy)&&Date.now()-t0<60000)await new Promise(r=>setTimeout(r,500));
+  const list=await pickSource(top),bases=list.map(c=>c.base),data={};let done=0;
+  const q=bases.slice();
+  await Promise.all(Array.from({length:4},async()=>{while(q.length){const b=q.shift(),d={};
+    for(const tf of [...new Set([...tfs,...CTX])]){const ms=TF_MS(tf);
+      try{const r=await rangeSeries(b,tf,from-(CTX.includes(tf)&&!tfs.includes(tf)?300:250)*ms,now);if(r&&r.k.length>=120)d[tf]={k:r.k,s:r.s,D:analyse(toK(r.k))};}catch(e){}}
+    data[b]=d;done++;if(o.progress)console.log(`loaded ${done}/${bases.length}`);}}));
+  const pitFor=(b,id)=>(h,T)=>{const m={},d=data[b];HTFL[id]={};
+    for(const tf of CTX){const x=d[tf];if(!x)continue;const ms=TF_MS(tf);let i=x.k.length-1;while(i>=0&&x.k[i].t+ms>T)i--;
+      if(i<60)continue;const v=viewAt(x.D,i);m[tf]=structure(v);noteHTF(id,tf,v);}
+    STRUCT[id]=m;};
+  const saved={buf:STOP_BUF,min:STOP_MIN,mode:S.stopMode,fee:BT.fee,confirm:CONFIRM,cf:{...CF}},res=[];
+  for(const v of variants){STOP_BUF=v.buf;STOP_MIN=v.min;S.stopMode=v.mode;CONFIRM=!!v.confirm;Object.assign(CF,v.cf||{});BT.fee=o.fee??0.15;const hits=[];
+    for(const b of bases){const d=data[b];if(!d)continue;
+      for(const tf of tfs){const x=d[tf];if(!x||x.k.length<300)continue;const id=x.s.id(b);
+        hits.push(...historyHits(x.k,{id,base:b},tf,from,now,pitFor(b,id)));}}
+    if(CONFIRM){if(o.progress)console.log(`loaded lower-timeframe candles for ${hits.length} signals…`);await resimLtf(hits);}
+    const st=a=>{const f=a.filter(h=>h.out&&h.out.trig>=0),cl=f.filter(h=>["t2","t1_be","stopped","timeout"].includes(h.out.status));
+      const sum=cl.reduce((s,h)=>s+h.out.r,0);
+      return {signals:a.length,filled:f.length,closed:cl.length,wins:cl.filter(h=>h.out.r>0).length,stopped:cl.filter(h=>h.out.status==="stopped").length,
+        early:cl.filter(h=>h.out.early).length,winRate:cl.length?cl.filter(h=>h.out.r>0).length/cl.length:null,avgR:cl.length?sum/cl.length:null,totalR:sum};};
+    const alerted=hits.filter(h=>h.tier==="aplus"||h.tier==="risk");
+    res.push({name:v.name,all:st(hits),alerted:st(alerted),aplus:st(hits.filter(h=>h.tier==="aplus")),risk:st(hits.filter(h=>h.tier==="risk")),
+      byTf:Object.fromEntries(tfs.map(tf=>[tf,st(alerted.filter(h=>h.tf===tf))])),
+      counter:st(alerted.filter(h=>/Counter/.test(h.styleK||""))),withTrend:st(alerted.filter(h=>/^Swing (long|short)$/.test(h.styleK||"")))});}
+  STOP_BUF=saved.buf;STOP_MIN=saved.min;S.stopMode=saved.mode;BT.fee=saved.fee;CONFIRM=saved.confirm;Object.assign(CF,saved.cf);
+  return {days,tfs,coins:Object.keys(data).filter(b=>Object.keys(data[b]).length).length,fee:o.fee??0.15,variants:res};
 };
 // ---------- daily BTC brief (New York open) ----------
 // Trend by timeframe, levels from the higher timeframes down, session ranges (Asia 8 pm–midnight, London 2–5 am,
@@ -2321,6 +2561,10 @@ function applyLive(h,p,now=Date.now(),form=null){
   if(!last){if(now<h.sigTime)return false;a.push(mk(h.sigTime+Math.floor((now-h.sigTime)/ms)*ms));}
   else if(now>=last.t+ms){last.live=false;a.push(mk(last.t+Math.floor((now-last.t)/ms)*ms));}
   else{last.h=Math.max(last.h,p);last.l=Math.min(last.l,p);last.c=p;}
+  if(h.lv.confirm&&h.ltf){const lm=TF_MS(h.lv.confirm),b=h.ltf;let l=b[b.length-1];
+    if(!l){if(now>=h.sigTime)b.push({t:h.sigTime+Math.floor((now-h.sigTime)/lm)*lm,h:p,l:p,c:p,live:true});}
+    else if(now>=l.t+lm){l.live=false;b.push({t:l.t+Math.floor((now-l.t)/lm)*lm,h:p,l:p,c:p,live:true});}
+    else{l.h=Math.max(l.h,p);l.l=Math.min(l.l,p);l.c=p;}}
   h.live=p;track(h);return true;
 }
 const goneWhy=h=>{const b=dirOf(h.type)==="bull",lv=h.lv||{},o=h.track||{};

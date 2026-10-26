@@ -41,7 +41,7 @@ if [ ! -s "$ENVF" ]; then
   cat > "$ENVF" <<EOF
 TELEGRAM_TOKEN=$TOK
 TELEGRAM_CHAT_ID=$CHAT
-ALERT_MIN=risk
+ALERT_MIN=all
 ALERT_TFS=1h,4h,1d,3d,1w
 TZ_NAME=America/Toronto
 SITE_URL=https://$(echo "$OWNER" | tr 'A-Z' 'a-z').github.io/$NAME/
