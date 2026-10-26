@@ -310,7 +310,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
       <div class="chips" id="tfChips"></div>
       <div id="tfEdit" hidden><div class="chips" id="tfAll"></div></div>
     </div>
-    <div class="row">
+    <div class="row" hidden><!-- signals use the standard 4h / 1d EMA 50 and 200, so this is no longer adjustable -->
       <div class="rowhead"><span class="lbl">Moving averages</span>
         <div class="seg" role="group" aria-label="Moving average type"><button data-ma="ema">EMA</button><button data-ma="sma">MA</button></div></div>
       <div><button class="link" id="editMa">Customize periods</button></div>
@@ -666,7 +666,13 @@ const typeTag=y=>`<span class="tag ${y.cls}">${y.label}</span>`;
 // Make sure a coin has structure for the four core timeframes (fetches only the missing ones).
 // Higher-timeframe support/resistance per coin (4h, 1d, 1w), used for the "no longs into resistance" rule.
 const HTF_TF=["4h","1d","1w"];let HTFL={};
-const noteHTF=(id,tf,d,sr)=>{if(HTF_TF.includes(tf))(HTFL[id]=HTFL[id]||{})[tf]=sr||srLevels(d);};
+// Also keeps the 4h and 1d EMA 50 / 200 (standard, not adjustable): EMA 200 counts as a level in the trade's path,
+// and an entry sitting on an EMA 50 or 200 counts as a good location.
+const EMA_TF=["4h","1d"],EMA_P=[50,200];
+const noteHTF=(id,tf,d,sr)=>{if(!HTF_TF.includes(tf))return;const x={...(sr||srLevels(d)),ema:{}},c=d.close,n=c.length;
+  if(EMA_TF.includes(tf))for(const p of EMA_P)if(n>=p+30)x.ema[p]=ema(c,p)[n-1];
+  (HTFL[id]=HTFL[id]||{})[tf]=x;};
+const emasOf=id=>{const m=HTFL[id]||{},o=[];for(const tf of EMA_TF)for(const p of EMA_P){const v=m[tf]&&m[tf].ema&&m[tf].ema[p];if(v!=null)o.push({tf,p,v});}return o;};
 async function fillCore(s,id,at,tfs=CORE_TF){
   const m=STRUCT[id]=STRUCT[id]||{};
   await Promise.all(tfs.filter(tf=>!m[tf]||(HTF_TF.includes(tf)&&!(HTFL[id]&&HTFL[id][tf]))).map(async tf=>{try{
@@ -845,10 +851,11 @@ function roomOf(h){
   const bull=dirOf(h.type)==="bull",R=Math.abs(lv.entry-lv.stop),m=HTFL[h.id]||{},lv2=[];
   for(const tf of HTF_TF){if(TF_MIN[tf]<=TF_MIN[h.tf]||!m[tf])continue;
     for(const c of [...m[tf].res,...m[tf].sup])if(tf!=="4h"||c.t>=2)lv2.push({p:c.p,tf});}
+  for(const e of emasOf(h.id))if(e.p===200&&TF_MIN[e.tf]>=TF_MIN[h.tf])lv2.push({p:e.v,tf:e.tf,ema:200});
   const first=lv2.filter(x=>bull?x.p>lv.entry+0.1*lv.atr:x.p<lv.entry-0.1*lv.atr).sort((a,b)=>bull?a.p-b.p:b.p-a.p)[0];
   if(!first)return null;
   const rr=Math.abs(first.p-lv.entry)/R;
-  return {p:first.p,tf:first.tf,rr,blocked:rr<1,txt:`${bull?"Long into":"Short into"} ${first.tf} ${bull?"resistance":"support"} at ${fmtP(first.p)} (${rr.toFixed(2)}R away)`};
+  return {p:first.p,tf:first.tf,ema:first.ema,rr,blocked:rr<1,txt:`${bull?"Long into":"Short into"} ${first.tf} ${first.ema?`EMA ${first.ema}`:bull?"resistance":"support"} at ${fmtP(first.p)} (${rr.toFixed(2)}R away)`};
 }
 const ignoredOf=h=>{if(!h.lv)return "No valid plan";if(h.lv.wide)return `Stop too wide (${h.lv.ratr.toFixed(1)} ATR)`;
   if(h.lv.rr1<1)return `Target 1 pays only ${h.lv.rr1.toFixed(2)}R (under 1:1)`;const rm=roomOf(h);return rm&&rm.blocked?rm.txt:"";};
@@ -903,6 +910,13 @@ function buildHit(d,f,x,c,tf,sr,vp){
 // ---------- score ----------
 // Score out of 100 = five standard checks (85) + divergence quality (15), minus penalties.
 //   Trend 20 (4h + 3d) · Liquidity sweep 20 · Structure shift 15 · Location 15 · Reward 15 (and a stop within 3 ATR)
+function emaAt(h){
+  const lv=h.lv;if(!lv)return null;const bull=dirOf(h.type)==="bull",a=lv.atr;
+  const top=Math.max(lv.e1??lv.entry,lv.e2??lv.entry,lv.entry),bot=Math.min(lv.e1??lv.entry,lv.e2??lv.entry,lv.entry);
+  // support for a long sits at or just under the entry zone (above the stop); resistance for a short at or just over it
+  const near=emasOf(h.id).filter(e=>bull?e.v<=top+0.5*a&&e.v>=Math.max(bot-0.5*a,lv.stop):e.v>=bot-0.5*a&&e.v<=Math.min(top+0.5*a,lv.stop));
+  return near.sort((x,y)=>(TF_MIN[y.tf]-TF_MIN[x.tf])||(y.p-x.p))[0]||null;
+}
 function scoreHit(h,conf){
   const bull=dirOf(h.type)==="bull",D=bull?1:-1,lv=h.lv,checks=[],pen=[],ud=bull?"up":"down";
   const chk=(key,label,pts,max,ok,txt,partial,short)=>checks.push({key,label,pts,max,ok:!!ok,partial:!ok&&!!partial,txt,short:short||txt});
@@ -926,12 +940,15 @@ function scoreHit(h,conf){
       chk("shift","Structure shift",ch?15:ich?12:0,15,ch||ich,ch?`${h.tf} CHoCH ${ud} confirmed`:ich?`Internal ${h.tf} CHoCH ${ud} (early)`:`No ${h.tf} CHoCH ${ud} yet`,0,ch?"CHoCH":ich?"early CHoCH":"no CHoCH yet");}
   }else chk("shift","Structure shift",5,15,false,"Not loaded",true,"n/a");
   // 4. Location
-  const lc=h.loc;
+  const lc=h.loc,em=h.bt?null:emaAt(h);
+  const emT=em?`${em.tf} EMA ${em.p}`:"";
   if(lc){const disc=lc.ret>=0.5,ote=lc.ret>=0.62&&lc.ret<=0.79,z=lc.atOB||lc.atFVG,half=bull?"discount":"premium";
-    const pts=z||ote?15:disc?10:0;
-    chk("loc","Location",pts,15,pts>=10,lc.atOB?`At an order block (${half})`:lc.atFVG?`At a fair value gap (${half})`:ote?"In the OTE zone (62–79%)":disc?`${bull?"Discount":"Premium"} half of the range`:`${bull?"Premium":"Discount"} half: a shallow ${bull?"pullback":"bounce"}`,0,
-      lc.atOB?"order block":lc.atFVG?"fair value gap":ote?"OTE zone":disc?half:`${bull?"premium":"discount"} (shallow)`);
-  }else chk("loc","Location",5,15,false,"Not enough swings to judge",true,"n/a");
+    const pts=z||ote||(disc&&em)?15:disc||em?10:0;
+    const txt=lc.atOB?`At an order block (${half})`:lc.atFVG?`At a fair value gap (${half})`:ote?"In the OTE zone (62–79%)":disc?`${bull?"Discount":"Premium"} half of the range`:`${bull?"Premium":"Discount"} half: a shallow ${bull?"pullback":"bounce"}`;
+    const sh=lc.atOB?"order block":lc.atFVG?"fair value gap":ote?"OTE zone":disc?half:`${bull?"premium":"discount"} (shallow)`;
+    chk("loc","Location",pts,15,pts>=10,em?`${txt}, on the ${emT} (${fmtP(em.v)})`:txt,0,em?(disc||z||ote?`${sh} + ${emT}`:`on ${emT}`):sh);
+  }else if(em)chk("loc","Location",10,15,true,`Entry on the ${emT} (${fmtP(em.v)})`,0,`on ${emT}`);
+  else chk("loc","Location",5,15,false,"Not enough swings to judge",true,"n/a");
   // 5. Reward and risk
   if(!lv)chk("rr","Reward",0,15,false,"No valid plan",0,"no plan");
   else if(lv.wide)chk("rr","Reward",0,15,false,`Stop ${lv.riskPct.toFixed(0)}% away (${lv.ratr.toFixed(1)} ATR): too wide`,0,"stop too wide");
@@ -1338,6 +1355,7 @@ function ladderHTML(o,kl){
     add("Prev day high",kl.pd&&kl.pd.h);add("Prev day low",kl.pd&&kl.pd.l);
     add("Prev week high",kl.pw&&kl.pw.h);add("Prev week low",kl.pw&&kl.pw.l);add("Prev month high",kl.pm&&kl.pm.h);add("Prev month low",kl.pm&&kl.pm.l);
     add(`Prev quarter high (${kl.pqN})`,kl.pq&&kl.pq.h);add(`Prev quarter low (${kl.pqN})`,kl.pq&&kl.pq.l);}
+  if(o.id)for(const e of emasOf(o.id))items.push({k:`${e.tf} EMA ${e.p}`,p:e.v});
   items.push({k:MODE==="bt"?"Price then":"Live price",p:L,now:1});
   items.sort((a,b)=>b.p-a.p);
   let h=`<div class="ladder">${items.map(it=>it.now
@@ -2124,7 +2142,12 @@ window.cgBrief=async()=>{
     return {res:all.filter(c=>c.p>px).sort((a,b)=>a.p-b.p),sup:all.filter(c=>c.p<px).sort((a,b)=>b.p-a.p)};};
   const td=["1w","1d","4h","1h"].map(tf=>{const x=lv(tf);if(!x)return null;
     const r=x.res[0],s2=x.sup[0];return `${tf}: R ${r?P(r.p):"–"}${r?` (${pc((r.p/px-1)*100)})`:""} · S ${s2?P(s2.p):"–"}${s2?` (${pc((s2.p/px-1)*100)})`:""}`;}).filter(Boolean);
-  const htf=["1d","4h"].map(lv).filter(Boolean),res1=htf.flatMap(x=>x.res).sort((a,b)=>a.p-b.p)[0],sup1=htf.flatMap(x=>x.sup).sort((a,b)=>b.p-a.p)[0];
+  const EM=[];for(const tf of ["4h","1d"]){const d=D[tf];if(!d)continue;const c=d.close,n=c.length;
+    for(const p of [50,200])if(n>=p+30)EM.push({tf,p,v:ema(c,p)[n-1]});}
+  const em200=EM.filter(e=>e.p===200).map(e=>({p:e.v,ema:`${e.tf} EMA 200`}));
+  const htf=["1d","4h"].map(lv).filter(Boolean),
+    res1=[...htf.flatMap(x=>x.res),...em200.filter(e=>e.p>px)].sort((a,b)=>a.p-b.p)[0],
+    sup1=[...htf.flatMap(x=>x.sup),...em200.filter(e=>e.p<px)].sort((a,b)=>b.p-a.p)[0];
   // Liquidity: equal highs/lows still resting, liquidation pools
   const eq=[];for(const tf of ["1h","4h"]){const st=map[tf];if(!st)continue;
     if(st.eqH&&st.eqH.status==="intact")eq.push(`equal highs ${tf} ${P(st.eqH.lvl)} (buy-side)`);
@@ -2163,7 +2186,11 @@ window.cgBrief=async()=>{
   if(sw.length)L.push(`Taken so far: ${sw.map(x=>`${x.name} (${x.state})`).join(", ")}`);
   L.push("");
   L.push(`<b>Support / resistance (top-down)</b>`);for(const t of td)L.push(t);
-  L.push(`Rule: no longs into ${res1?P(res1.p):"resistance (none close above)"}, no shorts into ${sup1?P(sup1.p):"support (none close below)"}.`);
+  const emTf=tf=>{const a=EM.filter(e=>e.tf===tf);if(!a.length)return null;const up=a.filter(e=>px>e.v).length;
+    return `${tf} ${a.map(e=>`${e.p} at ${P(e.v)}`).join(", ")} (price ${up===a.length?"above":up?"between":"below"}${a.length>1?up===a.length||!up?" both":"":""})`;};
+  const emL=["4h","1d"].map(emTf).filter(Boolean);if(emL.length)L.push(`EMA: ${emL.join(" · ")}`);
+  const rl=x=>x?`${P(x.p)}${x.ema?` (${x.ema})`:""}`:null;
+  L.push(`Rule: no longs into ${rl(res1)||"resistance (none close above)"}, no shorts into ${rl(sup1)||"support (none close below)"}.`);
   if(eq.length||liq){L.push("");L.push(`<b>Liquidity</b>`);
     if(eq.length)L.push(eq.join(" · "));
     if(liq)L.push(`Liquidation pools: ${liq.above[0]?`above ${P(liq.above[0].p)} (${usdTxt(liq.above[0].usd)})`:"none above"} · ${liq.below[0]?`below ${P(liq.below[0].p)} (${usdTxt(liq.below[0].usd)})`:"none below"}${liq.magnet!=="both"?` → bigger pull ${liq.magnet}`:""}`);}

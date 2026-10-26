@@ -23,7 +23,7 @@ Setups that never fill (missed or expired), pay under 1:1, or need a spike-wide 
 
 Setups that meet all 5 checks come with 🟢/🔴/🟡. Setups scoring 50+ that miss some checks come marked ⚠️ **High risk**, with what's missing; if you take one, use half size and take profit at Target 1.
 
-Setups that would long into 4h / 1d / 1w resistance (or short into support) closer than 1R are skipped too.
+Setups that would long into 4h / 1d / 1w resistance or the 4h / 1d EMA 200 (or short into support) closer than 1R are skipped too. An entry sitting on the 4h / 1d EMA 50 or 200 counts as a good location.
 
 📊 **Daily BTC brief** at the New York open (9:30 am ET, once a day): trend by timeframe, Asia / London / previous day / week / month highs and lows and which were swept, top-down support and resistance, liquidity, and the day's bias with an invalidation level. To get one now: **Actions → Telegram alerts → Run workflow**, tick **Send the daily BTC brief now**.
 
