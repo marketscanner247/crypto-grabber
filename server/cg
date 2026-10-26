@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# cg: control the Crypto Grabber alert server.
+set -uo pipefail
+ENVF=/etc/crypto-grabber.env DIR=/opt/crypto-grabber
+once() {   # one check right now, with extra settings (e.g. BRIEF=true), as the cg user
+  [ "$(id -u)" = 0 ] || { echo "Run as root (or: sudo cg ...)"; exit 1; }
+  set -a; . "$ENVF"; set +a
+  runuser -u cg -- env $(grep -v '^\s*#' "$ENVF" | xargs) "$@" bash "$DIR/server/run.sh"
+}
+case "${1:-status}" in
+  status)
+    systemctl is-active --quiet crypto-grabber.timer && echo "Alerts: ON (every 5 minutes)" || echo "Alerts: OFF  (turn on with: cg start)"
+    systemctl list-timers crypto-grabber.timer --no-pager | sed -n '1,2p'
+    echo; echo "Last checks:"; journalctl -u crypto-grabber --no-pager -o short-iso -n 200 | grep -E "setup\(s\)|Sent:|No new alerts|rror|failed" | tail -8 ;;
+  log)       journalctl -u crypto-grabber -f -o cat ;;
+  test)      once TEST=true ;;
+  brief)     once BRIEF=true ;;
+  scorecard) once SCORECARD=true ;;
+  run)       once ;;
+  update)
+    runuser -u cg -- git -C "$DIR" pull --ff-only
+    runuser -u cg -- env $(grep -v '^\s*#' "$ENVF" | xargs) bash -c "cd $DIR/bot && npm install --no-audit --no-fund --silent && npx playwright install chromium"
+    (cd "$DIR/bot" && set -a && . "$ENVF" && set +a && npx playwright install-deps chromium >/dev/null)
+    install -m 755 "$DIR/server/cg" /usr/local/bin/cg; echo "Updated." ;;
+  stop)      systemctl disable --now crypto-grabber.timer && echo "Alerts paused." ;;
+  start)     systemctl enable --now crypto-grabber.timer && echo "Alerts on, every 5 minutes." ;;
+  token)     echo "Edit $ENVF (nano $ENVF), save, done. It's read on every check." ;;
+  *) cat <<'EOF'
+cg            status: on/off, next check, last results
+cg log        watch checks live (Ctrl+C to stop watching)
+cg test       send the "connected" test message now
+cg brief      send the BTC, ETH and alts briefs now
+cg scorecard  send the weekly scorecard now
+cg run        run one check now
+cg update     pull the latest files from GitHub and reinstall (normally automatic)
+cg stop       pause alerts        cg start   turn them back on
+EOF
+  ;;
+esac

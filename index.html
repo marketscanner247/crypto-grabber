@@ -659,7 +659,7 @@ function tradeType(h,sty){
   if((sty.kind==="swing"||sty.kind==="wait"||sty.kind==="scalp")&&sty.dir===-D)
     return {label:`Counter-trend ${w}`,cls:"gold",counter:true,
       txt:`The ${sty.kind==="scalp"?"4h":"3d"} trend is ${u(-D)}, against this ${w}. Treat it as a scalp: take profit at Target 1 and skip Target 2.`};
-  if(sty.kind==="swing")return {label:`Swing ${w}`,cls:col,txt:`With the 4h and 3d trend, so you can hold for Target 2.`};
+  if(sty.kind==="swing")return {label:`Swing ${w}`,cls:col,txt:h.sc&&h.sc.checks&&!h.sc.checks.every(c=>c.ok)?`With the 4h and 3d trend, but checks are missing, so take profit at Target 1.`:`With the 4h and 3d trend, so you can hold for Target 2.`};
   if(sty.kind==="wait")return {label:`Swing ${w} forming`,cls:"gold",txt:`3d trend is ${u(D)} but 4h hasn't turned yet. Take profit at Target 1 unless 4h turns ${u(D)}.`};
   if(sty.kind==="scalp")return {label:`Scalp ${w}`,cls:col,txt:`4h agrees but the 3d has no trend. Take profit at Target 1.`};
   return {label:`Scalp ${w} only`,cls:"",txt:`No clear 4h or 3d trend. Small size, take profit at Target 1.`};
@@ -1273,7 +1273,7 @@ function trackInfo(h){
     case "no_trigger":
       if(o.missed)return ["Closed · missed","flat",`Price reached Target 1 (${fmtP(h.lv.t1)}) without ${h.lv.method==="pullback"||h.lv.method==="ob"?"pulling back to":h.lv.method==="sweep"?"sweeping for":"breaking"} the entry. No trade; don't chase it.`];
       if(o.failed)return ["Closed · invalid","flat",`Price closed ${bull?"below":"above"} the pivot (${fmtP(h.lv.pivot)}) before the entry, so the divergence failed. No trade.`];
-      return ["Closed · "+(o.deep?"invalid":"expired"),"flat",o.deep?"The sweep went past the stop level, so the setup is invalid. No trade.":"The entry was not reached in time. No trade."];
+      return ["Closed · "+(o.deep?"invalid":"expired"),"flat",o.deep?"The sweep ran so far that a stop past it would pay under 1:1, so the setup is cancelled. No trade.":"The entry was not reached in time. No trade."];
     case "open":{const ent=o.avg||h.lv.entry,part=h.lv.split&&o.fill!=null?(o.fill<1?`First half filled at ${fmtP(h.lv.e1)}; second half still waiting at ${fmtP(h.lv.e2)}.`:`Both halves filled, average ${fmtP(ent)}.`):"";
       return o.t1>=0?["T1 hit · stop at entry","bull",`Target 1 reached ${fmtDate(o.t1t)}. Half taken, stop moved to the average entry (${fmtP(ent)}), aiming for Target 2.`]:["In trade","gold",`${o.atClose?`Entered at the signal close (${fmtDate(h.sigTime)}).`:`Entry filled ${fmtDate(o.tt)}.`} ${part}`.trim()];}
     case "t2":return ["Closed · T2 hit","bull",`Both targets reached (${fmtDate(o.t2t)}). Trade closed.`];
@@ -1290,7 +1290,7 @@ function invChecks(h){
     items.push({ok:true,txt:`Entry window open until ${fmtDate(h.sigTime+(lv.method==="sweep"?CFG.sweepWin:CFG.trigger)*TF_MS(h.tf))}`});
     items.push({ok:true,txt:`Target 1 (${fmtP(lv.t1)}) not reached yet; if it is reached first, the move is missed`});
     items.push({ok:true,txt:`Pivot ${fmtP(lv.pivot)} holding; a ${h.tf} close ${bull?"below":"above"} it cancels the setup`});
-    if(lv.method==="sweep")items.push({ok:true,txt:`Stop level ${fmtP(lv.stop)} not touched; if price reaches it before the reclaim, the setup is cancelled`});
+    if(lv.method==="sweep"&&o&&o.lim!=null)items.push({ok:true,txt:`Sweep stays inside ${fmtP(o.lim)}; past that, a stop beyond the wick would pay under 1:1 and the setup is cancelled`});
   }else if(o.status==="open"){
     const since=o.atClose?h.after.length:h.after.length-1-o.trig,hard=lv.stop-D*0.5*Math.abs(lv.entry-lv.stop);
     items.push({ok:true,txt:o.t1>=0?`Stop at entry (${fmtP(lv.entry)}) since Target 1`:`Stop ${fmtP(lv.stop)} not hit${lv.stopMode==="close"?` (exits on a ${h.tf} close past it; hard stop ${fmtP(hard)})`:""}`});
@@ -1340,8 +1340,9 @@ function signalHTML(h){
         if(lv.method==="ob"&&lv.split){const w=bull?"Buy":"Sell";
           return row(`${w} half at`,fmtP(lv.e1),`${lv.e1src} · ${pctTxt(lv.e1,L)} from ${isLive?"live":"price then"}`,"","",isLive?` data-dist="${h.id}" data-entry="${lv.e1}"`:"")+row(`${w} half at`,fmtP(lv.e2),`order block middle · average ${fmtP(lv.entry)}`);}
         return row(elab,fmtP(lv.entry),`${pctTxt(lv.entry,L)} from ${isLive?"live":"price then"}`,"","",isLive?` data-dist="${h.id}" data-entry="${lv.entry}"`:"");})()}
-      ${row("Stop",fmtP(lv.stop),`${fromEntry(lv.stop)} · risk ${lv.riskPct.toFixed(1)}%${lv.stopMode==="close"?` · on close, hard ${fmtP(lv.stop-(bull?1:-1)*0.5*Math.abs(lv.entry-lv.stop))}`:""}`,"neg")}
-      ${row("Target 1",fmtP(lv.t1),`${fromEntry(lv.t1)} · ${lv.rr1.toFixed(1)}R · ${esc(lv.t1src)}`,"pos")}
+      ${(()=>{const sa=h.track&&h.track.stopA,sp=sa??lv.stop,rk=Math.abs(lv.entry-sp)/lv.entry*100,sw=lv.method==="sweep"&&sa==null;
+        return row(sw?"Stop (at least)":"Stop",fmtP(sp),`${fromEntry(sp)} · risk ${rk.toFixed(1)}%${sw?` · moves just past the sweep ${bull?"low":"high"} if it goes further`:""}${lv.stopMode==="close"?` · on close, hard ${fmtP(sp-(bull?1:-1)*0.5*Math.abs(lv.entry-sp))}`:""}`,"neg");})()}
+      ${row("Target 1",fmtP(lv.t1),`${fromEntry(lv.t1)} · ${(h.track&&h.track.stopA!=null?h.track.rr1:lv.rr1).toFixed(1)}R · ${esc(lv.t1src)}`,"pos")}
       ${row("Target 2",fmtP(lv.t2),`${fromEntry(lv.t2)} · ${lv.rr2.toFixed(1)}R · ${esc(lv.t2src)}`,"pos")}
       </div>
       ${inTrade?`<div class="late"${late?"":" hidden"}${isLive?` data-late="${h.id}" data-entry="${lv.entry}" data-t1="${lv.t1}"`:""}>${late?lateTxt(prog):""}</div>`:""}
@@ -1712,20 +1713,25 @@ function simulateOB(lv,bull,fwd,fee){
 }
 function simulate(lv,bull,fwd,fee){
   if(lv.method==="ob")return simulateOB(lv,bull,fwd,fee);
-  const R=Math.abs(lv.entry-lv.stop),dir=bull?1:-1,o={trig:-1,t1:-1,t2:-1,stop:-1},nC=fwd.reduce((n,c)=>n+(c.live?0:1),0);
+  let R=Math.abs(lv.entry-lv.stop);const dir=bull?1:-1,o={trig:-1,t1:-1,t2:-1,stop:-1},nC=fwd.reduce((n,c)=>n+(c.live?0:1),0);
   const reach=(c,p)=>bull?c.h>=p:c.l<=p, back=(c,p)=>bull?c.l<=p:c.h>=p, closedPast=(c,p)=>!c.live&&(bull?c.c<p:c.c>p);
   const win=lv.method==="sweep"?CFG.sweepWin:CFG.trigger;
   let start;
   if(lv.method==="close"||(lv.method==="ob"&&lv.atClose)){o.trig=0;o.atClose=true;start=0;
     if(!fwd.length){o.status="open";o.r=-fee/lv.riskPct;o.done=false;return o;}}
   else if(lv.method==="sweep"){
+    // The stop goes just past the real sweep wick (0.1 ATR), never closer than the planned stop. The sweep may run as far
+    // as it likes, as long as a stop past it still leaves Target 1 at 1:1 or better and within 3 ATR; beyond that it's cancelled.
+    const a=lv.atr||R,lim=lv.entry-dir*(Math.min(Math.abs(lv.t1-lv.entry),3*a)-0.1*a);let ext=null;
     for(let i=0;i<Math.min(win,fwd.length);i++){const c=fwd[i];
-      if(back(c,lv.stop)){o.deep=true;o.deepT=c.t;break;}        // price ran through the stop level before any reclaim: invalid (a touch counts)
+      ext=ext==null?(bull?c.l:c.h):bull?Math.min(ext,c.l):Math.max(ext,c.h);
+      if(back(c,lim)){o.deep=true;o.deepT=c.t;break;}           // swept too far: a stop past it would pay under 1:1 (a touch counts)
       if(!c.live&&(bull?c.l<lv.pivot:c.h>lv.pivot)&&!closedPast(c,lv.entry)){o.trig=i;break;}   // the reclaim needs a closed candle
       if(closedPast(c,lv.pivot)){o.failed=true;o.failT=c.t;break;}   // closed beyond the pivot: a break, not a sweep
       if(reach(c,lv.t1)){o.missed=true;o.missT=c.t;break;}     // ran to Target 1 without the sweep: move missed
     }
-    if(o.trig<0){o.status=o.deep||o.missed||o.failed?"no_trigger":nC<win?"pending":"no_trigger";o.r=0;o.done=false;return o;}
+    if(o.trig<0){o.status=o.deep||o.missed||o.failed?"no_trigger":nC<win?"pending":"no_trigger";o.r=0;o.done=false;o.lim=lim;return o;}
+    o.stopA=bull?Math.min(lv.stop,ext-0.1*a):Math.max(lv.stop,ext+0.1*a);R=Math.abs(lv.entry-o.stopA);
     start=o.trig+1;   // filled at the reclaim close
   }else{
     const fill=lv.method==="pullback"||lv.method==="ob"?back:reach;
@@ -1738,7 +1744,8 @@ function simulate(lv,bull,fwd,fee){
     start=o.trig;
   }
   // Stop on touch: exit at the stop. Stop on close: exit at the close beyond the stop, with a hard stop 0.5R further out.
-  let stopLvl=lv.stop,exitP=null;const end=Math.min(fwd.length,o.trig+200);
+  let stopLvl=o.stopA??lv.stop,exitP=null;const end=Math.min(fwd.length,o.trig+200);
+  const rr1=Math.abs(lv.t1-lv.entry)/R,rr2=Math.abs(lv.t2-lv.entry)/R;o.Rp=R;o.rr1=rr1;
   const hardOf=lvl=>lvl-dir*0.5*R;
   for(let i=start;i<end;i++){const c=fwd[i];
     if(lv.stopMode==="close"){
@@ -1749,10 +1756,10 @@ function simulate(lv,bull,fwd,fee){
     if(o.t1>=0&&reach(c,lv.t2)){o.t2=i;break;}
   }
   const last=fwd[Math.max(0,end-1)],mtm=last?(last.c-lv.entry)*dir/R:0,exitR=exitP==null?0:(exitP-lv.entry)*dir/R;
-  if(o.t2>=0){o.status="t2";o.r=0.5*lv.rr1+0.5*lv.rr2;}
-  else if(o.stop>=0){o.status=o.t1>=0?"t1_be":"stopped";o.r=o.t1>=0?0.5*lv.rr1+0.5*exitR:exitR;}
-  else{o.status=end-o.trig>=200?"timeout":"open";o.r=o.t1>=0?0.5*lv.rr1+0.5*mtm:mtm;}
-  o.r-=fee/lv.riskPct;o.done=o.status!=="open";
+  if(o.t2>=0){o.status="t2";o.r=0.5*rr1+0.5*rr2;}
+  else if(o.stop>=0){o.status=o.t1>=0?"t1_be":"stopped";o.r=o.t1>=0?0.5*rr1+0.5*exitR:exitR;}
+  else{o.status=end-o.trig>=200?"timeout":"open";o.r=o.t1>=0?0.5*rr1+0.5*mtm:mtm;}
+  o.r-=fee/(R/lv.entry*100);o.done=o.status!=="open";
   const tm=i=>i>=0&&fwd[i]?fwd[i].t:null;o.tt=tm(o.trig);o.t1t=tm(o.t1);o.t2t=tm(o.t2);o.st=tm(o.stop);
   return o;
 }
@@ -2116,6 +2123,7 @@ window.cgBot=async(o={})=>{
         near:!!lv&&Math.abs(live-(lv.e1??lv.entry))<=lv.atr,
         live:f(live),entry:lv&&f(lv.entry),stop:lv&&f(lv.stop),t1:lv&&f(lv.t1),t2:lv&&f(lv.t2),
         stopPct:lv&&pc(lv.stop),t1Pct:lv&&pc(lv.t1),t2Pct:lv&&pc(lv.t2),rr1:lv&&lv.rr1,rr2:lv&&lv.rr2,chart:src.tv(h.id),
+        stopNow:tk&&tk.stopA!=null?f(tk.stopA):null,stopNowPct:tk&&tk.stopA!=null?pc(tk.stopA):null,rr1Now:tk&&tk.stopA!=null?tk.rr1:null,
         plan:lv?{method:lv.method,pivot:lv.pivot,atClose:lv.atClose,e1:lv.e1,e2:lv.e2,split:lv.split,stopMode:lv.stopMode,entry:lv.entry,stop:lv.stop,t1:lv.t1,t2:lv.t2,rr1:lv.rr1,rr2:lv.rr2,riskPct:lv.riskPct,atr:lv.atr}:null};})};
 };
 // ---------- weekly scorecard ----------
@@ -2128,7 +2136,7 @@ window.cgGrade=async(list,size=1000)=>{
       if(!cache[ck])cache[ck]=await s.candles(id,t.tf);
       const fwd=cache[ck].filter(r=>+r[0]>=t.sigTime).map(r=>({t:+r[0],h:+r[2],l:+r[3],c:+r[4]}));
       const lv=t.plan,o=simulate(lv,t.dir==="long",fwd,0),fill=o.fill!=null?o.fill:o.trig>=0?1:0;
-      const usd=o.r*Math.abs(lv.entry-lv.stop)*size/lv.entry;
+      const usd=o.r*(o.Rp||Math.abs(lv.entry-lv.stop))*size/lv.entry;
       out.push({key:t.key,status:o.status,missed:!!o.missed,fill,r:o.r,usd,t1:o.t1>=0,enteredAt:o.tt||null,closedAt:o.t2t||o.st||null});
     }catch(e){out.push({key:t.key,err:String(e&&e.message||e)});}
   }
@@ -2308,7 +2316,7 @@ function applyLive(h,p,now=Date.now(),form=null){
   h.live=p;track(h);return true;
 }
 const goneWhy=h=>{const b=dirOf(h.type)==="bull",lv=h.lv||{},o=h.track||{};
-  return o.missed?"price reached Target 1 before the entry filled":o.failed?`price closed ${b?"below":"above"} ${fmtP(lv.pivot)}`:o.deep?`price ran through the stop level (${fmtP(lv.stop)})`:"the entry window ran out";};
+  return o.missed?"price reached Target 1 before the entry filled":o.failed?`price closed ${b?"below":"above"} ${fmtP(lv.pivot)}`:o.deep?`the sweep ran past ${fmtP(o.lim??lv.stop)}, too far for a 1:1 trade`:"the entry window ran out";};
 function liveTrack(){
   LIVE_HITS=LIVE_HITS.filter(r=>r.el.isConnected);
   for(const r of LIVE_HITS){

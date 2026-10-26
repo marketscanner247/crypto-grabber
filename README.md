@@ -1,6 +1,6 @@
 # Crypto Grabber
 
-A crypto RSI-divergence scanner (the website) plus Telegram alerts that run on GitHub every 5 minutes, free.
+A crypto RSI-divergence scanner (the website) plus Telegram alerts. The alerts run every 5 minutes on a small server of your own (about €6 a month, on time) or on GitHub (free, but GitHub often runs them 20–60 minutes late).
 
 ## What's in this folder
 
@@ -10,6 +10,7 @@ A crypto RSI-divergence scanner (the website) plus Telegram alerts that run on G
 | `manifest.webmanifest`, `sw.js`, `icon-192.png`, `icon-512.png` | Let you add the site to your phone's home screen |
 | `bot/alert.js`, `bot/package.json` | The alert bot: runs the app's own scan and messages you on Telegram |
 | `.github/workflows/alerts.yml` | Tells GitHub to run the bot every 5 minutes |
+| `server/setup.sh`, `server/run.sh`, `server/cg` | Sets up your own alert server (recommended, see below) |
 | `run-alerts.bat` | Backup: runs the bot from your Windows PC instead of GitHub |
 
 ## Alerts you will get
@@ -81,19 +82,50 @@ In **Settings → Secrets and variables → Actions → Variables tab → New re
 | | `any` | Every signal (noisy; good for checking it works) |
 | `ALERT_TFS` | `1h,4h,1d,3d,1w` (default) | Timeframes to scan, e.g. `15m,1h,4h` |
 
+## Your own alert server (recommended, about €6 a month)
+
+GitHub's free scheduler treats "every 5 minutes" as a suggestion. A small server runs the check exactly every 5 minutes, all day.
+
+1. **Make an SSH key on your PC** (once). Open **PowerShell** and run `ssh-keygen`, pressing Enter at every question. Then run `type $env:USERPROFILE\.ssh\id_ed25519.pub` and copy the line it prints.
+2. **Create the server** at Hetzner Cloud (hetzner.com/cloud → sign up or log in): new project → **Add server**.
+   - Location: **Nuremberg, Falkenstein or Helsinki** (Europe; Binance's futures data, used for the liquidation estimates, isn't available from US servers).
+   - Image: **Ubuntu 24.04**. Type: **Shared vCPU, x86, CX23** (2 vCPU, 4 GB). Keep **Public IPv4** on.
+   - SSH keys: **Add SSH key**, paste the line from step 1.
+   - Create. Copy the server's IP address.
+3. **Upload this folder to GitHub first** (it must include the `server` folder).
+4. **Connect and install.** In PowerShell: `ssh root@YOUR-IP` (type `yes` the first time). Then paste:
+   ```
+   curl -fsSL https://raw.githubusercontent.com/marketscanner247/crypto-grabber/main/server/setup.sh | bash
+   ```
+   It takes about 5 minutes. When it asks, paste your Telegram bot token (it stays hidden) and your chat id. You'll get "✅ Crypto Grabber alerts connected" on Telegram.
+5. **Turn off the GitHub schedule** so you don't get every alert twice: **Actions → Telegram alerts → ⋯ → Disable workflow.**
+
+The server pulls your latest files from GitHub before every check, so updating the app is still just uploading to GitHub. Your Telegram token is kept only on the server (`/etc/crypto-grabber.env`).
+
+Commands on the server (after `ssh root@YOUR-IP`):
+
+| Command | What it does |
+|---|---|
+| `cg` | On/off, next check, last results |
+| `cg brief` | Send the BTC, ETH and alts briefs now |
+| `cg scorecard` | Send the weekly scorecard now |
+| `cg test` | Send the test message |
+| `cg log` | Watch checks live (Ctrl+C to stop) |
+| `cg stop` / `cg start` | Pause / resume alerts |
+
 ## Updating the app
 
 Upload the new `index.html` to the repository (**Add file → Upload files**, commit). Both the website and the alerts use it from the next run.
 
 ## Pausing or stopping alerts
 
-**Actions → Telegram alerts → ⋯ (top right) → Disable workflow.** Enable it the same way.
+On your server: `cg stop` (and `cg start` to resume). On GitHub: **Actions → Telegram alerts → ⋯ (top right) → Disable workflow.** Enable it the same way.
 
 GitHub pauses scheduled workflows in repositories with no activity for 60 days and emails you first. Uploading any file (or clicking Enable) restarts it.
 
 ## Cost
 
-Free. GitHub Actions minutes are unlimited for public repositories, Telegram bots are free, and all market data comes from free public APIs.
+Your own server: about €6 a month (Hetzner CX23 plus its IPv4 address; check the price shown when you create it). Everything else is free: GitHub Actions minutes are unlimited for public repositories, Telegram bots are free, and all market data comes from free public APIs.
 
 ## Troubleshooting
 
