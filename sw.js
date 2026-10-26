@@ -1,5 +1,5 @@
 // Keeps the app shell available offline. Market data always comes live from the network.
-const CACHE = "crypto-grabber-v48";
+const CACHE = "crypto-grabber-v49";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL))); self.skipWaiting(); });
 self.addEventListener("activate", e => {

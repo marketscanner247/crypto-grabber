@@ -838,7 +838,9 @@ let CONFIRM=S.entryMode==="ltf";
 // fvgEdge: the limit sits at the near edge of the fair value gap (first touch) instead of its middle.
 // Defaults follow the real-data backtest (120 days, top 50): the plain CHoCH entry did best on 4h; EMA 9/21, third-test
 // skip and early exit each lowered 4h results. Retest / split entries are still being compared in cg backtest.
-const CF={ema:false,vol:0,maxSweeps:0,earlyExit:false,retest:false,split:false,strong:false,fvgEdge:false};
+// hlBos: after the CHoCH, wait for the lower timeframe to make a higher low and then break the CHoCH high (a new
+// higher high, BOS): the lower timeframe is now trending the trade's way. Entry on that break, stop under the higher low.
+const CF={ema:false,vol:0,maxSweeps:0,earlyExit:false,retest:false,split:false,strong:false,fvgEdge:false,hlBos:true};
 const RETEST_MAX=12;
 function levels(d,x,sr,vp,method="ob",tf=null){
   const L=d.close.length-1,a=d.atr[L],bull=x.type.endsWith("bull"),c=d.close[L];
@@ -874,7 +876,7 @@ function levels(d,x,sr,vp,method="ob",tf=null){
   if(CONFIRM&&tf&&LTF_OF[tf]&&(method==="ob"||method==="sweep")){
     const poi=method==="ob"?e1:pivotX;
     cf={confirm:LTF_OF[tf],tf,poi,win:method==="sweep"?CFG.sweepWin:CFG.trigger+3,deepLvl:pivotX-(bull?1.5:-1.5)*a,
-      emaOk:CF.ema,volMin:CF.vol,maxSweeps:CF.maxSweeps,earlyExit:CF.earlyExit,retest:CF.retest,splitE:CF.split,strong:CF.strong,fvgEdge:CF.fvgEdge,sweeps0:method==="ob"?1:0};
+      emaOk:CF.ema,volMin:CF.vol,maxSweeps:CF.maxSweeps,earlyExit:CF.earlyExit,retest:CF.retest,splitE:CF.split,strong:CF.strong,hlBos:CF.hlBos,fvgEdge:CF.fvgEdge,sweeps0:method==="ob"?1:0};
     entry=poi;stop=pivotX-(bull?1:-1)*(method==="sweep"?STOP_MIN:0.25)*a;atClose=false;
   }
   if(bull?stop>=entry:stop<=entry)return null;
@@ -1359,7 +1361,8 @@ function trackInfo(h){
   const o=h.track;if(!o)return null;
   const bull=dirOf(h.type)==="bull",until=fmtDate(h.sigTime+CFG.trigger*TF_MS(h.tf));
   switch(o.status){
-    case "pending":if(h.lv.confirm&&o.choch)return ["Confirmed · waiting for retest","gold",`The ${h.lv.confirm} confirmed (CHoCH ${bull?"up":"down"}). Waiting for price to come back to ${fmtP(o.retLvl)} (${o.retSrc}) to enter with a limit ${bull?"buy":"sell"}; stop ${fmtP(o.retStop)}. If it doesn't come back within ${RETEST_MAX} ${h.lv.confirm} candles, no trade.`];
+    case "pending":if(h.lv.confirm&&o.hlWait)return ["CHoCH · waiting for a higher low","gold",`The ${h.lv.confirm} turned ${bull?"up":"down"} (CHoCH). Now waiting for a ${bull?"higher low":"lower high"}${o.hlLvl!=null?` (forming at ${fmtP(o.hlLvl)})`:""} and a close ${bull?"above":"below"} ${fmtP(o.bosLvl)} (${bull?"new higher high":"new lower low"}) to enter; stop under that ${bull?"higher low":"lower high"}.`];
+      if(h.lv.confirm&&o.choch)return ["Confirmed · waiting for retest","gold",`The ${h.lv.confirm} confirmed (CHoCH ${bull?"up":"down"}). Waiting for price to come back to ${fmtP(o.retLvl)} (${o.retSrc}) to enter with a limit ${bull?"buy":"sell"}; stop ${fmtP(o.retStop)}. If it doesn't come back within ${RETEST_MAX} ${h.lv.confirm} candles, no trade.`];
       if(h.lv.confirm)return ["Waiting for entry","flat",o.touched>=0
         ?`In the zone${o.sweeps>1?` (${o.sweeps} sweeps of the low so far)`:""}. Waiting for a ${h.lv.confirm} close ${bull?"above":"below"} ${o.chochLvl!=null?fmtP(o.chochLvl):`the last ${h.lv.confirm} swing ${bull?"high":"low"}`} (CHoCH)${h.lv.emaOk?` with EMA 9 ${bull?"above":"below"} 21`:""}${h.lv.volMin?` on ${h.lv.volMin}× volume`:""} to enter.${o.waitEma?" The last break came without the EMA cross.":""}${o.waitVol?" The last break came on low volume.":""}`
         :`Waiting for price to reach ${fmtP(h.lv.poi)}, then a ${h.lv.confirm} CHoCH ${bull?"up":"down"} to enter.`];
@@ -1367,6 +1370,8 @@ function trackInfo(h){
     case "no_trigger":
       if(o.missed)return ["Closed · missed","flat",`Price reached Target 1 (${fmtP(h.lv.t1)}) without ${h.lv.method==="pullback"||h.lv.method==="ob"?"pulling back to":h.lv.method==="sweep"?"sweeping for":"breaking"} the entry. No trade; don't chase it.`];
       if(o.failed)return ["Closed · invalid","flat",`Price closed ${bull?"below":"above"} the pivot (${fmtP(h.lv.pivot)}) before the entry, so the divergence failed. No trade.`];
+      if(o.hlFail)return ["Closed · invalid","flat",`After the ${h.lv.confirm} CHoCH, price closed back ${bull?"below":"above"} the low: no ${bull?"higher low":"lower high"}, so no new trend. No trade.`];
+      if(o.noHl)return ["Closed · expired","flat",`The ${h.lv.confirm} turned but never made a ${bull?"higher low and higher high":"lower high and lower low"} in time. No trade.`];
       if(o.noRetest)return ["Closed · no retest","flat",`The ${h.lv.confirm} confirmed but price never came back to ${fmtP(o.retLvl)} within ${RETEST_MAX} candles. No trade.`];
       if(o.missRetest)return ["Closed · missed","flat",`The ${h.lv.confirm} confirmed and price ran to Target 1 without retesting ${fmtP(o.retLvl)}. No trade; don't chase it.`];
       if(o.noRoom)return ["Closed · no room","flat",`The ${h.lv.confirm} confirmed too far from the zone: Target 1 would pay under 1:1. No trade.`];
@@ -1447,6 +1452,7 @@ function signalHTML(h){
       ${row(isLive?"Live price":"Price then",fmtP(L),"","",isLive?` data-live="${h.id}"`:"")}
       ${(()=>{const tk=!h.out&&h.track,filled=tk&&tk.trig>=0;
         if(lv.confirm){const oo=h.out||tk;
+          if(oo&&oo.trig>=0&&oo.hlEntry)return row("Entered at",fmtP(oo.entryP),`${lv.confirm} break to a new ${bull?"higher high":"lower low"} after a ${bull?"higher low":"lower high"} at ${fmtP(oo.hlLvl)}`);
           if(oo&&oo.trig>=0)return row(oo.split&&oo.fill<1?"Half in at":"Entered at",fmtP(oo.entryP),oo.split?(oo.fill<1?`${lv.confirm} CHoCH close · second half: limit at ${fmtP(oo.e2Lvl)}`:`both halves, average (CHoCH close + retest)`):oo.strong?`strong ${lv.confirm} CHoCH candle, full size at its close`:`${lv.confirm} CHoCH · ${fmtDate(oo.tt)}`);
           if(closed)return row("Zone",fmtP(lv.poi),"never confirmed");
           if(tk&&tk.choch)return row("Limit entry",fmtP(tk.retLvl),`retest of ${tk.retSrc} · ${pctTxt(tk.retLvl,L)} from ${isLive?"live":"price then"}`,"","",isLive?` data-dist="${h.id}" data-entry="${tk.retLvl}"`:"");
@@ -1884,11 +1890,30 @@ function simulateLTF(lv,bull,fwd,ltf,fee){
   const cc=ltf[ent],la=ltf.slice(Math.max(0,ent-13),ent+1).reduce((s,c)=>s+(c.h-c.l),0)/Math.min(14,ent+1);
   let stop=ext-dir*0.5*la;
   let E=cc.c,fillT=cc.t+Lm,ret=null,splitMode=false;
+  if(lv.hlBos){
+    // CHoCH → higher low (2-candle swing, above the zone extreme) → close above the high made before it (BOS)
+    let legHi=bull?Math.max(...ltf.slice(Math.max(o.touched,0),ent+1).map(c=>c.h)):Math.min(...ltf.slice(Math.max(o.touched,0),ent+1).map(c=>c.l));
+    let hl=null,hlI=-1,bi=-1;o.hlWait=true;o.bosLvl=legHi;
+    for(let i=ent+1;i<ltf.length&&i<=ent+2*RETEST_MAX;i++){const c=ltf[i];
+      if(closedPast(c,ext)||back(c,lv.deepLvl)){o.deep=true;o.deepT=c.t;o.hlFail=true;break;}   // broke back below the low: no uptrend
+      if(reach(c,lv.t1)){o.missed=true;o.missT=c.t;break;}
+      if(i-2>ent&&ltf[i]){const k=i-2,ck=ltf[k],nb=[ltf[k-2],ltf[k-1],ltf[k+1],ltf[k+2]].filter(Boolean);
+        if(k-2>=ent-1&&(bull?nb.every(n=>ck.l<n.l)&&ck.l>ext:nb.every(n=>ck.h>n.h)&&ck.h<ext)){hl=bull?ck.l:ck.h;hlI=k;o.hlLvl=hl;}}
+      if(hl==null)legHi=bull?Math.max(legHi,c.h):Math.min(legHi,c.l);
+      o.bosLvl=legHi;
+      if(hl!=null&&i>hlI&&!c.live&&(bull?c.c>legHi:c.c<legHi)){bi=i;break;}            // BOS: new higher high (lower low for shorts)
+    }
+    if(bi<0){const left=ltf.length-1-ent;
+      if(!o.missed&&!o.deep&&left<2*RETEST_MAX){o.status="pending";o.r=0;o.done=false;return o;}
+      o.noHl=!o.missed&&!o.deep;o.status="no_trigger";o.r=0;o.done=false;return o;}
+    const la2=ltf.slice(Math.max(0,bi-13),bi+1).reduce((x,c)=>x+(c.h-c.l),0)/Math.min(14,bi+1);
+    ent=bi;E=ltf[bi].c;fillT=ltf[bi].t+Lm;stop=hl-dir*0.5*la2;o.hlWait=false;o.hlEntry=true;
+  }
   // displacement: a CHoCH candle twice the normal range on 1.5× volume rarely comes back
   const prev=ltf.slice(Math.max(0,ent-14),ent),laP=prev.length?prev.reduce((x,c)=>x+(c.h-c.l),0)/prev.length:la;
   const strongC=lv.strong&&(cc.h-cc.l)>=2*laP&&(!va[ent]||(cc.v||0)>=1.5*va[ent]);
   if(strongC)o.strong=true;
-  if(lv.retest&&!strongC){
+  if(lv.retest&&!strongC&&!lv.hlBos){
     // the level to retest: the broken swing (old lower high, now support) or the middle of a fair value gap the CHoCH
     // move left, whichever is nearer to price (fills more often); entry with a limit order there
     const lvlB=o.chochLvl;let ret=lvlB,src="the broken level";
@@ -1898,7 +1923,7 @@ function simulateLTF(lv,bull,fwd,ltf,fee){
     const rrPlan=(lv.t1-ret)*dir/Math.abs(ret-stop);if(rrPlan<1){o.noRoom=true;o.status="no_trigger";o.r=0;o.done=false;return o;}
     if(lv.splitE){splitMode=true;o.split=true;o.e2Lvl=ret;}
   }
-  if(lv.retest&&!strongC&&!splitMode){const ret=o.retLvl;
+  if(lv.retest&&!strongC&&!splitMode&&!lv.hlBos){const ret=o.retLvl;
     let fi=-1;
     for(let i=ent+1;i<ltf.length&&i<=ent+RETEST_MAX;i++){const c=ltf[i];
       if(back(c,ret)){fi=i;break;}                                          // came back to the level: limit order fills
@@ -2386,7 +2411,7 @@ window.cgBot=async(o={})=>{
         stopNow:tk&&tk.stopA!=null?f(tk.stopA):null,stopNowPct:tk&&tk.stopA!=null?pc(tk.stopA):null,rr1Now:tk&&tk.stopA!=null?tk.rr1:null,
         notes:[...(h.sc.notes||[]),...(h.sc.plus||[]).map(p=>"✓ "+p.txt),...(h.sc.pen||[]).filter(p=>/funding|BTC is turning|Leverage-led|cross/.test(p.txt)).map(p=>"✗ "+p.txt)],
         confirm:lv?lv.confirm||null:null,early:!!tk&&!!tk.early,chochDone:!!tk&&!!tk.choch&&tk.status==="pending",splitLimit:tk&&tk.split&&tk.fill<1&&tk.e2Lvl!=null?f(tk.e2Lvl):null,strongIn:!!tk&&!!tk.strong,retLvl:tk&&tk.retLvl!=null?f(tk.retLvl):null,retSrc:tk&&tk.retSrc||"",retStop:tk&&tk.retStop!=null?f(tk.retStop):null,retStopPct:tk&&tk.retStop!=null&&tk.retLvl?((tk.retStop/tk.retLvl-1)*100):null,poi:lv&&lv.poi!=null?f(lv.poi):null,entryNow:tk&&tk.entryP!=null?f(tk.entryP):null,chochLvl:tk&&tk.chochLvl!=null?f(tk.chochLvl):null,touched:!!tk&&tk.touched>=0,
-        plan:lv?{confirm:lv.confirm,poi:lv.poi,deepLvl:lv.deepLvl,win:lv.win,tf:lv.tf,emaOk:lv.emaOk,volMin:lv.volMin,maxSweeps:lv.maxSweeps,earlyExit:lv.earlyExit,retest:lv.retest,splitE:lv.splitE,strong:lv.strong,fvgEdge:lv.fvgEdge,sweeps0:lv.sweeps0,method:lv.method,pivot:lv.pivot,atClose:lv.atClose,e1:lv.e1,e2:lv.e2,split:lv.split,stopMode:lv.stopMode,entry:lv.entry,stop:lv.stop,t1:lv.t1,t2:lv.t2,rr1:lv.rr1,rr2:lv.rr2,riskPct:lv.riskPct,atr:lv.atr}:null};})};
+        plan:lv?{confirm:lv.confirm,poi:lv.poi,deepLvl:lv.deepLvl,win:lv.win,tf:lv.tf,emaOk:lv.emaOk,volMin:lv.volMin,maxSweeps:lv.maxSweeps,earlyExit:lv.earlyExit,retest:lv.retest,splitE:lv.splitE,strong:lv.strong,fvgEdge:lv.fvgEdge,hlBos:lv.hlBos,sweeps0:lv.sweeps0,method:lv.method,pivot:lv.pivot,atClose:lv.atClose,e1:lv.e1,e2:lv.e2,split:lv.split,stopMode:lv.stopMode,entry:lv.entry,stop:lv.stop,t1:lv.t1,t2:lv.t2,rr1:lv.rr1,rr2:lv.rr2,riskPct:lv.riskPct,atr:lv.atr}:null};})};
 };
 // ---------- weekly scorecard ----------
 // Re-plays each alerted trade from its signal candle with the same engine as the app (entry halves, half off at
@@ -2411,7 +2436,7 @@ window.cgGrade=async(list,size=1000)=>{
 // for several stop settings, and reports filled trades, win rate and R by alert tier and timeframe.
 window.cgBacktest=async(o={})=>{
   const days=o.days||120,tfs=o.tfs||["1h","4h","1d"],top=o.top||50,now=Date.now(),from=now-days*864e5,CTX=["4h","1d","3d","1w"];
-  const N={ema:false,vol:0,maxSweeps:0,earlyExit:false,retest:false,split:false,strong:false,fvgEdge:false};
+  const N={ema:false,vol:0,maxSweeps:0,earlyExit:false,retest:false,split:false,strong:false,fvgEdge:false,hlBos:false};
   const ByTT=(a,tf)=>({w:a.filter(h=>h.tf===tf&&/^Swing (long|short)$/.test(h.styleK||"")),c:a.filter(h=>h.tf===tf&&/Counter/.test(h.styleK||""))});
   const B={buf:0.5,min:1.0,mode:"close",confirm:true};
   const variants=o.variants||[
@@ -2421,7 +2446,9 @@ window.cgBacktest=async(o={})=>{
     {name:"D + split: half at CHoCH, half at retest",...B,cf:{...N,retest:true,split:true}},
     {name:"E + strong CHoCH candle goes in full",...B,cf:{...N,retest:true,split:true,strong:true}},
     {name:"F + limit at the gap's edge",...B,cf:{...N,retest:true,split:true,strong:true,fvgEdge:true}},
-    {name:"G + early exit (2-candle higher low)",...B,cf:{...N,earlyExit:true}}];
+    {name:"G + early exit (2-candle higher low)",...B,cf:{...N,earlyExit:true}},
+    {name:"H CHoCH → higher low → new high, stop under the higher low",...B,cf:{...N,hlBos:true}},
+    {name:"I H + early exit",...B,cf:{...N,hlBos:true,earlyExit:true}}];
   const t0=Date.now();while((!REG||regBusy)&&Date.now()-t0<60000)await new Promise(r=>setTimeout(r,500));
   const list=await pickSource(top),bases=list.map(c=>c.base),data={};let done=0;
   const q=bases.slice();
