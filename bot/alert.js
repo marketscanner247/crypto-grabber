@@ -6,8 +6,9 @@
 //
 // Environment:
 //   TELEGRAM_TOKEN, TELEGRAM_CHAT_ID  from @BotFather / @userinfobot (GitHub secrets). Without them it only prints.
-//   ALERT_MIN   all  = only setups that meet every check (default)
-//               risk = setups that meet every check, plus high-risk ones scoring 50+ (marked ⚠️)
+//   ALERT_MIN   risk = setups that meet every check, plus high-risk ones scoring 50+ (marked ⚠️) (default; on 4h
+//                      with counter-trend setups excluded, both groups were profitable over the 365-day backtest)
+//               all  = only setups that meet every check
 //               take = every check, or a score of 70+
 //               any  = every signal (handy to confirm alerts work)
 //   ALERT_TFS   timeframes to scan, default "4h" (the only timeframe that held up in the 120-day backtest)
@@ -22,7 +23,7 @@ const { chromium } = require("playwright");
 
 const ROOT = path.join(__dirname, ".."), STATE = path.join(__dirname, "state.json");
 const TOKEN = process.env.TELEGRAM_TOKEN || "", CHAT = process.env.TELEGRAM_CHAT_ID || "";
-const MIN = (process.env.ALERT_MIN || "all").toLowerCase();
+const MIN = (process.env.ALERT_MIN || "risk").toLowerCase();
 const TFS = (process.env.ALERT_TFS || "4h").split(",").map(s => s.trim()).filter(Boolean);
 const TZ = process.env.TZ_NAME || "America/Toronto";
 const repo = process.env.GITHUB_REPOSITORY || "";
@@ -36,6 +37,7 @@ const RISK = +process.env.RISK_USD || 10;              // $ lost if the stop is 
 const MAX_OPEN = +process.env.MAX_OPEN || 3;           // no new "Enter now" while this many alerted trades are open
 const MAX_DAILY_STOPS = +process.env.MAX_DAILY_STOPS || 3;   // no new entries for the rest of the day after this many stops
 // The 120-day backtest lost money on counter-trend setups in every version, so they are not alerted unless asked for.
+const ENTRY = (process.env.ENTRY || "zone").toLowerCase();   // zone = limit orders at the order block (default) · ltf = wait for the lower-timeframe CHoCH
 const ALLOW_COUNTER = String(process.env.ALLOW_COUNTER || "").toLowerCase() === "true";   // scorecard: $1,000 per trade; fee estimate 0.1% per side
 // New York clock (handles daylight saving)
 function nyNow(t) {
@@ -236,7 +238,7 @@ function daily(list, grades, setups, now, date) {
     }
     for (const b of briefs) if (await send(b.html + (SITE && b.name === "Alts" ? `\n<a href="${esc(SITE)}">Crypto Grabber</a>` : ""))) { b.sent = true; if (!state.__brief || state.__brief.date !== ny.date) state.__brief = { date: ny.date, seen: Date.now() }; }
     if (briefs.some(b => b.sent)) try { fs.writeFileSync(STATE, JSON.stringify(state)); } catch (e) {}   // don't resend if the scan fails
-    out = await page.evaluate(tfs => window.cgBot({ tfs }), TFS);
+    out = await page.evaluate(([tfs, entry]) => window.cgBot({ tfs, entry }), [TFS, ENTRY]);
     if (weekDue || dayDue) { try { grades = await page.evaluate(([l, n]) => window.cgGrade(l, n), [J.list, SIZE]); } catch (e) { console.error("scorecard failed:", e.message); } }
   } finally { await browser.close(); srv.close(); }
 

@@ -327,6 +327,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
       </div>
     </div>
     <div class="row">
+      <div class="rowhead"><span class="lbl">Entry</span>
+        <div class="seg" role="group" aria-label="Entry style"><button data-entrymode="zone">At the zone</button><button data-entrymode="ltf">Lower-TF CHoCH</button></div></div>
+      <span class="status" style="margin:0">At the zone: limit orders at the order block (best in the 1-year backtest). Lower-TF CHoCH: wait for the lower timeframe to turn first.</span>
+    </div>
+    <div class="row">
       <div class="rowhead"><span class="lbl">Stop triggers on</span>
         <div class="seg" role="group" aria-label="Stop type"><button data-stop="wick">Touch</button><button data-stop="close">Candle close</button></div></div>
     </div>
@@ -377,7 +382,7 @@ const TF_MIN={"1m":1,"3m":3,"5m":5,"15m":15,"30m":30,"1h":60,"2h":120,"4h":240,"
 const OKX_BAR={"1m":"1m","3m":"3m","5m":"5m","15m":"15m","30m":"30m","1h":"1H","2h":"2H","4h":"4H","6h":"6Hutc","12h":"12Hutc","1d":"1Dutc","3d":"3Dutc","1w":"1Wutc","1M":"1Mutc"};
 const STD_MA=[9,21,50,200];
 const TOP_N=50,VOL_MULT=1.5,VOL_LEN=20,MAX_FAV=10;
-let S={f3d:true,favs:["15m","1h","4h","1d","3d","1w"],tfs:["1h","4h","1d"],maType:"ema",slots:[...STD_MA],periods:[...STD_MA],off:[],theme:"auto",pal:"teal",entry:"close",stopMode:"close",fClose:true,risk:10};
+let S={f3d:true,favs:["15m","1h","4h","1d","3d","1w"],tfs:["1h","4h","1d"],maType:"ema",slots:[...STD_MA],periods:[...STD_MA],off:[],theme:"auto",pal:"teal",entry:"close",stopMode:"close",fClose:true,risk:10,entryMode:"zone"};
 const okP=v=>{const n=Number(v);return v!==""&&v!=null&&Number.isInteger(n)&&n>=2&&n<=300?n:null;};
 const fromSlots=sl=>[...new Set(sl.filter(n=>n!=null))].sort((x,y)=>x-y);
 try{
@@ -392,6 +397,7 @@ try{
   if(["wick","close"].includes(o.stopMode)&&o.fClose)S.stopMode=o.stopMode;   // older saved "touch" settings move to candle close once
   if(["teal","blue","violet","amber","rose"].includes(o.pal))S.pal=o.pal;
   if(+o.risk>0)S.risk=+o.risk;
+  if(o.entryMode==="ltf"||o.entryMode==="zone")S.entryMode=o.entryMode;
   if(Array.isArray(o.off))S.off=o.off.filter(p=>S.periods.includes(p));
 }catch(e){}
 const save=()=>{try{const {periods,...keep}=S;localStorage.setItem("cgrab",JSON.stringify(keep));}catch(e){}};
@@ -436,6 +442,8 @@ function applySlots(sl,msg){
   S.slots=sl;S.periods=fromSlots(sl);S.off=S.off.filter(p=>S.periods.includes(p));save();renderMa();if(msg)setStatus(msg);
 }
 const readSlots=()=>[0,1,2,3].map(i=>okP($("ma"+i).value));
+document.querySelectorAll("[data-entrymode]").forEach(b=>{b.setAttribute("aria-pressed",b.dataset.entrymode===S.entryMode);
+  b.onclick=()=>{S.entryMode=b.dataset.entrymode;CONFIRM=S.entryMode==="ltf";save();document.querySelectorAll("[data-entrymode]").forEach(x=>x.setAttribute("aria-pressed",x.dataset.entrymode===S.entryMode));setStatus("Entry style saved. Scan or check a coin again to apply it.");};});
 $("riskUsd").value=S.risk;$("riskUsd").onchange=e=>{const v=+e.target.value;if(v>0){S.risk=v;save();}else e.target.value=S.risk;};
 $("saveMa").onclick=()=>{const sl=readSlots();applySlots(sl,`Saved: ${maName()} ${fromSlots(sl).join(" · ")}`);};
 document.querySelectorAll(".rs").forEach(b=>b.onclick=()=>{
@@ -817,7 +825,9 @@ let STOP_BUF=0.5,STOP_MIN=1.0;   // in ATR (the average candle range); was 0.1 a
 // then the lower timeframe must break structure the trade's way (a CHoCH: a close beyond its last swing). Entry at that
 // close, stop just past the lowest low (highest high) the lower timeframe made in the zone.
 const LTF_OF={"5m":"1m","15m":"1m","1h":"5m","4h":"15m","1d":"1h","3d":"4h","1w":"1d"};
-let CONFIRM=true;
+// Entry style. The 365-day 4h backtest (top 50 coins) favoured the zone entry: limit orders at the order block with the
+// wider stop, +0.16R per trade, against +0.07R for waiting on a 15m CHoCH. The lower-timeframe entry stays available.
+let CONFIRM=S.entryMode==="ltf";
 // Entry rules on the lower timeframe: EMA 9 above 21 at the CHoCH (below for shorts), CHoCH candle volume vs its
 // 20-candle average (0 = not required), skip on the 3rd test of the sweep low, and exit early before Target 1 if the
 // lower timeframe breaks structure against the trade.
@@ -864,7 +874,7 @@ function levels(d,x,sr,vp,method="ob",tf=null){
   if(CONFIRM&&tf&&LTF_OF[tf]&&(method==="ob"||method==="sweep")){
     const poi=method==="ob"?e1:pivotX;
     cf={confirm:LTF_OF[tf],tf,poi,win:method==="sweep"?CFG.sweepWin:CFG.trigger+3,deepLvl:pivotX-(bull?1.5:-1.5)*a,
-      emaOk:CF.ema,volMin:CF.vol,maxSweeps:CF.maxSweeps,earlyExit:CF.earlyExit,retest:CF.retest,split:CF.split,strong:CF.strong,fvgEdge:CF.fvgEdge,sweeps0:method==="ob"?1:0};
+      emaOk:CF.ema,volMin:CF.vol,maxSweeps:CF.maxSweeps,earlyExit:CF.earlyExit,retest:CF.retest,splitE:CF.split,strong:CF.strong,fvgEdge:CF.fvgEdge,sweeps0:method==="ob"?1:0};
     entry=poi;stop=pivotX-(bull?1:-1)*(method==="sweep"?STOP_MIN:0.25)*a;atClose=false;
   }
   if(bull?stop>=entry:stop<=entry)return null;
@@ -1886,7 +1896,7 @@ function simulateLTF(lv,bull,fwd,ltf,fee){
       if(hi>lo){const ce=lv.fvgEdge?(bull?hi:lo):(lo+hi)/2;if(bull?ce>ret&&ce<cc.c:ce<ret&&ce>cc.c){ret=ce;src=lv.fvgEdge?"the fair value gap's edge":"the fair value gap";}}}
     o.choch=true;o.chochT=cc.t+Lm;o.retLvl=ret;o.retSrc=src;o.retStop=stop;
     const rrPlan=(lv.t1-ret)*dir/Math.abs(ret-stop);if(rrPlan<1){o.noRoom=true;o.status="no_trigger";o.r=0;o.done=false;return o;}
-    if(lv.split){splitMode=true;o.split=true;o.e2Lvl=ret;}
+    if(lv.splitE){splitMode=true;o.split=true;o.e2Lvl=ret;}
   }
   if(lv.retest&&!strongC&&!splitMode){const ret=o.retLvl;
     let fi=-1;
@@ -2353,6 +2363,7 @@ $("auto").onchange=async e=>{
 // Runs the normal live scan and returns each coin's top setup with its plan, checklist and entry status.
 let LAST_SCAN=[];
 window.cgBot=async(o={})=>{
+  if(o.entry==="ltf"||o.entry==="zone")CONFIRM=o.entry==="ltf";
   if(o.tfs&&o.tfs.length)S.tfs=sortTf(o.tfs.filter(t=>TF_MIN[t]));
   const t0=Date.now();while((!REG||regBusy)&&Date.now()-t0<60000)await new Promise(r=>setTimeout(r,500));
   LAST_SCAN=[];await scan();
@@ -2375,7 +2386,7 @@ window.cgBot=async(o={})=>{
         stopNow:tk&&tk.stopA!=null?f(tk.stopA):null,stopNowPct:tk&&tk.stopA!=null?pc(tk.stopA):null,rr1Now:tk&&tk.stopA!=null?tk.rr1:null,
         notes:[...(h.sc.notes||[]),...(h.sc.plus||[]).map(p=>"✓ "+p.txt),...(h.sc.pen||[]).filter(p=>/funding|BTC is turning|Leverage-led|cross/.test(p.txt)).map(p=>"✗ "+p.txt)],
         confirm:lv?lv.confirm||null:null,early:!!tk&&!!tk.early,chochDone:!!tk&&!!tk.choch&&tk.status==="pending",splitLimit:tk&&tk.split&&tk.fill<1&&tk.e2Lvl!=null?f(tk.e2Lvl):null,strongIn:!!tk&&!!tk.strong,retLvl:tk&&tk.retLvl!=null?f(tk.retLvl):null,retSrc:tk&&tk.retSrc||"",retStop:tk&&tk.retStop!=null?f(tk.retStop):null,retStopPct:tk&&tk.retStop!=null&&tk.retLvl?((tk.retStop/tk.retLvl-1)*100):null,poi:lv&&lv.poi!=null?f(lv.poi):null,entryNow:tk&&tk.entryP!=null?f(tk.entryP):null,chochLvl:tk&&tk.chochLvl!=null?f(tk.chochLvl):null,touched:!!tk&&tk.touched>=0,
-        plan:lv?{confirm:lv.confirm,poi:lv.poi,deepLvl:lv.deepLvl,win:lv.win,tf:lv.tf,method:lv.method,pivot:lv.pivot,atClose:lv.atClose,e1:lv.e1,e2:lv.e2,split:lv.split,stopMode:lv.stopMode,entry:lv.entry,stop:lv.stop,t1:lv.t1,t2:lv.t2,rr1:lv.rr1,rr2:lv.rr2,riskPct:lv.riskPct,atr:lv.atr}:null};})};
+        plan:lv?{confirm:lv.confirm,poi:lv.poi,deepLvl:lv.deepLvl,win:lv.win,tf:lv.tf,emaOk:lv.emaOk,volMin:lv.volMin,maxSweeps:lv.maxSweeps,earlyExit:lv.earlyExit,retest:lv.retest,splitE:lv.splitE,strong:lv.strong,fvgEdge:lv.fvgEdge,sweeps0:lv.sweeps0,method:lv.method,pivot:lv.pivot,atClose:lv.atClose,e1:lv.e1,e2:lv.e2,split:lv.split,stopMode:lv.stopMode,entry:lv.entry,stop:lv.stop,t1:lv.t1,t2:lv.t2,rr1:lv.rr1,rr2:lv.rr2,riskPct:lv.riskPct,atr:lv.atr}:null};})};
 };
 // ---------- weekly scorecard ----------
 // Re-plays each alerted trade from its signal candle with the same engine as the app (entry halves, half off at
@@ -2404,8 +2415,8 @@ window.cgBacktest=async(o={})=>{
   const ByTT=(a,tf)=>({w:a.filter(h=>h.tf===tf&&/^Swing (long|short)$/.test(h.styleK||"")),c:a.filter(h=>h.tf===tf&&/Counter/.test(h.styleK||""))});
   const B={buf:0.5,min:1.0,mode:"close",confirm:true};
   const variants=o.variants||[
-    {name:"A wider stops, on candle close (no lower-timeframe entry)",buf:0.5,min:1.0,mode:"close",confirm:false},
-    {name:"B lower-timeframe CHoCH entry (default)",...B,cf:{...N}},
+    {name:"A zone entry: limit at the order block, wider stop on candle close (default)",buf:0.5,min:1.0,mode:"close",confirm:false},
+    {name:"B lower-timeframe CHoCH entry",...B,cf:{...N}},
     {name:"C + wait for the retest (full size)",...B,cf:{...N,retest:true}},
     {name:"D + split: half at CHoCH, half at retest",...B,cf:{...N,retest:true,split:true}},
     {name:"E + strong CHoCH candle goes in full",...B,cf:{...N,retest:true,split:true,strong:true}},
