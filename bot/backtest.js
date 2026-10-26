@@ -2,11 +2,13 @@
 // Uses the app's own engine (window.cgBacktest): each past signal is judged only with data available at its close,
 // for three stop settings, and the result goes to Telegram and the console.
 //   BT_DAYS (default 120), BT_TFS (default 1h,4h,1d), BT_TOP (default 50)
+//   BT_SET: "zone" (default: the zone entry and its tweaks A–A7) or "ltf" (the lower-timeframe entries B–I)
 const http = require("http"), fs = require("fs"), path = require("path");
 const { chromium } = require("playwright");
 const ROOT = path.join(__dirname, "..");
 const TOKEN = process.env.TELEGRAM_TOKEN || "", CHAT = process.env.TELEGRAM_CHAT_ID || "";
 const DAYS = +process.env.BT_DAYS || 120, TOP = +process.env.BT_TOP || 50;
+const SET = process.env.BT_SET || "zone";
 const TFS = (process.env.BT_TFS || "1h,4h,1d").split(",").map(s => s.trim()).filter(Boolean);
 
 async function send1(html) {
@@ -49,12 +51,30 @@ const line = (lab, x) => `${lab}: ${x.closed} closed · win ${pc(x.winRate)} · 
   try {
     await page.goto(`http://127.0.0.1:${srv.address().port}/index.html`, { waitUntil: "load" });
     console.log(`Backtesting the top ${TOP} coins, ${TFS.join(", ")}, last ${DAYS} days. This takes a few minutes...`);
-    r = await page.evaluate(o => window.cgBacktest(o), { days: DAYS, tfs: TFS, top: TOP, progress: true });
+    r = await page.evaluate(o => window.cgBacktest(o), { days: DAYS, tfs: TFS, top: TOP, progress: true, set: SET });
   } finally { await browser.close(); srv.close(); }
   console.log("");
   const L = [`🧪 <b>Backtest · last ${r.days} days · ${r.coins} coins · ${r.tfs.join(", ")}</b>`,
     `Real prices, today's rules, each signal judged only with data from its own time. Fees ${r.fee}% per trade.`, ""];
-  for (const v of r.variants) {
+  const short = SET !== "ltf";
+  if (short) {   // one block per tweak, then which kinds of setups made the money under the default rules
+    const base = r.variants[0].alerted;
+    for (const v of r.variants) {
+      const d = v.alerted.totalR - base.totalR;
+      L.push(`<b>${v.name}</b>${v === r.variants[0] ? "" : ` (${d >= 0 ? "+" : ""}${d.toFixed(1)}R vs A)`}`);
+      L.push(line("All alerted", v.alerted));
+      L.push(line("· with the trend", v.withTrend));
+      L.push(line("· all 5 checks", v.aplus));
+      L.push("");
+    }
+    const a = r.variants[0];
+    if (a.cuts) {
+      L.push(`<b>Inside A: which setups made the money</b>`);
+      for (const [lab, x] of a.cuts) if (x.closed) L.push(line(`· ${lab}`, x));
+      L.push("");
+    }
+  }
+  for (const v of short ? [] : r.variants) {
     L.push(`<b>${v.name}</b>`);
     L.push(line("Alerted (all checks + high risk)", v.alerted));
     L.push(line("· all 5 checks", v.aplus));

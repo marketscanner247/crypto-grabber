@@ -842,6 +842,10 @@ let CONFIRM=S.entryMode==="ltf";
 // higher high, BOS): the lower timeframe is now trending the trade's way. Entry on that break, stop under the higher low.
 const CF={ema:false,vol:0,maxSweeps:0,earlyExit:false,retest:false,split:false,strong:false,fvgEdge:false,hlBos:true};
 const RETEST_MAX=12;
+// Zone-entry tweaks compared in cg backtest. entry: "split" (two halves, default), "mid" (one limit at the block middle),
+// "e1" (full size at the first level). mgmt: "half" (half at T1, stop to entry, rest to T2, default), "t1all" (all out at T1).
+// be1R: move the stop to entry once price is 1R in profit, before Target 1.
+const AM={entry:"split",mgmt:"half",be1R:false};
 function levels(d,x,sr,vp,method="ob",tf=null){
   const L=d.close.length-1,a=d.atr[L],bull=x.type.endsWith("bull"),c=d.close[L];
   // The pivot candle is where liquidity was taken: it is the order block.
@@ -862,6 +866,7 @@ function levels(d,x,sr,vp,method="ob",tf=null){
       const ce=(lo+hi)/2;if(!filled&&(bull?ce>top:ce<top)){fvg={lo,hi,ce};break;}
     }
     e1=fvg?fvg.ce:top;e2=mid;if(fvg)e1src="fair value gap middle";
+    if(AM.entry==="mid"){e1=mid;e1src="order block middle";}else if(AM.entry==="e1")e2=e1;
     if(bull?c<=e1:c>=e1){e1=c;atClose=true;e1src="signal close";}
     if(bull?c<=e2:c>=e2)e2=c;
     entry=(e1+e2)/2;
@@ -1838,6 +1843,8 @@ function simulateOB(lv,bull,fwd,fee){
     if(lv.stopMode==="close"){if(back(c,hard(stopLvl)))px=hard(stopLvl);else if(closedPast(c,stopLvl))px=c.c;}
     else if(back(c,stopLvl)){px=stopLvl;o.wick=!closedPast(c,stopLvl);}
     if(px!=null){real+=rem*(px-avg)*dir;rem=0;o.stop=i;break;}
+    if(o.t1<0&&AM.mgmt==="t1all"&&reach(c,lv.t1)){real+=rem*(lv.t1-avg)*dir;rem=0;o.t1=i;o.t2=i;break;}
+    if(AM.be1R&&o.t1<0&&reach(c,avg+dir*Rf))stopLvl=avg;
     if(o.t1<0&&reach(c,lv.t1)){const q=rem/2;real+=q*(lv.t1-avg)*dir;rem-=q;o.t1=i;stopLvl=avg;}
     if(o.t1>=0&&reach(c,lv.t2)){real+=rem*(lv.t2-avg)*dir;rem=0;o.t2=i;break;}
   }
@@ -2439,7 +2446,16 @@ window.cgBacktest=async(o={})=>{
   const N={ema:false,vol:0,maxSweeps:0,earlyExit:false,retest:false,split:false,strong:false,fvgEdge:false,hlBos:false};
   const ByTT=(a,tf)=>({w:a.filter(h=>h.tf===tf&&/^Swing (long|short)$/.test(h.styleK||"")),c:a.filter(h=>h.tf===tf&&/Counter/.test(h.styleK||""))});
   const B={buf:0.5,min:1.0,mode:"close",confirm:true};
-  const variants=o.variants||[
+  const Z={buf:0.5,min:1.0,mode:"close",confirm:false};
+  const variants=o.variants||(o.set==="ltf"?null:[
+    {name:"A zone entry, as now (default)",...Z,am:{}},
+    {name:"A1 wider stop (0.75 ATR past the sweep, 1.5 ATR min)",...Z,buf:0.75,min:1.5,am:{}},
+    {name:"A2 tighter stop (0.3 ATR past the sweep, 0.75 ATR min)",...Z,buf:0.3,min:0.75,am:{}},
+    {name:"A3 one limit at the order block middle (deeper fill)",...Z,am:{entry:"mid"}},
+    {name:"A4 full size at the first level (fills more often)",...Z,am:{entry:"e1"}},
+    {name:"A5 take everything at Target 1",...Z,am:{mgmt:"t1all"}},
+    {name:"A6 stop to entry at +1R, before Target 1",...Z,am:{be1R:true}},
+    {name:"A7 stop on touch instead of close",...Z,mode:"wick",am:{}}])||[
     {name:"A zone entry: limit at the order block, wider stop on candle close (default)",buf:0.5,min:1.0,mode:"close",confirm:false},
     {name:"B lower-timeframe CHoCH entry",...B,cf:{...N}},
     {name:"C + wait for the retest (full size)",...B,cf:{...N,retest:true}},
@@ -2449,6 +2465,7 @@ window.cgBacktest=async(o={})=>{
     {name:"G + early exit (2-candle higher low)",...B,cf:{...N,earlyExit:true}},
     {name:"H CHoCH → higher low → new high, stop under the higher low",...B,cf:{...N,hlBos:true}},
     {name:"I H + early exit",...B,cf:{...N,hlBos:true,earlyExit:true}}];
+  const AM0={...AM};
   const t0=Date.now();while((!REG||regBusy)&&Date.now()-t0<60000)await new Promise(r=>setTimeout(r,500));
   const list=await pickSource(top),bases=list.map(c=>c.base),data={};let done=0;
   const q=bases.slice();
@@ -2461,7 +2478,7 @@ window.cgBacktest=async(o={})=>{
       if(i<60)continue;const v=viewAt(x.D,i);m[tf]=structure(v);noteHTF(id,tf,v);}
     STRUCT[id]=m;};
   const saved={buf:STOP_BUF,min:STOP_MIN,mode:S.stopMode,fee:BT.fee,confirm:CONFIRM,cf:{...CF}},res=[];
-  for(const v of variants){STOP_BUF=v.buf;STOP_MIN=v.min;S.stopMode=v.mode;CONFIRM=!!v.confirm;Object.assign(CF,v.cf||{});BT.fee=o.fee??0.15;const hits=[];
+  for(const v of variants){STOP_BUF=v.buf;STOP_MIN=v.min;S.stopMode=v.mode;CONFIRM=!!v.confirm;Object.assign(CF,v.cf||{});Object.assign(AM,AM0,v.am||{});BT.fee=o.fee??0.15;const hits=[];
     for(const b of bases){const d=data[b];if(!d)continue;
       for(const tf of tfs){const x=d[tf];if(!x||x.k.length<300)continue;const id=x.s.id(b);
         hits.push(...historyHits(x.k,{id,base:b},tf,from,now,pitFor(b,id)));}}
@@ -2475,8 +2492,19 @@ window.cgBacktest=async(o={})=>{
       byTf:Object.fromEntries(tfs.map(tf=>[tf,st(alerted.filter(h=>h.tf===tf))])),
       counter:st(alerted.filter(h=>/Counter/.test(h.styleK||""))),withTrend:st(alerted.filter(h=>/^Swing (long|short)$/.test(h.styleK||""))),
       byTfTrend:Object.fromEntries(tfs.map(tf=>{const x=ByTT(alerted,tf);return [tf,{with:st(x.w),counter:st(x.c)}];})),
-      aplusByTf:Object.fromEntries(tfs.map(tf=>[tf,st(hits.filter(h=>h.tier==="aplus"&&h.tf===tf))]))});}
-  STOP_BUF=saved.buf;STOP_MIN=saved.min;S.stopMode=saved.mode;BT.fee=saved.fee;CONFIRM=saved.confirm;Object.assign(CF,saved.cf);
+      aplusByTf:Object.fromEntries(tfs.map(tf=>[tf,st(hits.filter(h=>h.tier==="aplus"&&h.tf===tf))])),
+      cuts:CONFIRM?null:(()=>{const P=h=>h.plans&&h.plans[h.rec.m]||h.lv||{},sc=h=>h.sc?h.sc.score:0,c=[];
+        const add=(lab,f)=>c.push([lab,st(alerted.filter(f))]);
+        for(const k of [...new Set(alerted.map(h=>h.styleK||"no trend read"))])add(`type: ${k}`,h=>(h.styleK||"no trend read")===k);
+        add("score 80+",h=>sc(h)>=80);add("score 65–79",h=>sc(h)>=65&&sc(h)<80);add("score under 65",h=>sc(h)<65);
+        add("Target 1 under 1.5R",h=>P(h).rr1<1.5);add("Target 1 1.5–2.5R",h=>P(h).rr1>=1.5&&P(h).rr1<2.5);add("Target 1 2.5R+",h=>P(h).rr1>=2.5);
+        add("stop under 1.5 ATR",h=>P(h).ratr<1.5);add("stop 1.5–2.5 ATR",h=>P(h).ratr>=1.5&&P(h).ratr<2.5);add("stop 2.5 ATR+",h=>P(h).ratr>=2.5);
+        add("longs",h=>dirOf(h.type)==="bull");add("shorts",h=>dirOf(h.type)==="bear");
+        add("regular divergence",h=>/^regular/.test(h.type));add("hidden divergence",h=>/^hidden/.test(h.type));
+        add("filled at the signal close",h=>h.out&&h.out.atClose);add("filled by the limit",h=>h.out&&h.out.trig>=0&&!h.out.atClose);
+        add("entry from a fair value gap",h=>!!P(h).fvg);add("entry from the block top",h=>!P(h).fvg);
+        return c;})()});}
+  STOP_BUF=saved.buf;STOP_MIN=saved.min;S.stopMode=saved.mode;BT.fee=saved.fee;CONFIRM=saved.confirm;Object.assign(CF,saved.cf);Object.assign(AM,AM0);
   return {days,tfs,coins:Object.keys(data).filter(b=>Object.keys(data[b]).length).length,fee:o.fee??0.15,variants:res};
 };
 // ---------- daily BTC brief (New York open) ----------
