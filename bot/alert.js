@@ -10,7 +10,7 @@
 //               risk = setups that meet every check, plus high-risk ones scoring 50+ (marked ⚠️)
 //               take = every check, or a score of 70+
 //               any  = every signal (handy to confirm alerts work)
-//   ALERT_TFS   timeframes to scan, default "1h,4h,1d,3d,1w"
+//   ALERT_TFS   timeframes to scan, default "4h" (the only timeframe that held up in the 120-day backtest)
 //   TZ_NAME     time zone for times in messages, default America/Toronto
 //   SITE_URL    link added to messages (defaults to the GitHub Pages address of this repo)
 //   TEST=true   also send a "connected" test message
@@ -23,7 +23,7 @@ const { chromium } = require("playwright");
 const ROOT = path.join(__dirname, ".."), STATE = path.join(__dirname, "state.json");
 const TOKEN = process.env.TELEGRAM_TOKEN || "", CHAT = process.env.TELEGRAM_CHAT_ID || "";
 const MIN = (process.env.ALERT_MIN || "all").toLowerCase();
-const TFS = (process.env.ALERT_TFS || "1h,4h,1d,3d,1w").split(",").map(s => s.trim()).filter(Boolean);
+const TFS = (process.env.ALERT_TFS || "4h").split(",").map(s => s.trim()).filter(Boolean);
 const TZ = process.env.TZ_NAME || "America/Toronto";
 const repo = process.env.GITHUB_REPOSITORY || "";
 const SITE = process.env.SITE_URL || (repo ? `https://${repo.split("/")[0].toLowerCase()}.github.io/${repo.split("/")[1]}/` : "");
@@ -34,7 +34,9 @@ const DAILY = String(process.env.DAILY || "").toLowerCase() === "true";   // sen
 const SIZE = 1000, FEE = 0.001;
 const RISK = +process.env.RISK_USD || 10;              // $ lost if the stop is hit: sets the position size shown in alerts
 const MAX_OPEN = +process.env.MAX_OPEN || 3;           // no new "Enter now" while this many alerted trades are open
-const MAX_DAILY_STOPS = +process.env.MAX_DAILY_STOPS || 3;   // no new entries for the rest of the day after this many stops   // scorecard: $1,000 per trade; fee estimate 0.1% per side
+const MAX_DAILY_STOPS = +process.env.MAX_DAILY_STOPS || 3;   // no new entries for the rest of the day after this many stops
+// The 120-day backtest lost money on counter-trend setups in every version, so they are not alerted unless asked for.
+const ALLOW_COUNTER = String(process.env.ALLOW_COUNTER || "").toLowerCase() === "true";   // scorecard: $1,000 per trade; fee estimate 0.1% per side
 // New York clock (handles daylight saving)
 function nyNow(t) {
   const p = {}; for (const x of new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", weekday: "short", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(t))) p[x.type] = x.value;
@@ -86,7 +88,7 @@ function plan(s) {
   const w = s.dir === "long" ? "Buy" : "Sell";
   if (s.confirm) {   // top-down entry: zone on the setup's timeframe, entry on a lower-timeframe CHoCH
     const up = s.dir === "long", rr = s.rr1Now ?? s.rr1;
-    const ent = s.entryNow ? `${w} at <b>${esc(s.entryNow)}</b> (${esc(s.confirm)} CHoCH ${up ? "up" : "down"})\nStop: <b>${esc(s.stopNow)}</b> (${pct(s.stopNowPct)}, past the ${esc(s.confirm)} ${up ? "low" : "high"})`
+    const ent = s.entryNow ? `${s.splitLimit ? `${w} HALF now at <b>${esc(s.entryNow)}</b> (${esc(s.confirm)} CHoCH ${up ? "up" : "down"})\nSecond half: limit ${w.toLowerCase()} at <b>${esc(s.splitLimit)}</b> (retest; cancel it if Target 1 comes first)` : `${w} at <b>${esc(s.entryNow)}</b> (${esc(s.confirm)} CHoCH ${up ? "up" : "down"}${s.strongIn ? ", strong candle: full size" : ""})`}\nStop: <b>${esc(s.stopNow)}</b> (${pct(s.stopNowPct)}, past the ${esc(s.confirm)} ${up ? "low" : "high"})`
       : `Zone: <b>${esc(s.poi)}</b>. Entry after a ${esc(s.confirm)} CHoCH ${up ? "up (a close above its last lower high" : "down (a close below its last higher low"}${s.touched && s.chochLvl ? `, now ${esc(s.chochLvl)}` : ""}).\nStop: set at the CHoCH, just past the ${esc(s.confirm)} ${up ? "low" : "high"} (about ${esc(s.stop)})`;
     return `${ent}\nTarget 1: ${esc(s.t1)} (${rr != null ? (s.entryNow ? "" : "about ") + rr.toFixed(1) : "?"}R) · Target 2: ${esc(s.t2)}\nPrice now: ${esc(s.live)}`;
   }
@@ -112,6 +114,15 @@ function links(s) {
 }
 function msgReady(s) {
   return `${head(s, "ready")}\n\n${esc(s.detail || s.why)}\n\n${plan(s)}${sizeLine(s)}${ctxLines(s)}\n\n${riskNote(s)}Price is close to the ${s.confirm ? "zone" : "entry"}. You'll get an <b>Enter now</b> alert when it ${s.confirm ? `confirms on the ${esc(s.confirm)}` : "fills"}.\n${links(s)}`;
+}
+// Lower timeframe confirmed: tell the trader to place the limit order at the retest level now.
+function msgConfirm(s) {
+  const up = s.dir === "long", w = up ? "BUY" : "SELL", p = Math.abs(s.retStopPct || 0), pos = p ? RISK / (p / 100) : null;
+  return `🔔 <b>${risky(s) ? "⚠️ " : ""}CONFIRMED · PLACE LIMIT ${w} · ${esc(s.sym)} ${esc(s.tf)}</b>\n` +
+    `The ${esc(s.confirm)} broke structure ${up ? "up" : "down"} (CHoCH). Don't chase it: wait for the retest.\n\n` +
+    `Limit ${w.toLowerCase()}: <b>${esc(s.retLvl)}</b> (retest of ${esc(s.retSrc)})\nStop: <b>${esc(s.retStop)}</b>${p ? ` (${p.toFixed(1)}%)` : ""}\n` +
+    `Target 1: ${esc(s.t1)} · Target 2: ${esc(s.t2)}\nPrice now: ${esc(s.live)}${pos ? `\nSize: risk $${RISK} → $${pos >= 1000 ? Math.round(pos).toLocaleString("en-US") : pos.toFixed(0)} position` : ""}` +
+    `${ctxLines(s)}\n\nCancel the order if it hasn't filled within about 12 ${esc(s.confirm)} candles, or if price runs to Target 1 first.\n${links(s)}`;
 }
 function msgEnter(s) {
   const fillTxt = s.split && s.fill != null ? (s.fill < 1 ? `First half filled at ${esc(s.e1)}. Keep the second half as a limit at ${esc(s.e2)}.` : `Both halves filled, average ${esc(s.avg || s.entry)}.`) : "";
@@ -175,7 +186,7 @@ function daily(list, grades, setups, now, date) {
   const today = rows.filter(t => t.g.fill > 0 && CLOSED.includes(t.g.status) && isToday(t.g.closedAt || t.at));
   const open = rows.filter(t => t.g.fill > 0 && t.g.status === "open");
   const pnl = today.reduce((a, t) => a + t.g.usd - t.g.fill * SIZE * FEE * 2, 0), R = today.reduce((a, t) => a + t.g.r, 0);
-  const ok = s => MIN === "any" ? true : s.all ? true : MIN === "take" ? s.score >= 70 && s.actionable : MIN === "risk" ? s.tier === "risk" : false;
+  const ok = s => (!ALLOW_COUNTER && /^Counter/.test(s.style || "")) ? false : MIN === "any" ? true : s.all ? true : MIN === "take" ? s.score >= 70 && s.actionable : MIN === "risk" ? s.tier === "risk" : false;
   const pend = setups.filter(s => s.status === "pending" && ok(s));
   const waiting = pend.filter(s => s.confirm && s.touched), ready = pend.filter(s => !(s.confirm && s.touched) && s.near);
   const tag = t => `${esc(t.sym)} ${esc(t.tf)} ${t.dir}`, rTxt = v => `${v >= 0 ? "+" : ""}${v.toFixed(2)}R`;
@@ -186,7 +197,7 @@ function daily(list, grades, setups, now, date) {
   L.push("", `<b>Right now · in trades: ${open.length}</b>${open.length ? ` (limit ${MAX_OPEN})` : ""}`);
   for (const t of open) L.push(`⏳ ${tag(t)} · ${t.g.t1 ? "Target 1 hit, stop at entry · " : ""}now ${rTxt(t.g.r)}`);
   L.push("", `<b>Waiting for confirmation: ${waiting.length}</b>`);
-  for (const s of waiting) L.push(`👀 ${tag(s)} · in the zone, needs a ${esc(s.confirm)} close ${s.dir === "long" ? "above" : "below"} ${esc(s.chochLvl || "its last swing")}`);
+  for (const s of waiting) L.push(s.chochDone ? `🔔 ${tag(s)} · confirmed, limit ${s.dir === "long" ? "buy" : "sell"} at ${esc(s.retLvl)}, stop ${esc(s.retStop)}` : `👀 ${tag(s)} · in the zone, needs a ${esc(s.confirm)} close ${s.dir === "long" ? "above" : "below"} ${esc(s.chochLvl || "its last swing")}`);
   L.push("", `<b>Ready (price near the zone): ${ready.length}</b>`);
   for (const s of ready) L.push(`🟡 ${tag(s)} · zone ${esc(s.poi || s.e1 || s.entry)} · price ${esc(s.live)}`);
   return L.join("\n");
@@ -243,7 +254,7 @@ function daily(list, grades, setups, now, date) {
   if (grades && dayDue) { if (await send(daily(J.list, grades, out.setups, now, repDate))) { if (!DAILY) state.__day = { date: repDate, seen: now }; sent.push("daily scoreboard"); } }
   // every alerted trade goes into the journal with its fixed plan, so the scorecard can grade it later
   const jot = s => { if (s.plan && !J.list.some(x => x.key === s.key)) J.list.push({ key: s.key, sym: s.sym, tf: s.tf, dir: s.dir, all: !!s.all, score: s.score, sigTime: s.sigTime, at: now, plan: s.plan }); };
-  const ok = s => MIN === "any" ? true : s.all ? true : MIN === "take" ? s.score >= 70 && s.actionable : MIN === "risk" ? s.tier === "risk" : false;
+  const ok = s => (!ALLOW_COUNTER && /^Counter/.test(s.style || "")) ? false : MIN === "any" ? true : s.all ? true : MIN === "take" ? s.score >= 70 && s.actionable : MIN === "risk" ? s.tier === "risk" : false;
   // risk caps: count the alerted trades still open, and today's stop-outs (New York day)
   const openN = () => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && v.enter > 0 && !v.done).length;
   const stopsToday = () => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && v.res === "stopped" && v.done && nyNow(v.done).date === ny.date).length;
@@ -260,6 +271,8 @@ function daily(list, grades, setups, now, date) {
         } else if (await send(msgEnter(s))) { st.enter = now; jot(s); sent.push(`enter ${s.sym} ${s.tf}`); }
       }
       else st.enter = st.enter || -1;   // too late to chase; remember so it is not sent later
+    } else if (s.status === "pending" && s.chochDone && !st.conf && ok(s)) {
+      if (await send(msgConfirm(s))) { st.conf = now; st.ready = st.ready || now; jot(s); sent.push(`confirmed ${s.sym} ${s.tf}`); }
     } else if (s.status === "pending" && !st.ready && ok(s) && s.near) {
       if (await send(msgReady(s))) { st.ready = now; jot(s); sent.push(`ready ${s.sym} ${s.tf}`); }
     } else if (st.enter > 0 && !st.t1 && s.t1hit && s.status === "open") {

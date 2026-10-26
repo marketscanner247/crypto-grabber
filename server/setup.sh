@@ -42,7 +42,7 @@ if [ ! -s "$ENVF" ]; then
 TELEGRAM_TOKEN=$TOK
 TELEGRAM_CHAT_ID=$CHAT
 ALERT_MIN=all
-ALERT_TFS=1h,4h,1d,3d,1w
+ALERT_TFS=4h
 TZ_NAME=America/Toronto
 SITE_URL=https://$(echo "$OWNER" | tr 'A-Z' 'a-z').github.io/$NAME/
 PLAYWRIGHT_BROWSERS_PATH=$BROWSERS

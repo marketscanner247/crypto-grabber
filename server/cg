@@ -20,7 +20,7 @@ case "${1:-status}" in
   run)       once ;;
   backtest)
     [ "$(id -u)" = 0 ] || { echo "Run as root (or: sudo cg ...)"; exit 1; }
-    cd "$DIR" && runuser -u cg -- env $(grep -v '^\s*#' "$ENVF" | xargs) BT_DAYS="${2:-120}" node "$DIR/bot/backtest.js" ;;
+    cd "$DIR" && runuser -u cg -- env $(grep -v '^\s*#' "$ENVF" | xargs) BT_DAYS="${2:-120}" BT_TFS="${3:-1h,4h,1d}" node "$DIR/bot/backtest.js" ;;
   update)
     runuser -u cg -- git -C "$DIR" pull --ff-only
     runuser -u cg -- env $(grep -v '^\s*#' "$ENVF" | xargs) bash -c "cd $DIR/bot && npm install --no-audit --no-fund --silent && npx playwright install chromium"
@@ -37,7 +37,7 @@ cg brief      send the BTC, ETH and alts briefs now
 cg scorecard  send the weekly scorecard now
 cg today      send today's scoreboard now (it also comes every night just after midnight)
 cg run        run one check now
-cg backtest   test today's rules on the last 120 days of real prices (cg backtest 60 for 60 days)
+cg backtest   test the rules on real prices: cg backtest [days] [timeframes], e.g. cg backtest 365 4h
 cg update     pull the latest files from GitHub and reinstall (normally automatic)
 cg stop       pause alerts        cg start   turn them back on
 EOF

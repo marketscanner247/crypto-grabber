@@ -9,12 +9,23 @@ const TOKEN = process.env.TELEGRAM_TOKEN || "", CHAT = process.env.TELEGRAM_CHAT
 const DAYS = +process.env.BT_DAYS || 120, TOP = +process.env.BT_TOP || 50;
 const TFS = (process.env.BT_TFS || "1h,4h,1d").split(",").map(s => s.trim()).filter(Boolean);
 
+async function send1(html) {
+  for (let i = 0; i < 4; i++) {
+    try {
+      const r = await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ chat_id: CHAT, text: html, parse_mode: "HTML", disable_web_page_preview: true }) });
+      const j = await r.json(); if (j.ok) return true; console.error("Telegram said:", j.description);
+    } catch (e) { console.error("Telegram send failed:", e.message); }
+    await new Promise(r => setTimeout(r, 3000 * (i + 1)));
+  }
+  return false;
+}
+// Telegram allows 4,096 characters per message: send the report in pieces, one block per variant
 async function send(html) {
   if (!TOKEN || !CHAT) return;
-  try {
-    await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, { method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ chat_id: CHAT, text: html, parse_mode: "HTML", disable_web_page_preview: true }) });
-  } catch (e) { console.error("Telegram send failed:", e.message); }
+  const parts = html.split("\n\n"), out = [];
+  for (const p of parts) { if (out.length && (out[out.length - 1] + "\n\n" + p).length < 3800) out[out.length - 1] += "\n\n" + p; else out.push(p); }
+  for (const m of out) await send1(m);
 }
 function serve() {
   const types = { ".html": "text/html", ".js": "text/javascript", ".json": "application/json", ".webmanifest": "application/manifest+json", ".png": "image/png" };
@@ -50,7 +61,11 @@ const line = (lab, x) => `${lab}: ${x.closed} closed · win ${pc(x.winRate)} · 
     L.push(line("· ⚠️ high risk", v.risk));
     L.push(line("· with the trend", v.withTrend));
     L.push(line("· counter-trend", v.counter));
-    for (const [tf, x] of Object.entries(v.byTf)) L.push(line(`· ${tf}`, x));
+    for (const [tf, x] of Object.entries(v.byTf)) {
+      L.push(line(`· ${tf}`, x));
+      const t = v.byTfTrend && v.byTfTrend[tf]; if (t) { L.push(line(`   ${tf} with the trend`, t.with)); L.push(line(`   ${tf} counter-trend`, t.counter)); }
+      const a = v.aplusByTf && v.aplusByTf[tf]; if (a && a.closed) L.push(line(`   ${tf} all 5 checks`, a));
+    }
     L.push("");
   }
   L.push("Win = closed in profit. Above +0R total means the rules made money over the period.");
