@@ -1,6 +1,7 @@
 name: Telegram alerts
 
-# Runs the Crypto Grabber scan every 5 minutes and sends Telegram alerts, plus a BTC brief at the 9:30 am New York open.
+# Runs the Crypto Grabber scan every 5 minutes and sends Telegram alerts, plus a BTC brief at the 9:30 am New York open
+# and a weekly scorecard on Sunday evening.
 # Needs two repository secrets: TELEGRAM_TOKEN and TELEGRAM_CHAT_ID.
 # Optional repository variables: ALERT_MIN (risk | all | take | any) and ALERT_TFS (e.g. 1h,4h,1d).
 on:
@@ -14,6 +15,10 @@ on:
         default: true
       brief:
         description: "Send the daily BTC brief now"
+        type: boolean
+        default: false
+      scorecard:
+        description: "Send the weekly scorecard now"
         type: boolean
         default: false
 
@@ -37,6 +42,7 @@ jobs:
       BROWSER_CHANNEL: chrome
       TEST: ${{ github.event_name == 'workflow_dispatch' && inputs.test }}
       BRIEF: ${{ github.event_name == 'workflow_dispatch' && inputs.brief }}
+      SCORECARD: ${{ github.event_name == 'workflow_dispatch' && inputs.scorecard }}
     steps:
       - uses: actions/checkout@v4
 
