@@ -15,6 +15,11 @@ echo "== 1/5 System packages"
 apt-get update -qq
 apt-get install -y -qq git nodejs npm ca-certificates >/dev/null
 timedatectl set-timezone America/Toronto 2>/dev/null || true
+# small servers (1–2 GB RAM): add 2 GB of swap so the headless browser never runs out of memory
+if [ "$(awk '/MemTotal/{print int($2/1024)}' /proc/meminfo)" -lt 3000 ] && ! swapon --show | grep -q .; then
+  fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  echo "   added 2 GB swap"
+fi
 id cg >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/cg --shell /usr/sbin/nologin cg
 
 echo "== 2/5 App from GitHub"

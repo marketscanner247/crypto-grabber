@@ -999,6 +999,18 @@ function scoreAll(hits){
 // ---------- data sources ----------
 const STABLE=new Set(["USDT","USDC","BUSD","DAI","TUSD","FDUSD","USDP","USDD","PYUSD","EUR","USDE","USD1","RLUSD","EURC","XUSD","BFUSD"]);
 const LEV=/(UP|DOWN|BULL|BEAR)$/;
+// Binance spot first. If a pair is gone from spot, or spot only has old data from before a delisting (e.g. XMR,
+// removed from spot in 2024), use Binance USDT-M futures instead. Ids served from futures are remembered in PERP.
+const PERP=new Set();
+async function binKlines(id,tf,q,ref){
+  const fresh=rows=>Array.isArray(rows)&&rows.length&&+rows[rows.length-1][0]>=(ref||Date.now())-3*TF_MS(tf);
+  if(!PERP.has(id)){try{const r=await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${id}&interval=${tf}&${q}`);
+    if(r.ok){const rows=await r.json();if(fresh(rows))return rows;}}catch(e){}}
+  const r=await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${id}&interval=${tf}&${q}`);
+  if(!r.ok)throw new Error(r.status);
+  const rows=await r.json();if(!fresh(rows))throw new Error("no recent data");
+  PERP.add(id);return rows;
+}
 const BINANCE={
   name:"Binance",id:b=>b+"USDT",
   async symbols(top){
@@ -1009,18 +1021,14 @@ const BINANCE={
       .filter(t=>!STABLE.has(t.base)&&!LEV.test(t.base)).sort((a,b)=>b.qv-a.qv).slice(0,top);
   },
   async candles(id,tf){
-    const r=await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${id}&interval=${tf}&limit=400`);
-    if(!r.ok)throw new Error(r.status);
-    const rows=await r.json(),out=rows.slice(0,-1).map(x=>[x[0],x[1],x[2],x[3],x[4],x[7]]);
+    const rows=await binKlines(id,tf,"limit=400"),out=rows.slice(0,-1).map(x=>[x[0],x[1],x[2],x[3],x[4],x[7]]);
     if(rows.length){const f=rows[rows.length-1];out.live=+f[4];out.form={t:+f[0],h:+f[2],l:+f[3],c:+f[4]};}
     return out;
   },
   async raw(id,tf,limit,at){
-    const r=await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${id}&interval=${tf}&limit=${limit}${at?`&endTime=${Math.floor(at)}`:""}`);
-    if(!r.ok)throw new Error(r.status);
-    return (await r.json()).map(x=>({t:x[0],h:+x[2],l:+x[3]}));
+    return (await binKlines(id,tf,`limit=${limit}${at?`&endTime=${Math.floor(at)}`:""}`,at)).map(x=>({t:x[0],h:+x[2],l:+x[3]}));
   },
-  tv:id=>`https://www.tradingview.com/chart/?symbol=BINANCE:${id}`
+  tv:id=>`https://www.tradingview.com/chart/?symbol=BINANCE:${id}${PERP.has(id)?".P":""}`
 };
 const OKX={
   name:"OKX",id:b=>b+"-USDT",
@@ -1037,6 +1045,7 @@ const OKX={
     if(!r.ok)throw new Error(r.status);
     const j=await r.json(); if(j.code&&j.code!=="0")throw new Error(j.msg||"OKX");
     const out=j.data.filter(x=>x[8]==="1").reverse().map(x=>[+x[0],x[1],x[2],x[3],x[4],x[7]]);
+    if(!out.length||out[out.length-1][0]<Date.now()-3*TF_MS(tf))throw new Error("no recent data");
     if(j.data.length){const f=j.data[0];out.live=+f[4];if(f[8]!=="1")out.form={t:+f[0],h:+f[2],l:+f[3],c:+f[4]};}
     return out;
   },
@@ -1624,10 +1633,8 @@ const cleanBase=v=>v.trim().toUpperCase().replace(/[^A-Z0-9]/g,"").replace(/(USD
 
 // closed candles whose close time is at or before endTs, oldest first
 async function binEnding(id,tf,endTs,count){
-  const r=await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${id}&interval=${tf}&endTime=${Math.floor(endTs)}&limit=${Math.min(1000,count)}`);
-  if(!r.ok)throw new Error(r.status);
   const cut=Math.min(endTs,Date.now());
-  return (await r.json()).filter(x=>x[6]<=cut).map(x=>({t:x[0],ct:x[6],o:+x[1],h:+x[2],l:+x[3],c:+x[4],v:+x[7]}));
+  return (await binKlines(id,tf,`endTime=${Math.floor(endTs)}&limit=${Math.min(1000,count)}`,cut)).filter(x=>x[6]<=cut).map(x=>({t:x[0],ct:x[6],o:+x[1],h:+x[2],l:+x[3],c:+x[4],v:+x[7]}));
 }
 async function okxEnding(id,tf,endTs,count){
   const bar=OKX_BAR[tf];if(!bar)throw new Error("unsupported");
@@ -2292,8 +2299,9 @@ function ensureWS(bin){
 async function pollLive(){
   if(document.hidden||MODE!=="live"){closeWS();return;}
   const ids=[...new Set([...document.querySelectorAll("[data-live]")].map(e=>e.dataset.live))];
-  const bin=ids.filter(i=>!i.includes("-")),okx=ids.filter(i=>i.includes("-"));
+  const all=ids.filter(i=>!i.includes("-")),bin=all.filter(i=>!PERP.has(i)),fut=all.filter(i=>PERP.has(i)),okx=ids.filter(i=>i.includes("-"));
   ensureWS(bin);
+  await Promise.all(fut.map(async id=>{try{const j=await (await fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${id}`)).json();if(j.price)LIVE[id]=+j.price;}catch(e){}}));
   if(!ids.length)return;
   try{if(bin.length&&Date.now()-wsAlive>5000){const r=await fetch(`https://data-api.binance.vision/api/v3/ticker/price?symbols=${encodeURIComponent(JSON.stringify(bin))}`);
     if(r.ok)for(const x of await r.json())LIVE[x.symbol]=+x.price;}}catch(e){}
