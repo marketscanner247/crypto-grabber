@@ -69,7 +69,12 @@ details.why>summary::after{content:" ▾"}details.why[open]>summary::after{conte
 .sbl{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
 .regd{display:grid;gap:4px;font-size:13px}
 .regd b{font-weight:700}
-.lp{font:600 13px var(--mono);margin-left:10px;padding:1px 6px;border-radius:5px;font-variant-numeric:tabular-nums}
+.lp{font:700 14px var(--mono);padding:1px 6px;border-radius:5px;font-variant-numeric:tabular-nums;min-width:8ch;text-align:right;display:inline-block}
+.cr{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:none}
+.pnl{font:700 12px var(--mono);font-variant-numeric:tabular-nums;min-height:15px}.pnl.pos{color:var(--bull)}.pnl.neg{color:var(--bear)}
+.upd{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:10px 2px;padding:9px 12px;border:1px solid var(--accent);border-radius:10px;font-size:13px}
+.upd.stale{border-color:var(--line);color:var(--muted)}
+.upd button{background:var(--accent);color:var(--bg);border:0;border-radius:8px;padding:6px 12px;font-weight:800;cursor:pointer}
 @keyframes up{from{background:var(--bullbg);color:var(--bull)}to{background:transparent}}
 @keyframes dn{from{background:var(--bearbg);color:var(--bear)}to{background:transparent}}
 .tick-up{animation:up 1s ease-out}.tick-dn{animation:dn 1s ease-out}
@@ -272,6 +277,11 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .links{display:flex;justify-content:space-between;gap:8px}
 .links a{font:600 13px var(--display);color:var(--accent);text-decoration:none}
 .empty{text-align:center;color:var(--muted);padding:20px 10px}
+.vtabs{display:flex;gap:6px;margin:4px 2px 12px}.vtabs button{flex:1;padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--muted);font:700 13.5px var(--display);cursor:pointer}
+.vtabs button[aria-selected="true"]{border-color:var(--accent);color:var(--fg)}
+.csumry{font-size:13.5px;margin:2px 2px 12px;line-height:1.5}.ctr{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel);margin-bottom:8px;cursor:pointer}
+.ctr .cs{font:800 15px var(--display)}.ctr .cs small{font:600 12px var(--mono);color:var(--muted);margin-left:6px}.ctr .cr2{font:700 14px var(--mono);text-align:right}.ctr .cn{grid-column:1/-1;font-size:12px;color:var(--muted)}
+.ctr .cr2.pos{color:var(--bull)}.ctr .cr2.neg{color:var(--bear)}
 .ahead{font-size:13.5px;color:var(--muted);margin:0 2px 10px}.ahead b{color:var(--bull)}
 .near{margin-top:4px}.near.risk>summary{color:var(--gold)}.near>.secbody{gap:10px;padding:0 8px 8px}
 .tag.aplus{color:var(--bull);background:var(--bullbg);font-weight:800}
@@ -383,7 +393,9 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
     </div>
   </div>
 
+  <div class="vtabs" role="tablist"><button role="tab" data-view="setups" aria-selected="true">Setups</button><button role="tab" data-view="closed" aria-selected="false">Closed trades</button></div>
   <div id="results"></div>
+  <div id="closed" hidden></div>
   <div id="pop" class="pop" hidden><div class="popc" role="dialog" aria-label="Score details"><button class="popx" aria-label="Close">×</button><div class="popb"></div></div></div>
 </div>
 
@@ -1402,7 +1414,8 @@ function flowHTML(sp,fu){
 // ---------- rendering ----------
 let busy=false,src=null;
 // The status line only shows while working, or for an error.
-const setStatus=(t,err)=>{const e=$("status");e.textContent=t;e.className="status"+(err?" err":"");e.hidden=!(err||busy);};
+let AUTO=null,AUTO_GEN=0,VIEW="scan",PENDING=null;   // AUTO: an automatic scan is running ({first}); VIEW: what #results shows
+const setStatus=(t,err)=>{const e=$("status");e.textContent=t;e.className="status"+(err?" err":"");e.hidden=!(err||busy||(AUTO&&AUTO.first));};
 const fmtP=v=>v>=100?v.toFixed(2):v>=1?v.toFixed(4):v.toPrecision(4);
 const pctTxt=(p,c)=>{const v=(p/c-1)*100;return (v>=0?"+":"")+v.toFixed(1)+"%";};
 const lock=on=>{document.body.classList.toggle("chomping",on);busy=on;$("scan").disabled=on;$("check").disabled=on;
@@ -1502,7 +1515,7 @@ async function tradeChart(el,leg,s,id,tf,h){
   ser.setData(bars);
   const items=[];
   if(h){const lv=h.lv,o=h.track||{},bull=dirOf(h.type)==="bull",filled=o.trig>=0,done=isClosed(o),D=bull?1:-1;
-    const pl=(price,color,title,style=0,w=2)=>{if(price==null||!isFinite(price))return;ser.createPriceLine({price,color,lineWidth:w,lineStyle:style,axisLabelVisible:true,title});items.push([color,title,price]);};
+    const pl=(price,color,title,style=0,w=2)=>{if(price==null||!isFinite(price))return;ser.createPriceLine({price,color,lineWidth:w,lineStyle:style,axisLabelVisible:false,title:`${title} ${fmtP(price)}`});items.push([color,title,price]);};
     const trailing=o.trail&&o.t1>=0&&o.stopNowLvl!=null&&!done;
     if(filled)pl(o.entryP??o.avg??lv.entry,C.acc,"Entry");
     else if(lv.confirm)pl(lv.poi,C.acc,"Zone",2);
@@ -1575,7 +1588,7 @@ function signalHTML(h){
         return row(sw?"Stop (at least)":"Stop",fmtP(sp),`${fromEntry(sp)} · risk ${rk.toFixed(1)}%${sw?` · moves just past the sweep ${bull?"low":"high"} if it goes further`:""}${lv.stopMode==="close"?` · on close, hard ${fmtP(sp-(bull?1:-1)*0.5*Math.abs(E-sp))}`:""}`,"neg");})()}
       ${(()=>{const oo=h.out||h.track,E=oo&&oo.entryP!=null?oo.entryP:lv.entry,sp=(oo&&oo.stopA)??lv.stop,dp=Math.abs(E-sp)/E,rk=btcHalf?S.risk/2:S.risk,pos=rk/dp;
         return row("Size",`$${pos>=1000?Math.round(pos).toLocaleString():pos.toFixed(0)}`,`risking $${rk}${btcHalf?" (half: BTC weak)":""} with a ${(dp*100).toFixed(1)}% stop${lv.confirm&&!(oo&&oo.stopA!=null)?" · estimate until the CHoCH sets the stop":""}`);})()}
-      ${(()=>{const oo=h.out||h.track,real=oo&&oo.stopA!=null;return row("Target 1",fmtP(lv.t1),`${pctTxt(lv.t1,real&&oo.entryP!=null?oo.entryP:lv.entry)} · ${real?"":lv.confirm?"about ":""}${(real?oo.rr1:lv.rr1).toFixed(1)}R · ${esc(lv.t1src)}`,"pos");})()}
+      ${(()=>{const oo=h.out||h.track,real=oo&&oo.stopA!=null;return row("Target 1",fmtP(lv.t1),`${pctTxt(lv.t1,real&&oo.entryP!=null?oo.entryP:lv.entry)} · ${real?"":lv.confirm?"about ":""}${(real&&oo.rr1!=null?oo.rr1:lv.rr1).toFixed(1)}R · ${esc(lv.t1src)}`,"pos");})()}
       </div>
       ${inTrade?`<div class="late"${late?"":" hidden"}${isLive?` data-late="${h.id}" data-entry="${E0}" data-t1="${lv.t1}"`:""}>${late?lateTxt(prog):""}</div>`:""}
       ${inv&&inv.some(i=>!i.ok)?`<div class="inv"><b>Warning</b>${inv.filter(i=>!i.ok).map(i=>`<div class="no"><b>✗</b><span>${esc(i.txt)}</span></div>`).join("")}</div>`:""}
@@ -1643,11 +1656,13 @@ function structHTML(map,sty,t){
 }
 const ckTag=(ck,key)=>{const a=key?` data-pop="${esc(key)}" role="button" tabindex="0"`:"";return ck&&ck.all?`<span class="tag aplus"${a}>✓ All checks</span>`:ck?`<span class="tag"${a}>${ck.n}/${ck.total} checks</span>`:"";};
 function makeCard(o){
-  const el=document.createElement("details");el.className="card"+(o.conf?" conf":"");el.open=!!o.open;
+  const el=document.createElement("details");el.className="card"+(o.conf?" conf":"");el.open=!!o.open;el.dataset.k=o.id+"|"+(o.top?o.top.tf:"");
   const t=o.top;
   const lp=o.lv&&o.lv.live,lvx=o.lv&&{...o.lv,id:o.asOf?null:o.id},sty=o.struct&&Object.keys(o.struct).length?styleOf(o.struct):null,ck=t?(t.chk||(t.chk=checklist(t))):null;
-  let h=`<summary class="csum"><div class="cl"><div class="sym">${esc(o.sym)}${t?`<small>${t.tf}</small>`:""}${lp&&!o.asOf?`<span class="lp" data-live="${o.id}">${fmtP(lp)}</span>`:""}</div>
-    <div class="sub">${t?`<span class="pill ${dirOf(t.type)}">${LABEL[t.type]}</span>${outPill(t)}<span data-tp="${esc(sigKey(t))}">${trackPill(t)}</span>`:`<span class="pill flat">No setup right now</span>`}<span data-ckt>${ckTag(ck,t&&sigKey(t))}</span>${t&&sty?typeTag(tradeType(t,sty)):sty?trendTag(sty):""}${t&&t.conflict?`<span class="tag gold">Mixed</span>`:""}${t&&t.ctx&&t.ctx.agree.length?`<span class="tag gold">Confluence ×${t.ctx.agree.length+1}</span>`:""}${(o.others||[]).map(h=>`<span class="tag ${dirOf(h.type)}">${h.tf} ${dirOf(h.type)==="bull"?"Long":"Short"}</span>`).join("")}</div></div>${t?chip(t.sc):""}</summary><div class="cbody">`;
+  let h=`<summary class="csum"><div class="cl"><div class="sym">${esc(o.sym)}${t?`<small>${t.tf}</small>`:""}</div>
+    <div class="sub">${t?`<span class="pill ${dirOf(t.type)}">${LABEL[t.type]}</span>${outPill(t)}<span data-tp="${esc(sigKey(t))}">${trackPill(t)}</span>`:`<span class="pill flat">No setup right now</span>`}<span data-ckt>${ckTag(ck,t&&sigKey(t))}</span>${t&&sty?typeTag(tradeType(t,sty)):sty?trendTag(sty):""}${t&&t.conflict?`<span class="tag gold">Mixed</span>`:""}${t&&t.ctx&&t.ctx.agree.length?`<span class="tag gold">Confluence ×${t.ctx.agree.length+1}</span>`:""}${(o.others||[]).map(h=>`<span class="tag ${dirOf(h.type)}">${h.tf} ${dirOf(h.type)==="bull"?"Long":"Short"}</span>`).join("")}</div></div><div class="cr">${lp&&!o.asOf?`<span class="lp" data-live="${o.id}">${fmtP(lp)}</span>`:""}${(()=>{const k=t&&t.track,lv=t&&t.lv;
+      if(o.asOf||!k||k.trig<0||isClosed(k)||!lv)return "";const E=k.entryP??k.avg??lv.entry,R=Math.abs(E-(k.stopA??lv.stop));
+      return `<span class="pnl" data-pnl="${o.id}" data-e="${E}" data-r="${R}" data-d="${dirOf(t.type)==="bull"?1:-1}"></span>`;})()}${t?chip(t.sc):""}</div></summary><div class="cbody">`;
   if(t)h+=signalHTML(t);
   if(sty)h+=structHTML(o.struct,sty,t);
   const lvTfs=o.lv?sortTf([...new Set([...S.favs,o.lv.tf])]):[];
@@ -1725,20 +1740,27 @@ async function pickSource(top){
   throw new Error("none");
 }
 let STRUCT={};
-async function scan(){
-  if(busy)return;
+async function scan(opts={}){
+  const A=!!opts.auto;
+  if(busy||(A&&(AUTO||MODE!=="live")))return;
+  if(!A){AUTO_GEN++;VIEW="scan";}
   if(MODE==="bt"){runHistory("top");return;}
   if(!S.tfs.length){setStatus("Pick at least one timeframe in Settings.",true);return;}
   const bt=MODE==="bt",at=bt?asOfTs():null;
   if(bt&&!validAt(at)){setStatus("Pick a date and time in the past.",true);return;}
-  lock(true);$("prog").style.width="0";setStatus("Loading top 50 coins…");
+  // automatic scans (page open, every 5 minutes) don't lock the buttons, and only the first one shows progress
+  const gen=AUTO_GEN,show=!A||opts.first,say=(m,e)=>{if(show&&(!A||!busy))setStatus(m,e);},bar=w=>{if(show&&(!A||!busy))$("prog").style.width=w;};
+  if(A)AUTO={first:!!opts.first};else lock(true);
+  const end=()=>{if(A){AUTO=null;if(!busy){const e=$("status");if(!e.classList.contains("err"))e.hidden=true;bar("0");}}else lock(false);};
+  bar("0");say(opts.only?"Loading your setups…":"Loading top 50 coins…");
   let list;
   try{list=await pickSource(TOP_N);}catch(e){
-    setStatus("Couldn't reach Binance or OKX. Open the page from a website, not from a downloaded file or the Claude app.",true);
-    lock(false);return;
+    say("Couldn't reach Binance or OKX. Open the page from a website, not from a downloaded file or the Claude app.",true);
+    end();return;
   }
-  const tfs=sortTf(S.tfs),jobs=[];for(const tf of tfs)for(const c of list)jobs.push({c,tf});
-  const total=jobs.length,hits=[];let done=0,fails=0;STRUCT={};HTFL={};
+  const only=opts.only?new Set(opts.only):null;
+  const tfs=sortTf(S.tfs),jobs=[];for(const tf of tfs)for(const c of list)if(!only||only.has(c.base+"|"+tf))jobs.push({c,tf});
+  const total=jobs.length,hits=[];let done=0,fails=0;if(!A){STRUCT={};HTFL={};}
   const worker=async()=>{
     while(jobs.length){const {c,tf}=jobs.shift();
       try{
@@ -1753,25 +1775,100 @@ async function scan(){
             if(bt)await attachOutcomes(hs,src,c.id,tf,lastCt);
             hits.push(...hs);}}
       }catch(e){fails++;}
-      done++;$("prog").style.width=(done/total*100)+"%";setStatus(`Scanning ${done}/${total} · ${hits.length} signal(s)`);
+      done++;bar((done/total*100)+"%");say(only?`Loading your setups ${done}/${total}…`:`Scanning ${done}/${total} · ${hits.length} signal(s)`);
     }
   };
   await Promise.all(Array.from({length:6},worker));
-  if(hits.some(h=>h.lv&&h.lv.confirm)){setStatus("Checking lower-timeframe entries…");
+  if(hits.some(h=>h.lv&&h.lv.confirm)){say("Checking lower-timeframe entries…");
     if(bt)await resimLtf(hits);else{await attachLtf(hits);for(const h of hits)if(h.lv&&h.lv.confirm){track(h);if(h.live)applyLive(h,h.live);}}}
   const ids=[...new Set(hits.map(h=>h.id))];
   if(ids.length&&src&&!ids.includes(src.id("BTC")))ids.push(src.id("BTC"));
-  if(ids.length&&!bt){setStatus("Checking funding and spot flow…");await loadCtx(ids.filter(i=>i!==src.id("BTC")));}
-  if(ids.length){setStatus(`Reading daily, 4h, 1h and 15m structure for ${ids.length} coin(s)…`);const q=ids.slice();
+  if(ids.length&&!bt){say("Checking funding and spot flow…");await loadCtx(ids.filter(i=>i!==src.id("BTC")));}
+  if(ids.length){say(`Reading daily, 4h, 1h and 15m structure for ${ids.length} coin(s)…`);const q=ids.slice();
     await Promise.all(Array.from({length:4},async()=>{while(q.length)await fillCore(src,q.shift(),at);}));}
-  const coins=renderScan(hits,at);
+  if(A&&gen!==AUTO_GEN){end();return;}   // a manual scan started meanwhile: it wins
+  // An automatic refresh never pulls the page from under you: while a card is open or a coin check is showing,
+  // the new list waits behind an "Updated" bar.
   const t=bt?`As of ${fmtDate(at)}`:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
-  setStatus(`${t} · ${coins} coin(s) with signals · ${tfs.join(", ")}${fails?` · ${fails} failed`:""}`);
-  if(!bt)notify(hits);
-  lock(false);
+  let coins;
+  if(A&&!opts.first&&VIEW!=="scan"){PENDING={hits,t};showPending();coins=0;}
+  else{coins=renderScan(hits,at);LAST_RENDER=t;}
+  if(!A)say(`${t} · ${coins} coin(s) with signals · ${tfs.join(", ")}${fails?` · ${fails} failed`:""}`);
+  if(!bt){notify(hits);if(!only)saveMine();}
+  end();
+  if(!bt)pollLive();
 }
+let LAST_RENDER="";
+// ---------- closed trades ----------
+// Every alerted setup the app sees is kept on this phone (its fixed plan), and the Closed trades tab re-plays them on
+// real prices with the same engine as the scorecard, so a trade that closed while the app was shut still shows up.
+const TJ_KEY="cgrab_trades";
+const tjLoad=()=>{try{return JSON.parse(localStorage.getItem(TJ_KEY)||"[]");}catch(e){return [];}};
+function tjSave(coins){try{const L=tjLoad(),have=new Set(L.map(x=>x.key)),now=Date.now();
+  for(const c of coins){const h=c.top;if(!h||!h.lv||tierOf(h)==="other"||have.has(sigKey(h)))continue;
+    L.push({key:sigKey(h),sym:h.sym,tf:h.tf,dir:dirOf(h.type)==="bull"?"long":"short",sigTime:h.sigTime,all:!!(h.chk&&h.chk.all),seen:now,plan:JSON.parse(JSON.stringify(h.lv))});}
+  const keep=L.filter(x=>now-x.seen<=60*864e5).slice(-300);localStorage.setItem(TJ_KEY,JSON.stringify(keep));}catch(e){}}
+const OUT_TXT={t2:"Target hit",t1_be:"Target 1, then trailed out",stopped:"Stopped",timeout:"Closed on time limit"};
+async function showClosed(){
+  const box=$("closed"),L=tjLoad();
+  if(!L.length){box.innerHTML=`<div class="empty">No trades yet. Every setup the app alerts is kept here, and its result shows once it closes.</div>`;return;}
+  box.innerHTML=`<div class="status">Checking ${L.length} saved setup${L.length>1?"s":""} on real prices…</div>`;
+  let g=[];try{g=await window.cgGrade(L,1000);}catch(e){box.innerHTML=`<div class="status err">Couldn't load prices. Try again in a moment.</div>`;return;}
+  const by=new Map(g.map(x=>[x.key,x])),rows=L.map(t=>({t,g:by.get(t.key)})).filter(x=>x.g&&!x.g.err&&x.g.fill>0);
+  const closed=rows.filter(x=>OUT_TXT[x.g.status]).sort((a,b)=>(b.g.closedAt||0)-(a.g.closedAt||0)),open=rows.filter(x=>x.g.status==="open");
+  const R=x=>`${x>=0?"+":""}${x.toFixed(2)}R`,usd=x=>`${x>=0?"+":"−"}$${Math.abs(x).toFixed(2)}`,risk=S.risk;
+  const tot=closed.reduce((a,x)=>a+x.g.r,0),won=closed.filter(x=>x.g.r>0).length;
+  let h=`<div class="csumry">${closed.length?`<b>${closed.length}</b> closed · <b>${won}</b> won (${Math.round(won/closed.length*100)}%) · total <b class="${tot>=0?"pos":"neg"}">${R(tot)}</b> = ${usd(tot*risk)} at $${risk} risk per trade`:"No closed trades yet."}${open.length?` · ${open.length} still open`:""}</div>`;
+  h+=closed.map(({t,g})=>`<div class="ctr" data-sym="${esc(t.sym)}" role="button" tabindex="0"><span class="cs">${esc(t.sym)}<small>${t.tf} · ${t.dir}</small></span>
+    <span class="cr2 ${g.r>=0?"pos":"neg"}">${R(g.r)} · ${usd(g.r*risk)}</span>
+    <span class="cn">${OUT_TXT[g.status]}${g.closedAt?` · closed ${fmtDate(g.closedAt)}`:""}${g.enteredAt?` · entered ${fmtDate(g.enteredAt)}`:""}${t.all?" · all 5 checks":""}</span></div>`).join("");
+  h+=`<div class="status" style="margin-top:8px">Saved on this phone for 60 days. Results re-played on real prices with today's rules (trailing stop after Target 1, fees not included). Tap a trade to check the coin.</div>`;
+  box.innerHTML=h;
+  box.querySelectorAll(".ctr").forEach(r=>r.onclick=()=>{setView("setups");$("q").value=r.dataset.sym;updScanLabel&&updScanLabel();checkCoin();});
+}
+function setView(v){document.querySelectorAll(".vtabs [data-view]").forEach(b=>b.setAttribute("aria-selected",b.dataset.view===v));
+  $("results").hidden=v!=="setups";$("closed").hidden=v!=="closed";if(v==="closed")showClosed();}
+document.querySelectorAll(".vtabs [data-view]").forEach(b=>b.onclick=()=>setView(b.dataset.view));
+// The setups worth watching (in a trade, ready, waiting), remembered so the next visit shows them within seconds.
+function saveMine(){try{const keep=(LAST_SCAN||[]).filter(c=>tierOf(c.top)!=="other"&&c.top.track&&!isClosed(c.top.track)).map(c=>c.top.sym+"|"+c.top.tf);
+  localStorage.setItem("cgrab_mine",JSON.stringify(keep.slice(0,20)));}catch(e){}}
+function showPending(){
+  const box=$("results");let u=box.querySelector(".upd");
+  if(!u){u=document.createElement("div");u.className="upd";box.prepend(u);}
+  u.innerHTML=`<span>🔄 Setups updated at ${esc(PENDING.t)}</span><button type="button">Show</button>`;
+  u.querySelector("button").onclick=()=>{const P=PENDING;PENDING=null;VIEW="scan";renderScan(P.hits,null);LAST_RENDER=P.t;$("closeall").hidden=!document.querySelector("#results details");pollLive();};
+}
+// On opening the page: the remembered setups first (a few coins, seconds), then the full top-50 scan; then every 5 minutes.
+async function autoLoad(){
+  if(navigator.webdriver||MODE!=="live")return;   // not in the alert bot's headless browser
+  await null;   // let the rest of the page script finish setting up (live prices) first
+  if(snapShow())pollLive();
+  const t0=Date.now();while((!REG||regBusy)&&Date.now()-t0<15000)await new Promise(r=>setTimeout(r,300));
+  let mine=[];try{mine=JSON.parse(localStorage.getItem("cgrab_mine")||"[]");}catch(e){}
+  if(mine.length)await scan({auto:true,first:true,only:mine});
+  await scan({auto:true,first:!mine.length});
+  setInterval(()=>{if(!document.hidden)scan({auto:true});},5*60e3);
+}
+// Draw the new list off-screen and swap it in at once, so the screen never goes blank. Cards that are open stay exactly
+// as they are (their chart and sections too); closed cards and the groups are replaced. Open groups stay open.
 function renderScan(hits,at){
-  const box=$("results");box.textContent="";
+  const real=$("results"),box=document.createElement("div"),y=window.scrollY;
+  const n=renderScanInto(box,hits,at);
+  const keep=new Map();real.querySelectorAll("details.card[open]").forEach(c=>{if(c.dataset.k&&!c.dataset.stale)keep.set(c.dataset.k,c);});
+  const openSec=new Set([...real.querySelectorAll("details.sec.near[open]>summary")].map(x=>x.textContent.replace(/\s*\(\d+\)$/,"")));
+  box.querySelectorAll("details.card").forEach(c=>{const o=keep.get(c.dataset.k);if(o){c.replaceWith(o);keep.delete(c.dataset.k);}});
+  box.querySelectorAll("details.sec.near>summary").forEach(x=>{if(openSec.has(x.textContent.replace(/\s*\(\d+\)$/,"")))x.parentElement.open=true;});
+  real.replaceChildren(...box.childNodes);if(Math.abs(window.scrollY-y)>2)window.scrollTo({top:y,behavior:"instant"});
+  if(!at)snapSave();
+  return n;
+}
+// The last list, kept on this phone so the next visit shows it instantly (prices go live at once) while fresh data loads.
+function snapSave(){try{const r=$("results").cloneNode(true);r.querySelectorAll("details").forEach(d=>d.open=false);r.querySelectorAll(".upd").forEach(e=>e.remove());
+  const h=r.innerHTML;if(h.length<400000)localStorage.setItem("cgrab_snap",JSON.stringify({t:Date.now(),h}));}catch(e){}}
+function snapShow(){try{const j=JSON.parse(localStorage.getItem("cgrab_snap")||"null");if(!j||Date.now()-j.t>24*36e5||$("results").children.length)return false;
+  const box=$("results");box.innerHTML=j.h;box.querySelectorAll("details.card").forEach(c=>c.dataset.stale="1");
+  const u=document.createElement("div");u.className="upd stale";u.innerHTML=`<span>Last list from ${esc(new Date(j.t).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}))} · updating…</span>`;box.prepend(u);return true;}catch(e){return false;}}
+function renderScanInto(box,hits,at){
   hits=hits.filter(h=>!ignoredOf(h)&&!unfilledOf(h));
   if(!hits.length){box.innerHTML=`<div class="empty">${at?"No tradeable setups at that time.":"<b>Nothing to trade right now.</b> No fresh setup with at least 1:1 reward and a sensible stop. Telegram alerts you when one forms."}</div>`;return 0;}
   const by={};for(const h of hits)(by[h.id]=by[h.id]||[]).push(h);
@@ -1785,7 +1882,7 @@ function renderScan(hits,at){
     return makeCard({sym:top.sym,id:top.id,s:src,top,conf,others,rows,rowsN:others.length,asOf:at,struct:STRUCT[top.id],
       lv:{tf:top.tf,sr:top.sr,vp:top.vp,live:top.live||top.close}});
   };
-  LAST_SCAN=coins;
+  LAST_SCAN=coins;if(!at&&MODE==="live")tjSave(coins);
   // Grouped by what to do: in a trade, ready (price within about 1 ATR of the entry), waiting. Alerted setups only;
   // all-5-checks first, then score. Everything else is folded at the bottom.
   const alerted=coins.filter(c=>tierOf(c.top)!=="other"),rest=coins.filter(c=>tierOf(c.top)==="other");
@@ -1818,6 +1915,7 @@ async function checkCoin(){
   if(MODE==="bt"){runHistory("coin");return;}
   const base=$("q").value.trim().toUpperCase().replace(/[^A-Z0-9]/g,"").replace(/(USDT|USD)$/,"");
   if(!base){setStatus("Type a coin symbol, like SOL.",true);return;}
+  VIEW="coin";PENDING=null;
   if(!S.tfs.length){setStatus("Pick at least one timeframe in Settings.",true);return;}
   const bt=MODE==="bt",at=bt?asOfTs():null;
   if(bt&&!validAt(at)){setStatus("Pick a date and time in the past.",true);return;}
@@ -2804,7 +2902,7 @@ window.cgAltBrief=async()=>{
     mv.length>=6?`<b>Strongest 7d:</b> ${mv.slice(0,3).map(nm).join(", ")}\n<b>Weakest 7d:</b> ${mv.slice(-3).reverse().map(nm).join(", ")}`:null].filter(x=>x!==null);
   return {html:L.join("\n"),bias};
 };
-renderTf();renderMa();loadRegime();
+renderTf();renderMa();loadRegime();autoLoad();
 document.body.classList.add("chomping");setTimeout(()=>{if(!busy)document.body.classList.remove("chomping");},1400);
 $("scan").onclick=scan;
 // One button: empty search scans the top 50, a symbol checks that coin.
@@ -2890,6 +2988,10 @@ function paintLive(){
     const p=LIVE[el.dataset.live];if(p==null)return;const prev=parseFloat(el.dataset.prev);el.dataset.prev=p;
     if(el.textContent===fmtP(p))return;el.textContent=fmtP(p);
     if(Number.isFinite(prev)){el.classList.remove("tick-up","tick-dn");void el.offsetWidth;el.classList.add(p>prev?"tick-up":"tick-dn");}
+  });
+  document.querySelectorAll("[data-pnl]").forEach(el=>{
+    const p=LIVE[el.dataset.pnl];if(p==null)return;const r=(p-+el.dataset.e)*+el.dataset.d/+el.dataset.r;if(!isFinite(r))return;
+    const t=`${r>=0?"+":""}${r.toFixed(2)}R`;if(el.textContent!==t){el.textContent=t;el.className="pnl "+(r>=0?"pos":"neg");}
   });
   document.querySelectorAll("[data-dist]").forEach(el=>{
     const p=LIVE[el.dataset.dist];if(p!=null)el.textContent=`${pctTxt(+el.dataset.entry,p)} from live`;
