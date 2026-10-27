@@ -764,7 +764,7 @@ function actionableOf(h){
   return pr>=0.5?[false,"",`Too late to enter: ${Math.round(pr*100)}% of the way to Target 1`]:[true,`Still actionable (in trade, ${Math.max(0,Math.round(pr*100))}% of the way to Target 1)`,""];
 }
 // Alert tiers: all five checks met, or not skipped and still actionable (enter at your own risk), or neither.
-const tierOf=h=>!h.chk||!h.sc?"other":ignoredOf(h)?"other":!actionableOf(h)[0]?"other":btcBlock(h)?"other":h.chk.all?"aplus":AM.regAplus&&/^regular/.test(h.type)?"other":h.sc.verdict!=="skip"?"risk":"other";
+const tierOf=h=>!h.chk||!h.sc?"other":ignoredOf(h)?"other":!actionableOf(h)[0]?"other":btcBlock(h)?"other":h.chk.all?"aplus":AM.regAplus&&/^regular/.test(h.type)&&!(AM.rotLongs&&dirOf(h.type)==="bull"&&rotOnFor(h))?"other":h.sc.verdict!=="skip"?"risk":"other";
 // Pop-up with the checks behind a score (tap the score or the "n/5 checks" tag).
 const HIT_BY_KEY={};
 function popHTML(h){
@@ -885,7 +885,10 @@ const RETEST_MAX=12;
 // Defaults from the 365-day 4h backtest (round 3, "P10"): half at Target 1 with the stop to entry, the rest trailed
 // under each new swing (+75R over the year, both halves positive; all out at Target 1 made +66R), and regular divergence
 // only alerted when it meets all 5 checks (hidden divergence +66R over the year, regular −16R).
-const AM={entry:"split",mgmt:"trail",be1R:false,noFvg:false,tStop:0,regAplus:true,btcGuard:"off"};
+// rotLongs: during an alt rotation (BTC ranging, dominance falling, alts speeding up) alt longs on regular divergence are
+// alerted too. 2-year backtest: alt longs in a rotation 11 trades, 73% win, +0.89R each; every other alt-long group lost.
+const AM={entry:"split",mgmt:"trail",be1R:false,noFvg:false,tStop:0,regAplus:true,btcGuard:"off",rotLongs:true};
+const rotOnFor=h=>isBtc(h.id)?false:h.rot!==undefined?!!(h.rot&&h.rot.on):!!(typeof REG!=="undefined"&&REG&&REG.alts&&REG.alts.rot&&REG.alts.rot.rotOn);
 // mgmt "trail": half at T1 with the stop to entry, the rest trails behind each new confirmed swing (2 candles each side)
 // instead of a fixed Target 2. tStop: candles allowed to reach Target 1; if it hasn't, exit at that candle's close (0 = off).   // noFvg: first half at the block top even when a gap is there
 function levels(d,x,sr,vp,method="ob",tf=null){
@@ -2246,7 +2249,7 @@ function historyHits(series,c,tf,from=-Infinity,to=Infinity,pit=null){
       if(!x)continue;
       const v=viewAt(D,t),f=filters(v);             // only data up to the signal candle
       const sr=srLevels(v),vp=volumeProfile(v),h=buildHit(v,f,x,c,tf,sr,vp);
-      h.bt=true;h.btc=null;if(pit){pit(h,series[t].ct);h.bt=false;h.pit=true;}
+      h.bt=true;h.btc=null;h.rot=null;if(pit){pit(h,series[t].ct);h.bt=false;h.pit=true;}
       if(ignoredOf(h)){h.bt=true;continue;}
       h.sc=scoreHit(h,false);h.at=series[t].ct;
       if(pit){h.chk=checklist(h);h.tier=tierOf(h);h.styleK=(()=>{const m=STRUCT[h.id];const y=m?styleOf(m):null;return y?tradeType(h,y).label:"";})();h.bt=true;}
@@ -2592,11 +2595,12 @@ window.cgBacktest=async(o={})=>{
   const Z={buf:0.5,min:1.0,mode:"close",confirm:false};
   const variants=o.variants||(o.set==="ltf"?null:[
     {name:"A old rules (before tonight)",...Z,am:{}},
-    {name:"P5 all out at Target 1 · hidden, or regular with all 5 checks",...Z,am:{mgmt:"t1all"},keep:h=>/^hidden/.test(h.type)||h.tier==="aplus"},
-    {name:"P10 NEW DEFAULT: half at Target 1, rest trailed · hidden, or regular with all 5 checks",...Z,am:{mgmt:"trail"},keep:h=>/^hidden/.test(h.type)||h.tier==="aplus"},
-    {name:"G1 P10 + alt longs only when BTC is above its 4h EMA 50",...Z,am:{mgmt:"trail",regAplus:true,btcGuard:"ema"}},
-    {name:"R1 P10 + no alt shorts during an alt rotation",...Z,am:{mgmt:"trail",regAplus:true},keep:h=>!(h.rot&&h.rot.on&&dirOf(h.type)==="bear")},
-    {name:"R2 P10 + during a rotation, alt longs on regular divergence too",...Z,am:{mgmt:"trail",regAplus:false},keep:h=>/^hidden/.test(h.type)||h.tier==="aplus"||(h.rot&&h.rot.on&&dirOf(h.type)==="bull")}])||[
+    {name:"P10 last default: half at Target 1, rest trailed · hidden, or regular with all 5 checks",...Z,am:{mgmt:"trail",regAplus:true}},
+    {name:"N0 NEW DEFAULT: P10 + alt longs on regular divergence during a rotation",...Z,am:{mgmt:"trail",regAplus:true,rotLongs:true}},
+    {name:"N1 N0 + Target 1 at least 1.5R",...Z,am:{mgmt:"trail",regAplus:true,rotLongs:true},keep:h=>(h.plans&&h.plans[h.rec.m]||h.lv||{}).rr1>=1.5},
+    {name:"N2 N0 + first entry at the block top (ignore the gap)",...Z,am:{mgmt:"trail",regAplus:true,rotLongs:true,noFvg:true}},
+    {name:"N3 N0 + alt longs only in a rotation or with all 5 checks",...Z,am:{mgmt:"trail",regAplus:true,rotLongs:true},keep:h=>!(dirOf(h.type)==="bull"&&!isBtc(h.id)&&!(h.rot&&h.rot.on)&&h.tier!=="aplus")},
+    {name:"N4 N1 + N2 + N3",...Z,am:{mgmt:"trail",regAplus:true,rotLongs:true,noFvg:true},keep:h=>(h.plans&&h.plans[h.rec.m]||h.lv||{}).rr1>=1.5&&!(dirOf(h.type)==="bull"&&!isBtc(h.id)&&!(h.rot&&h.rot.on)&&h.tier!=="aplus")}])||[
     {name:"A zone entry: limit at the order block, wider stop on candle close (default)",buf:0.5,min:1.0,mode:"close",confirm:false},
     {name:"B lower-timeframe CHoCH entry",...B,cf:{...N}},
     {name:"C + wait for the retest (full size)",...B,cf:{...N,retest:true}},
@@ -2635,7 +2639,7 @@ window.cgBacktest=async(o={})=>{
       if(i<60)continue;const v=viewAt(x.D,i);m[tf]=structure(v);noteHTF(id,tf,v);}
     STRUCT[id]=m;};
   const saved={buf:STOP_BUF,min:STOP_MIN,mode:S.stopMode,fee:BT.fee,confirm:CONFIRM,cf:{...CF}},res=[];
-  for(const v of variants){STOP_BUF=v.buf;STOP_MIN=v.min;S.stopMode=v.mode;CONFIRM=!!v.confirm;Object.assign(CF,v.cf||{});Object.assign(AM,AM0,{mgmt:"half",regAplus:false,btcGuard:"off"},v.am||{});BT.fee=o.fee??0.15;const hits=[];
+  for(const v of variants){STOP_BUF=v.buf;STOP_MIN=v.min;S.stopMode=v.mode;CONFIRM=!!v.confirm;Object.assign(CF,v.cf||{});Object.assign(AM,AM0,{mgmt:"half",regAplus:false,btcGuard:"off",rotLongs:false},v.am||{});BT.fee=o.fee??0.15;const hits=[];
     for(const b of bases){const d=data[b];if(!d)continue;
       for(const tf of tfs){const x=d[tf];if(!x||x.k.length<300)continue;const id=x.s.id(b);
         hits.push(...historyHits(x.k,{id,base:b},tf,from,now,pitFor(b,id)));}}
@@ -2657,6 +2661,8 @@ window.cgBacktest=async(o={})=>{
         add("Target 1 under 1.5R",h=>P(h).rr1<1.5);add("Target 1 1.5–2.5R",h=>P(h).rr1>=1.5&&P(h).rr1<2.5);add("Target 1 2.5R+",h=>P(h).rr1>=2.5);
         add("stop under 1.5 ATR",h=>P(h).ratr<1.5);add("stop 1.5–2.5 ATR",h=>P(h).ratr>=1.5&&P(h).ratr<2.5);add("stop 2.5 ATR+",h=>P(h).ratr>=2.5);
         add("longs",h=>dirOf(h.type)==="bull");add("shorts",h=>dirOf(h.type)==="bear");
+        add("longs, first half",h=>dirOf(h.type)==="bull"&&h.at<mid);add("longs, second half",h=>dirOf(h.type)==="bull"&&h.at>=mid);
+        add("shorts, first half",h=>dirOf(h.type)==="bear"&&h.at<mid);add("shorts, second half",h=>dirOf(h.type)==="bear"&&h.at>=mid);
         const L=h=>dirOf(h.type)==="bull"&&h.btc,Sh=h=>dirOf(h.type)==="bear"&&h.btc;
         add("alt longs, BTC above 4h EMA 50",h=>L(h)&&h.btc.up);add("alt longs, BTC below 4h EMA 50",h=>L(h)&&!h.btc.up);
         add("alt longs, coin beating BTC",h=>L(h)&&h.btc.rs>=0);add("alt longs, coin lagging BTC",h=>L(h)&&h.btc.rs<0);
