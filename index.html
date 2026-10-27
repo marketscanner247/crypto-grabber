@@ -350,8 +350,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
     </div>
     <div class="row">
       <div class="rowhead"><span class="lbl">Trades</span>
-        <div class="seg" role="group" aria-label="Trade filter"><button data-safe="0">Most profit</button><button data-safe="1">Safer</button></div></div>
-      <span class="status" style="margin:0">2-year backtest. Most profit: +84R, worst drop −17R, bad year −2R. Safer: only trades whose Target 1 pays 1.5R or more (fewer trades, smaller drops).</span>
+        <div class="seg" role="group" aria-label="Trade filter"><button data-rmode="max">Most profit</button><button data-rmode="bal">Balanced</button><button data-rmode="safe">Safest</button></div></div>
+      <span class="status" style="margin:0">2-year backtest, 4h. Most profit: +84R, worst drop −17R, first year −2R. Balanced (Target 1 pays 1.2R+): +76R, worst drop −10R, both years profitable. Safest (1.5R+): +60R, worst drop −6.5R, fewest trades.</span>
     </div>
     <div class="row">
       <div class="rowhead"><span class="lbl">Entry</span>
@@ -411,7 +411,7 @@ const TF_MIN={"1m":1,"3m":3,"5m":5,"15m":15,"30m":30,"1h":60,"2h":120,"4h":240,"
 const OKX_BAR={"1m":"1m","3m":"3m","5m":"5m","15m":"15m","30m":"30m","1h":"1H","2h":"2H","4h":"4H","6h":"6Hutc","12h":"12Hutc","1d":"1Dutc","3d":"3Dutc","1w":"1Wutc","1M":"1Mutc"};
 const STD_MA=[9,21,50,200];
 const TOP_N=50,VOL_MULT=1.5,VOL_LEN=20,MAX_FAV=10;
-let S={safe:false,f3d:true,favs:["15m","1h","4h","1d","3d","1w"],tfs:["1h","4h","1d"],maType:"ema",slots:[...STD_MA],periods:[...STD_MA],off:[],theme:"auto",pal:"teal",entry:"close",stopMode:"close",fClose:true,risk:10,entryMode:"zone"};
+let S={rmode:"bal",f3d:true,favs:["15m","1h","4h","1d","3d","1w"],tfs:["1h","4h","1d"],maType:"ema",slots:[...STD_MA],periods:[...STD_MA],off:[],theme:"auto",pal:"teal",entry:"close",stopMode:"close",fClose:true,risk:10,entryMode:"zone"};
 const okP=v=>{const n=Number(v);return v!==""&&v!=null&&Number.isInteger(n)&&n>=2&&n<=300?n:null;};
 const fromSlots=sl=>[...new Set(sl.filter(n=>n!=null))].sort((x,y)=>x-y);
 try{
@@ -427,7 +427,7 @@ try{
   if(["teal","blue","violet","amber","rose"].includes(o.pal))S.pal=o.pal;
   if(+o.risk>0)S.risk=+o.risk;
   if(o.entryMode==="ltf"||o.entryMode==="zone")S.entryMode=o.entryMode;
-  if(typeof o.safe==="boolean")S.safe=o.safe;
+  if(["max","bal","safe"].includes(o.rmode))S.rmode=o.rmode;else if(o.safe===true)S.rmode="safe";
   if(Array.isArray(o.off))S.off=o.off.filter(p=>S.periods.includes(p));
 }catch(e){}
 const save=()=>{try{const {periods,...keep}=S;localStorage.setItem("cgrab",JSON.stringify(keep));}catch(e){}};
@@ -472,8 +472,8 @@ function applySlots(sl,msg){
   S.slots=sl;S.periods=fromSlots(sl);S.off=S.off.filter(p=>S.periods.includes(p));save();renderMa();if(msg)setStatus(msg);
 }
 const readSlots=()=>[0,1,2,3].map(i=>okP($("ma"+i).value));
-document.querySelectorAll("[data-safe]").forEach(b=>{b.setAttribute("aria-pressed",(b.dataset.safe==="1")===S.safe);
-  b.onclick=()=>{S.safe=b.dataset.safe==="1";AM.minRR=S.safe?1.5:0;save();document.querySelectorAll("[data-safe]").forEach(x=>x.setAttribute("aria-pressed",(x.dataset.safe==="1")===S.safe));setStatus("Saved. Scan or check a coin again to apply it.");};});
+document.querySelectorAll("[data-rmode]").forEach(b=>{b.setAttribute("aria-pressed",b.dataset.rmode===S.rmode);
+  b.onclick=()=>{S.rmode=b.dataset.rmode;AM.minRR=RR_OF[S.rmode];save();document.querySelectorAll("[data-rmode]").forEach(x=>x.setAttribute("aria-pressed",x.dataset.rmode===S.rmode));setStatus("Saved. Scan or check a coin again to apply it.");};});
 document.querySelectorAll("[data-entrymode]").forEach(b=>{b.setAttribute("aria-pressed",b.dataset.entrymode===S.entryMode);
   b.onclick=()=>{S.entryMode=b.dataset.entrymode;CONFIRM=S.entryMode==="ltf";save();document.querySelectorAll("[data-entrymode]").forEach(x=>x.setAttribute("aria-pressed",x.dataset.entrymode===S.entryMode));setStatus("Entry style saved. Scan or check a coin again to apply it.");};});
 $("riskUsd").value=S.risk;$("riskUsd").onchange=e=>{const v=+e.target.value;if(v>0){S.risk=v;save();}else e.target.value=S.risk;};
@@ -912,13 +912,16 @@ const RETEST_MAX=12;
 // (the "Safer" setting, 1.5: +56R, worst drop −12R).
 // noFormShorts: no "swing short forming" either (3d down, 4h not yet). 2 years: +84R, bad year −2R, worst drop −17R
 // (with only the long filters: +75R, −10R, −25R).
-const AM={entry:"split",mgmt:"trail",be1R:false,noFvg:false,tStop:0,regAplus:true,btcGuard:"off",rotLongs:true,noBadLongs:true,noFormShorts:true,minRR:S.safe?1.5:0};
+// minRR by the Trades setting: Most profit 0 (M8), Balanced 1.2 (M9, default: profitable in both years, worst drop −10R),
+// Safest 1.5 (M10).
+const RR_OF={max:0,bal:1.2,safe:1.5};
+const AM={entry:"split",mgmt:"trail",be1R:false,noFvg:false,tStop:0,regAplus:true,btcGuard:"off",rotLongs:true,noBadLongs:true,noFormShorts:true,minRR:RR_OF[S.rmode]??1.2};
 const styleLab=h=>h.styleK!==undefined?h.styleK:(STRUCT[h.id]&&Object.keys(STRUCT[h.id]).length?tradeType(h,styleOf(STRUCT[h.id])).label:"");
 // Why a setup isn't alerted under the current rules (null = it can be)
 function ruleBlock(h){
   if(AM.noBadLongs&&dirOf(h.type)==="bull"&&/^(Counter-trend long|Swing long forming)/.test(styleLab(h)||""))return `${styleLab(h)}: these longs lost money over 2 years`;
   if(AM.noFormShorts&&dirOf(h.type)==="bear"&&/^Swing short forming/.test(styleLab(h)||""))return "Swing short forming: the 4h hasn't turned down yet, and these shorts lost money over 2 years";
-  const lv=h.lv;if(AM.minRR&&lv&&lv.rr1<AM.minRR)return `Target 1 pays ${lv.rr1.toFixed(1)}R, under ${AM.minRR}R (Safer setting)`;
+  const lv=h.lv;if(AM.minRR&&lv&&lv.rr1<AM.minRR)return `Target 1 pays ${lv.rr1.toFixed(1)}R, under ${AM.minRR}R (${AM.minRR>=1.5?"Safest":"Balanced"} setting)`;
   return null;
 }
 const rotOnFor=h=>isBtc(h.id)?false:h.rot!==undefined?!!(h.rot&&h.rot.on):!!(typeof REG!=="undefined"&&REG&&REG.alts&&REG.alts.rot&&REG.alts.rot.rotOn);
@@ -1676,13 +1679,15 @@ function structHTML(map,sty,t){
   return `<details class="sec x-struct"><summary>Market structure · ${{swing:sty.dir>0?"Trend up (4h & 3d)":"Trend down (4h & 3d)",wait:sty.dir>0?"3d up, 4h pulling back":"3d down, 4h pulling back",scalp:sty.dir>0?"4h up, no 3d trend":"4h down, no 3d trend",none:"No clear trend"}[sty.kind]}</summary><div class="secbody"><div class="rec">${esc(sty.txt)}</div>${warn}${rows}
     <div class="legend">OB: candle where the last strong move started, price often returns to it · FVG: a gap left by a fast move, price tends to come back to fill it · CE: the middle of the gap · SFP: a stop hunt, wick through a swing and close back · OTE: the 62–79% pullback zone</div></div></details>`;
 }
+// Which Trades level a setup fits, by how much Target 1 pays (Safest 1.5R+, Balanced 1.2R+, Most profit below that)
+const lvlTag=rr=>rr==null?"":rr>=1.5?`<span class="tag aplus" title="Target 1 pays ${rr.toFixed(1)}R: fits all three levels">🛡️ Safest</span>`:rr>=1.2?`<span class="tag" title="Target 1 pays ${rr.toFixed(1)}R">⚖️ Balanced</span>`:`<span class="tag gold" title="Target 1 pays ${rr.toFixed(1)}R: Most profit only">🚀 Most profit</span>`;
 const ckTag=(ck,key)=>{const a=key?` data-pop="${esc(key)}" role="button" tabindex="0"`:"";return ck&&ck.all?`<span class="tag aplus"${a}>✓ All checks</span>`:ck?`<span class="tag"${a}>${ck.n}/${ck.total} checks</span>`:"";};
 function makeCard(o){
   const el=document.createElement("details");el.className="card"+(o.conf?" conf":"");el.open=!!o.open;el.dataset.k=o.id+"|"+(o.top?o.top.tf:"");
   const t=o.top;
   const lp=o.lv&&o.lv.live,lvx=o.lv&&{...o.lv,id:o.asOf?null:o.id},sty=o.struct&&Object.keys(o.struct).length?styleOf(o.struct):null,ck=t?(t.chk||(t.chk=checklist(t))):null;
   let h=`<summary class="csum"><div class="cl"><div class="sym">${esc(o.sym)}${t?`<small>${t.tf}</small>`:""}</div>
-    <div class="sub">${t?`<span class="pill ${dirOf(t.type)}">${LABEL[t.type]}</span>${outPill(t)}<span data-tp="${esc(sigKey(t))}">${trackPill(t)}</span>`:`<span class="pill flat">No setup right now</span>`}<span data-ckt>${ckTag(ck,t&&sigKey(t))}</span>${t&&sty?typeTag(tradeType(t,sty)):sty?trendTag(sty):""}${t&&t.conflict?`<span class="tag gold">Mixed</span>`:""}${t&&t.ctx&&t.ctx.agree.length?`<span class="tag gold">Confluence ×${t.ctx.agree.length+1}</span>`:""}${(o.others||[]).map(h=>`<span class="tag ${dirOf(h.type)}">${h.tf} ${dirOf(h.type)==="bull"?"Long":"Short"}</span>`).join("")}</div></div><div class="cr">${lp&&!o.asOf?`<span class="lp" data-live="${o.id}">${fmtP(lp)}</span>`:""}${(()=>{const k=t&&t.track,lv=t&&t.lv;
+    <div class="sub">${t?`<span class="pill ${dirOf(t.type)}">${LABEL[t.type]}</span>${outPill(t)}<span data-tp="${esc(sigKey(t))}">${trackPill(t)}</span>`:`<span class="pill flat">No setup right now</span>`}<span data-ckt>${ckTag(ck,t&&sigKey(t))}</span>${t&&t.lv&&!o.asOf?lvlTag(t.lv.rr1):""}${t&&sty?typeTag(tradeType(t,sty)):sty?trendTag(sty):""}${t&&t.conflict?`<span class="tag gold">Mixed</span>`:""}${t&&t.ctx&&t.ctx.agree.length?`<span class="tag gold">Confluence ×${t.ctx.agree.length+1}</span>`:""}${(o.others||[]).map(h=>`<span class="tag ${dirOf(h.type)}">${h.tf} ${dirOf(h.type)==="bull"?"Long":"Short"}</span>`).join("")}</div></div><div class="cr">${lp&&!o.asOf?`<span class="lp" data-live="${o.id}">${fmtP(lp)}</span>`:""}${(()=>{const k=t&&t.track,lv=t&&t.lv;
       if(o.asOf||!k||k.trig<0||isClosed(k)||!lv)return "";const E=k.entryP??k.avg??lv.entry,R=Math.abs(E-(k.stopA??lv.stop));
       return `<span class="pnl" data-pnl="${o.id}" data-e="${E}" data-r="${R}" data-d="${dirOf(t.type)==="bull"?1:-1}"></span>`;})()}${t?chip(t.sc):""}</div></summary><div class="cbody">`;
   if(t)h+=signalHTML(t);
@@ -2719,11 +2724,9 @@ window.cgBacktest=async(o={})=>{
     weakAltL=h=>isL(h)&&!isBtc(h.id)&&!(h.rot&&h.rot.on)&&h.tier!=="aplus";
   const variants=o.variants||(o.set==="ltf"?null:[
     {name:"A old rules (before tonight)",...Z,am:{}},
-    {name:"M3 last default: no counter-trend longs, no 'swing long forming'",...Z,am:{...N0A,noBadLongs:true}},
-    {name:"M8 NEW DEFAULT: M3 + no 'swing short forming'",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true}},
-    {name:"M9 M8 + Target 1 at least 1.2R",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true,minRR:1.2}},
-    {name:"M10 M8 + Target 1 at least 1.5R (Safer)",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true,minRR:1.5}},
-    {name:"M11 M8 + no 'scalp long only'",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true},keep:h=>!/^Scalp long only/.test(h.styleK||"")}])||[
+    {name:"M8 Most profit",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true}},
+    {name:"M9 DEFAULT Balanced: M8 + Target 1 at least 1.2R",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true,minRR:1.2}},
+    {name:"M10 Safest: M8 + Target 1 at least 1.5R",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true,minRR:1.5}}])||[
     {name:"A zone entry: limit at the order block, wider stop on candle close (default)",buf:0.5,min:1.0,mode:"close",confirm:false},
     {name:"B lower-timeframe CHoCH entry",...B,cf:{...N}},
     {name:"C + wait for the retest (full size)",...B,cf:{...N,retest:true}},

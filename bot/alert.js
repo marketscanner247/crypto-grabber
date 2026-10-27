@@ -37,8 +37,13 @@ const RISK = +process.env.RISK_USD || 10;              // $ lost if the stop is 
 const MAX_OPEN = +process.env.MAX_OPEN || 3;
 // Alts move with BTC: several alt longs (or shorts) at once are one big BTC bet. At most this many open the same way.
 const MAX_SAME_DIR = +process.env.MAX_SAME_DIR || 2;
-// SAFER=1: only trades whose Target 1 pays at least 1.5R (2-year backtest: worst drop −12R instead of −25R, less profit)
-const MIN_RR = /^(1|true|yes)$/i.test(process.env.SAFER || "") ? 1.5 : +process.env.MIN_RR || 0;           // no new "Enter now" while this many alerted trades are open
+// Every setup that passes the Most profit rules is alerted, labelled with the levels it fits, by how much Target 1 pays:
+// 🛡️ Safest (1.5R+, fits all three) · ⚖️ Balanced (1.2–1.5R) · 🚀 Most profit only (under 1.2R).
+// 2-year 4h backtest: Most profit +84R (worst drop −17R), Balanced +76R (−10R, both years profitable), Safest +60R (−6.5R).
+// TRADES=bal or TRADES=safe sends only that level and above (default: all three).
+const MIN_RR = { max: 0, bal: 1.2, safe: 1.5 }[(process.env.TRADES || (/^(1|true|yes)$/i.test(process.env.SAFER || "") ? "safe" : "max")).toLowerCase()] ?? 0;
+const LVL = rr => rr == null ? null : rr >= 1.5 ? { k: "safe", t: "🛡️ SAFEST", d: "fits all three levels" } : rr >= 1.2 ? { k: "bal", t: "⚖️ BALANCED", d: "fits Balanced and Most profit" } : { k: "max", t: "🚀 MOST PROFIT ONLY", d: "skip it if you trade Balanced or Safest" };
+const lvlLine = s => { const L = LVL(s.rr1); return L ? `\n<b>${L.t}</b> · Target 1 pays ${s.rr1.toFixed(1)}R · ${L.d}` : ""; };
 const MAX_DAILY_STOPS = +process.env.MAX_DAILY_STOPS || 3;   // no new entries for the rest of the day after this many stops
 // The 120-day backtest lost money on counter-trend setups in every version, so they are not alerted unless asked for.
 const ENTRY = (process.env.ENTRY || "zone").toLowerCase();   // zone = limit orders at the order block (default) · ltf = wait for the lower-timeframe CHoCH
@@ -87,7 +92,7 @@ const risky = s => !s.all;
 function head(s, kind) {
   const icon = risky(s) ? "⚠️" : kind === "enter" ? (s.dir === "long" ? "🟢" : "🔴") : kind === "ready" ? "🟡" : "⚪";
   const title = (risky(s) ? "HIGH RISK · " : "") + (kind === "enter" ? `ENTER ${s.dir.toUpperCase()} NOW` : kind === "ready" ? `SETUP READY · ${s.dir}` : "UPDATE");
-  return `${icon} <b>${title} · ${esc(s.sym)} ${esc(s.tf)}</b>\n${esc(s.label)} · ${esc(s.style)} · score ${s.score} · ${s.all ? "✓ all 5 checks" : `${s.checks} checks`}`;
+  return `${icon} <b>${title} · ${esc(s.sym)} ${esc(s.tf)}</b>${lvlLine(s)}\n${esc(s.label)} · ${esc(s.style)} · score ${s.score} · ${s.all ? "✓ all 5 checks" : `${s.checks} checks`}`;
 }
 const riskNote = s => risky(s) ? `⚠️ Enter at your own risk. Missing: ${esc(s.missing.slice(0, 3).join("; "))}.\nIf you take it: half size.\n` : "";
 function plan(s) {
@@ -124,7 +129,7 @@ function msgReady(s) {
 // Lower timeframe confirmed: tell the trader to place the limit order at the retest level now.
 function msgConfirm(s) {
   const up = s.dir === "long", w = up ? "BUY" : "SELL", p = Math.abs(s.retStopPct || 0), pos = p ? RISK / (p / 100) : null;
-  return `🔔 <b>${risky(s) ? "⚠️ " : ""}CONFIRMED · PLACE LIMIT ${w} · ${esc(s.sym)} ${esc(s.tf)}</b>\n` +
+  return `🔔 <b>${risky(s) ? "⚠️ " : ""}CONFIRMED · PLACE LIMIT ${w} · ${esc(s.sym)} ${esc(s.tf)}</b>${lvlLine(s)}\n` +
     `The ${esc(s.confirm)} broke structure ${up ? "up" : "down"} (CHoCH). Don't chase it: wait for the retest.\n\n` +
     `Limit ${w.toLowerCase()}: <b>${esc(s.retLvl)}</b> (retest of ${esc(s.retSrc)})\nStop: <b>${esc(s.retStop)}</b>${p ? ` (${p.toFixed(1)}%)` : ""}\n` +
     `Target 1: ${esc(s.t1)} · Target 2: ${esc(s.t2)}\nPrice now: ${esc(s.live)}${pos ? `\nSize: risk $${RISK} → $${pos >= 1000 ? Math.round(pos).toLocaleString("en-US") : pos.toFixed(0)} position` : ""}` +
@@ -173,6 +178,11 @@ function scorecard(list, grades, now) {
     } else L.push("No trades closed yet.");
     if (S.open) L.push(`⏳ Still open: ${S.open} (${usd(S.unreal)} right now, counted when closed)`);
     L.push("");
+    const rr = t => t.plan && t.plan.rr1 != null ? t.plan.rr1 : 0;
+    L.push(line("🚀 Most profit (all)", stats(wk)));
+    L.push(line("⚖️ Balanced (1.2R+)", stats(wk.filter(t => rr(t) >= 1.2))));
+    L.push(line("🛡️ Safest (1.5R+)", stats(wk.filter(t => rr(t) >= 1.5))));
+    L.push("");
     L.push(line("All 5 checks", stats(wk.filter(t => t.all))));
     L.push(line("⚠️ High risk", stats(wk.filter(t => !t.all))));
     for (const tf of [...new Set(wk.map(t => t.tf))]) L.push(line(tf, stats(wk.filter(t => t.tf === tf))));
@@ -199,7 +209,10 @@ function daily(list, grades, setups, now, date) {
   const ic = { t2: "✅", t1_be: "🎯", stopped: "❌", timeout: "⏱" };
   const L = [`📋 <b>Daily scoreboard · ${new Date(date + "T12:00:00Z").toLocaleDateString("en-CA", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" })}</b>`, ""];
   L.push(`<b>Closed that day: ${today.length}</b>${today.length ? ` · ${today.filter(t => t.g.r > 0).length} won · ${today.filter(t => t.g.status === "stopped").length} stopped · <b>${rTxt(R)}</b> · ${usd(pnl)} at $1,000 a trade` : ""}`);
-  for (const t of today) L.push(`${t.g.early ? "↩️" : ic[t.g.status] || "·"} ${tag(t)} ${rTxt(t.g.r)}`);
+  const lv = t => { const r = t.plan && t.plan.rr1; return r == null ? "" : r >= 1.5 ? " 🛡️" : r >= 1.2 ? " ⚖️" : " 🚀"; };
+  for (const t of today) L.push(`${t.g.early ? "↩️" : ic[t.g.status] || "·"} ${tag(t)}${lv(t)} ${rTxt(t.g.r)}`);
+  if (today.length) { const sum = f => today.filter(f).reduce((a, t) => a + t.g.r, 0), r1 = t => (t.plan && t.plan.rr1) || 0;
+    L.push(`By level: 🚀 Most profit ${rTxt(sum(() => true))} · ⚖️ Balanced ${rTxt(sum(t => r1(t) >= 1.2))} · 🛡️ Safest ${rTxt(sum(t => r1(t) >= 1.5))}`); }
   L.push("", `<b>Right now · in trades: ${open.length}</b>${open.length ? ` (limit ${MAX_OPEN})` : ""}`);
   for (const t of open) L.push(`⏳ ${tag(t)} · ${t.g.t1 ? "Target 1 hit, stop at entry · " : ""}now ${rTxt(t.g.r)}`);
   L.push("", `<b>Waiting for confirmation: ${waiting.length}</b>`);
