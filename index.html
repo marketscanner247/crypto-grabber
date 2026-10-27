@@ -64,7 +64,9 @@ details.why>summary::after{content:" ▾"}details.why[open]>summary::after{conte
 .rst.up{color:var(--bull)} .rst.down{color:var(--bear)} .rst.side{color:var(--gold)}
 .rx{font-size:11px;line-height:1.35;color:var(--muted);overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
 .rx b{color:var(--fg);font-weight:700}
-.rh::after{content:"▾";margin-left:auto;font-size:10px;opacity:.6}.rt[aria-expanded="true"] .rh::after{content:"▴"}
+.rh::after{content:"▾";margin-left:6px;font-size:10px;opacity:.6}
+.rh{min-width:0}@media (max-width:480px){.rh::after{display:none}.rp{font-size:11px!important}}
+.rp{margin-left:auto;font:700 12px var(--mono);color:var(--fg);font-variant-numeric:tabular-nums;padding:0 3px;border-radius:4px;white-space:nowrap}.rt[aria-expanded="true"] .rh::after{content:"▴"}
 .stylebar{display:grid;gap:6px;font-size:12.5px;color:var(--muted);margin:-2px 2px 10px}
 .sbl{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
 .regd{display:grid;gap:4px;font-size:13px}
@@ -315,8 +317,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
   </header>
 
   <div class="regime" id="regime">
-    <button class="rt" data-reg="btc" aria-expanded="false"><span class="rh"><span class="ri">₿</span>BTC</span><span class="rst">…</span><span class="rx">Daily</span></button>
-    <button class="rt" data-reg="alts" aria-expanded="false"><span class="rh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="8" cy="9" r="5"/><circle cx="16" cy="15" r="5"/></svg>Alts</span><span class="rst">…</span><span class="rx">Daily</span></button>
+    <button class="rt" data-reg="btc" aria-expanded="false"><span class="rh"><span class="ri">₿</span>BTC<span class="rp" data-tlive="BTCUSDT"></span></span><span class="rst">…</span><span class="rx">Daily</span></button>
+    <button class="rt" data-reg="alts" aria-expanded="false"><span class="rh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="8" cy="9" r="5"/><circle cx="16" cy="15" r="5"/></svg>Alts<span class="rp" id="domLive" title="BTC dominance, live"></span></span><span class="rst">…</span><span class="rx">Daily</span></button>
     <button class="rt" data-reg="mkt" aria-expanded="false"><span class="rh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Market</span><span class="rst">…</span><span class="rx">Daily</span></button>
   </div>
   <div class="panel regd" id="regDetail" hidden></div>
@@ -2603,6 +2605,7 @@ function paintRegime(){
   const st=btc.st,flip=st&&st.trend>0&&st.swingLow!=null?`Flips below <b>${fc(st.swingLow)}</b>`:st&&st.trend<0&&st.swingHigh!=null?`Flips above <b>${fc(st.swingHigh)}</b>`:`Range <b>${fc(btc.range[0])}–${fc(btc.range[1])}</b>`;
   set("btc",btc,`${btc.cls==="side"?`Range <b>${fc(btc.range[0])}–${fc(btc.range[1])}</b>`:flip}${btc.btc4?`<br>4h ${btc.btc4.up?"above":"<b>below</b>"} EMA 50`:""}`);
   const Rt=alts.rot,dd=Rt.dom7!=null?alts.btcd-Rt.dom7:null,arrow=dd!=null?(dd>=0.3?"↑":dd<=-0.3?"↓":"→"):({up:"↓",down:"↑",side:"→"})[Rt.lead.cls];
+  paintDom(alts.btcd);
   if(Rt.rotOn)set("alts",{state:"Alt rotation",cls:"up"},"BTC ranging · dominance <b>falling</b> · alts speeding up");
   else set("alts",{state:alts.view.tile,cls:alts.view.cls},`BTC dominance ${alts.btcd!=null?`<b>${alts.btcd.toFixed(1)}%</b> `:""}${({"↑":"rising","↓":"falling","→":"flat"})[arrow]}`);
   set("mkt",mkt,`<b>${mkt.breadth.toFixed(0)}%</b> of coins above EMA 50`);
@@ -2939,6 +2942,15 @@ $("check").onclick=()=>$("q").value.trim()?checkCoin():scan();
 $("q").addEventListener("input",updScanLabel);
 $("q").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();$("check").click();}});
 if("serviceWorker"in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(()=>{});
+// ---------- BTC dominance in the Alts tile: CoinGecko, refreshed every minute ----------
+function paintDom(v){const el=$("domLive");if(!el||v==null)return;const t=`D ${v.toFixed(2)}%`;if(el.textContent===t)return;
+  const prev=parseFloat(el.dataset.prev);el.dataset.prev=v;el.textContent=t;
+  // dominance up = money favouring BTC (red for alts), down = alts gaining (green)
+  if(Number.isFinite(prev)&&prev!==v){el.classList.remove("tick-up","tick-dn");void el.offsetWidth;el.classList.add(v<prev?"tick-up":"tick-dn");}}
+async function pollDom(){if(document.hidden||MODE!=="live")return;
+  try{const g=await (await fetch("https://api.coingecko.com/api/v3/global")).json();const v=g&&g.data&&g.data.market_cap_percentage&&g.data.market_cap_percentage.btc;
+    if(v!=null){if(REG&&REG.alts)REG.alts.btcd=v;paintDom(v);}}catch(e){}}
+setInterval(pollDom,60e3);
 // ---------- live prices: refresh every 3 seconds while the page is open ----------
 const LIVE={};
 // Binance coins stream through a websocket (about one update per second, like the Binance app);
@@ -2959,7 +2971,7 @@ function ensureWS(bin){
 }
 async function pollLive(){
   if(document.hidden||MODE!=="live"){closeWS();return;}
-  const ids=[...new Set([...document.querySelectorAll("[data-live]")].map(e=>e.dataset.live))];
+  const ids=[...new Set([...[...document.querySelectorAll("[data-live]")].map(e=>e.dataset.live),...[...document.querySelectorAll("[data-tlive]")].map(e=>e.dataset.tlive)])];
   const all=ids.filter(i=>!i.includes("-")),bin=all.filter(i=>!PERP.has(i)),fut=all.filter(i=>PERP.has(i)),okx=ids.filter(i=>i.includes("-"));
   ensureWS(bin);
   await Promise.all(fut.map(async id=>{try{const j=await (await fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${id}`)).json();if(j.price)LIVE[id]=+j.price;}catch(e){}}));
@@ -3016,6 +3028,12 @@ function paintLive(){
   document.querySelectorAll("[data-live]").forEach(el=>{
     const p=LIVE[el.dataset.live];if(p==null)return;const prev=parseFloat(el.dataset.prev);el.dataset.prev=p;
     if(el.textContent===fmtP(p))return;el.textContent=fmtP(p);
+    if(Number.isFinite(prev)){el.classList.remove("tick-up","tick-dn");void el.offsetWidth;el.classList.add(p>prev?"tick-up":"tick-dn");}
+  });
+  // tile prices: whole dollars with commas above 1,000 (BTC 87,140 · ETH 3,012)
+  document.querySelectorAll("[data-tlive]").forEach(el=>{
+    const p=LIVE[el.dataset.tlive];if(p==null)return;const t=""+(p>=1000?Math.round(p).toLocaleString("en-US"):fmtP(p));
+    if(el.textContent===t)return;const prev=parseFloat(el.dataset.prev);el.dataset.prev=p;el.textContent=t;
     if(Number.isFinite(prev)){el.classList.remove("tick-up","tick-dn");void el.offsetWidth;el.classList.add(p>prev?"tick-up":"tick-dn");}
   });
   document.querySelectorAll("[data-pnl]").forEach(el=>{
