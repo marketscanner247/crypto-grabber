@@ -698,6 +698,9 @@ const noteHTF=(id,tf,d,sr)=>{if(!HTF_TF.includes(tf))return;const x={...(sr||srL
 // is the coin beating BTC over the last 5 days (BTC_N 4h candles)? h.btc is set point-in-time in backtests; live it comes
 // from the 4h data the scan already loads. AM.btcGuard: "off", "ema" (alt longs need BTC above its 4h EMA 50), "rs" (alt
 // longs need the coin beating BTC), "long" (both), "both" (also no alt shorts on a coin beating a rising BTC).
+// 365-day 4h backtest: with the P10 rules every guard lowered the total (G1 −18R, G2 −11R), because hidden divergence
+// already removes most alt longs that get caught in a BTC dump. So the guard stays off; alt longs with BTC under its
+// 4h EMA 50 are flagged half size instead, and the bot caps open trades in one direction (MAX_SAME_DIR).
 const BTC_N=30;
 const isBtc=id=>/^BTC[-_]?USDT?$/i.test(String(id||""));
 function btcRel(h){
@@ -1066,7 +1069,8 @@ function scoreHit(h,conf){
       if((b1&&b1.last&&b1.last.kind==="CHoCH"&&b1.last.dir===-D&&b1.ago<=6)||(b4&&b4.last&&b4.last.dir===-D&&b4.ago<=3))
         pen.push({pts:5,txt:`BTC is turning ${D>0?"down":"up"} (${b1&&b1.last&&b1.last.dir===-D&&b1.ago<=6?`1h ${b1.last.kind} ${b1.ago} candles ago`:`4h ${b4.last.kind} ${b4.ago} candles ago`})`});}
     {const r=btcRel(h);if(r)notes.push(`BTC ${r.up?"above":"below"} its 4h EMA 50 · ${h.sym||"coin"} ${r.rs>=0?"beating":"lagging"} BTC by ${Math.abs(r.rs).toFixed(1)}% over 5 days`);
-      const bl=btcBlock(h);if(bl)notes.push(`⛔ Not alerted: ${bl}`);}
+      const bl=btcBlock(h);if(bl)notes.push(`⛔ Not alerted: ${bl}`);
+      else if(r&&D>0&&!r.up)notes.push("⚠️ BTC is below its 4h EMA 50: use half size on this alt long (alts fall harder if BTC dumps)");}
     const cx2=CTX[h.id];
     if(cx2&&cx2.fu&&cx2.fu.funding!=null){const fp=cx2.fu.funding*100,crowd=D>0?fp>=0.03:fp<=-0.03,fuel=D>0?fp<=-0.01:fp>=0.03;
       notes.push(`Funding ${fp>=0?"+":""}${fp.toFixed(3)}% (${fp>0?"longs paying, more longs open":fp<0?"shorts paying, more shorts open":"neutral"})`);
@@ -2445,7 +2449,7 @@ window.cgBot=async(o={})=>{
       return {key:[h.id,h.tf,h.type,h.time].join("|"),sym:h.sym,tf:h.tf,label:LABEL[h.type],dir:bull?"long":"short",
         score:h.sc.score,verdict:VERDICT[h.sc.verdict][0],checks:`${h.chk.n}/${h.chk.total}`,all:h.chk.all,tier:tierOf(h),actionable:actionableOf(h)[0],
         missing:h.chk.items.filter(i=>!i.ok).map(i=>i.txt),style:sty?tradeType(h,sty).label:"",styleTxt:sty?tradeType(h,sty).txt:"",
-        method:lv?MNAME[lv.method]:"",why:h.rec.why,status:tk?tk.status:null,missed:!!tk&&!!tk.missed,t1hit:!!tk&&tk.t1>=0,t1all:!!tk&&!!tk.t1all,r:tk&&tk.done?tk.r:null,trail:!!tk&&!!tk.trail,trailStop:tk&&tk.trail&&tk.t1>=0&&tk.stopNowLvl!=null?fmtP(tk.stopNowLvl):null,
+        method:lv?MNAME[lv.method]:"",why:h.rec.why,status:tk?tk.status:null,missed:!!tk&&!!tk.missed,t1hit:!!tk&&tk.t1>=0,t1all:!!tk&&!!tk.t1all,btcHalf:(()=>{const r=btcRel(h);return !!r&&dirOf(h.type)==="bull"&&!r.up;})(),r:tk&&tk.done?tk.r:null,trail:!!tk&&!!tk.trail,trailStop:tk&&tk.trail&&tk.t1>=0&&tk.stopNowLvl!=null?fmtP(tk.stopNowLvl):null,
         filledAt:tk&&tk.status==="open"?(tk.atClose?h.sigTime:tk.tt):null,stateTxt:ti?ti[0]:"",detail:ti?ti[2]:"",
         sigTime:h.sigTime,tfMs:TF_MS(h.tf),prog:lv?(live-lv.entry)/(lv.t1-lv.entry):null,
         e1:lv&&f(lv.e1),e2:lv&&f(lv.e2),e1src:lv?lv.e1src:"",split:!!lv&&!!lv.split,fill:tk&&tk.fill!=null?tk.fill:null,avg:tk&&tk.avg?f(tk.avg):null,

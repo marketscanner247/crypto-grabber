@@ -109,8 +109,8 @@ function plan(s) {
 }
 function sizeLine(s) {
   const p = Math.abs(s.stopNowPct ?? s.stopPct); if (!p) return "";
-  const pos = RISK / (p / 100);
-  return `\nSize: risk $${RISK} → $${pos >= 1000 ? Math.round(pos).toLocaleString("en-US") : pos.toFixed(0)} position${s.confirm && !s.entryNow ? " (estimate, final at the CHoCH)" : ""}`;
+  const risk = s.btcHalf ? RISK / 2 : RISK, pos = risk / (p / 100);
+  return `\nSize: risk $${risk} → $${pos >= 1000 ? Math.round(pos).toLocaleString("en-US") : pos.toFixed(0)} position${s.btcHalf ? " (half size: BTC is below its 4h EMA 50)" : ""}${s.confirm && !s.entryNow ? " (estimate, final at the CHoCH)" : ""}`;
 }
 const ctxLines = s => s.notes && s.notes.length ? `\n${s.notes.map(esc).join("\n")}` : "";
 function links(s) {
