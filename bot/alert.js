@@ -85,7 +85,7 @@ function head(s, kind) {
   const title = (risky(s) ? "HIGH RISK · " : "") + (kind === "enter" ? `ENTER ${s.dir.toUpperCase()} NOW` : kind === "ready" ? `SETUP READY · ${s.dir}` : "UPDATE");
   return `${icon} <b>${title} · ${esc(s.sym)} ${esc(s.tf)}</b>\n${esc(s.label)} · ${esc(s.style)} · score ${s.score} · ${s.all ? "✓ all 5 checks" : `${s.checks} checks`}`;
 }
-const riskNote = s => risky(s) ? `⚠️ Enter at your own risk. Missing: ${esc(s.missing.slice(0, 3).join("; "))}.\nIf you take it: half size, take profit at Target 1.\n` : "";
+const riskNote = s => risky(s) ? `⚠️ Enter at your own risk. Missing: ${esc(s.missing.slice(0, 3).join("; "))}.\nIf you take it: half size.\n` : "";
 function plan(s) {
   const w = s.dir === "long" ? "Buy" : "Sell";
   if (s.confirm) {   // top-down entry: zone on the setup's timeframe, entry on a lower-timeframe CHoCH
@@ -103,7 +103,7 @@ function plan(s) {
     : `Stop: ${esc(s.stop)} (${pct(s.stopPct)})`;
   const rr = s.rr1Now ?? s.rr1;
   return `${ent}\n${stop}\n` +
-    `Target 1: ${esc(s.t1)} (${pct(s.t1Pct)}, ${rr != null ? rr.toFixed(1) : "?"}R) · Target 2: ${esc(s.t2)} (${pct(s.t2Pct)})\nPrice now: ${esc(s.live)}`;
+    `Target: <b>${esc(s.t1)}</b> (${pct(s.t1Pct)}, ${rr != null ? rr.toFixed(1) : "?"}R) · take all profit there\nPrice now: ${esc(s.live)}`;
 }
 function sizeLine(s) {
   const p = Math.abs(s.stopNowPct ?? s.stopPct); if (!p) return "";
@@ -131,7 +131,7 @@ function msgEnter(s) {
   return `${head(s, "enter")}\n\n${s.filledAt ? `Triggered ${when(s.filledAt)}` : ""}${s.filledAt && fillTxt ? " · " : ""}${fillTxt}\n\n${plan(s)}${sizeLine(s)}${ctxLines(s)}\n\n${riskNote(s)}${links(s)}`;
 }
 function msgDone(s) {
-  const t = s.missed ? "Missed: price ran to Target 1 without the entry. Don't chase it." : s.early ? "↩️ Closed early: the lower timeframe broke structure against the trade before Target 1" : { t2: "✅ Target 2 hit", t1_be: "Target 1 hit, rest closed at entry", stopped: "❌ Stopped out", no_trigger: "Entry never triggered, setup expired", timeout: "Closed (time limit)" }[s.status] || s.stateTxt;
+  const t = s.missed ? "Missed: price ran to Target 1 without the entry. Don't chase it." : s.early ? "↩️ Closed early: the lower timeframe broke structure against the trade before Target 1" : { t2: s.t1all ? "✅ Target hit: whole position closed in profit" : "✅ Target 2 hit", t1_be: "Target 1 hit, rest closed at entry", stopped: "❌ Stopped out", no_trigger: "Entry never triggered, setup expired", timeout: "Closed (time limit)" }[s.status] || s.stateTxt;
   return `⚪ <b>${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b>: ${esc(t)}\n${esc(s.detail || "")}`;
 }
 
@@ -162,7 +162,7 @@ function scorecard(list, grades, now) {
   else {
     L.push(`Entered: <b>${S.ent}</b> of ${S.n} alerts${S.notFilled ? ` (${S.notFilled} never filled)` : ""}${S.waiting ? ` · ${S.waiting} still waiting` : ""}`);
     if (S.closed) {
-      L.push(`✅ Won: <b>${S.wins}</b>${S.t2 || S.be ? ` (${[S.t2 && `${S.t2} hit Target 2`, S.be && `${S.be} Target 1 then entry`].filter(Boolean).join(", ")})` : ""}`);
+      L.push(`✅ Won: <b>${S.wins}</b>${S.t2 || S.be ? ` (${[S.t2 && `${S.t2} hit the target`, S.be && `${S.be} Target 1 then entry`].filter(Boolean).join(", ")})` : ""}`);
       L.push(`❌ Stop loss: <b>${S.stop}</b>${S.timeout ? ` · ⏱ closed on time limit: ${S.timeout}` : ""}`);
       L.push(`Win rate: <b>${Math.round(S.wins / S.closed * 100)}%</b> · average ${R(S.avgR)} per trade`);
       L.push(`Profit: ${usd(S.pnl)} · fees −$${S.fees.toFixed(2)} · <b>Net ${usd(S.net)}</b>`);
