@@ -2690,15 +2690,20 @@ window.cgBacktest=async(o={})=>{
   const N={ema:false,vol:0,maxSweeps:0,earlyExit:false,retest:false,split:false,strong:false,fvgEdge:false,hlBos:false};
   const ByTT=(a,tf)=>({w:a.filter(h=>h.tf===tf&&/^Swing (long|short)$/.test(h.styleK||"")),c:a.filter(h=>h.tf===tf&&/Counter/.test(h.styleK||""))});
   const B={buf:0.5,min:1.0,mode:"close",confirm:true};
-  const Z={buf:0.5,min:1.0,mode:"close",confirm:false};
+  const Z={buf:0.5,min:1.0,mode:"close",confirm:false},N0A={mgmt:"trail",regAplus:true,rotLongs:true};
+  const isL=h=>dirOf(h.type)==="bull",rr1=h=>(h.plans&&h.plans[h.rec.m]||h.lv||{}).rr1,
+    badL=h=>isL(h)&&/^(Counter-trend long|Swing long forming)/.test(h.styleK||""),
+    weakAltL=h=>isL(h)&&!isBtc(h.id)&&!(h.rot&&h.rot.on)&&h.tier!=="aplus";
   const variants=o.variants||(o.set==="ltf"?null:[
     {name:"A old rules (before tonight)",...Z,am:{}},
-    {name:"P10 last default: half at Target 1, rest trailed · hidden, or regular with all 5 checks",...Z,am:{mgmt:"trail",regAplus:true}},
-    {name:"N0 NEW DEFAULT: P10 + alt longs on regular divergence during a rotation",...Z,am:{mgmt:"trail",regAplus:true,rotLongs:true}},
-    {name:"N1 N0 + Target 1 at least 1.5R",...Z,am:{mgmt:"trail",regAplus:true,rotLongs:true},keep:h=>(h.plans&&h.plans[h.rec.m]||h.lv||{}).rr1>=1.5},
-    {name:"N2 N0 + first entry at the block top (ignore the gap)",...Z,am:{mgmt:"trail",regAplus:true,rotLongs:true,noFvg:true}},
-    {name:"N3 N0 + alt longs only in a rotation or with all 5 checks",...Z,am:{mgmt:"trail",regAplus:true,rotLongs:true},keep:h=>!(dirOf(h.type)==="bull"&&!isBtc(h.id)&&!(h.rot&&h.rot.on)&&h.tier!=="aplus")},
-    {name:"N4 N1 + N2 + N3",...Z,am:{mgmt:"trail",regAplus:true,rotLongs:true,noFvg:true},keep:h=>(h.plans&&h.plans[h.rec.m]||h.lv||{}).rr1>=1.5&&!(dirOf(h.type)==="bull"&&!isBtc(h.id)&&!(h.rot&&h.rot.on)&&h.tier!=="aplus")}])||[
+    {name:"N0 current default: half at Target 1, rest trailed · rotation longs",...Z,am:{mgmt:"trail",regAplus:true,rotLongs:true}},
+    {name:"N1 N0 + Target 1 at least 1.5R",...Z,am:N0A,keep:h=>rr1(h)>=1.5},
+    {name:"M1 N1 + alt longs only in a rotation or with all 5 checks",...Z,am:N0A,keep:h=>rr1(h)>=1.5&&!weakAltL(h)},
+    {name:"M2 N0 + longs need Target 1 at least 1.5R (shorts unchanged)",...Z,am:N0A,keep:h=>!isL(h)||rr1(h)>=1.5},
+    {name:"M3 N0 + no counter-trend longs, no 'swing long forming'",...Z,am:N0A,keep:h=>!badL(h)},
+    {name:"M4 M3 + Target 1 at least 1.5R",...Z,am:N0A,keep:h=>!badL(h)&&rr1(h)>=1.5},
+    {name:"M5 M3 + longs need Target 1 at least 1.5R",...Z,am:N0A,keep:h=>!badL(h)&&(!isL(h)||rr1(h)>=1.5)},
+    {name:"M6 M4 + alt longs only in a rotation or with all 5 checks",...Z,am:N0A,keep:h=>!badL(h)&&rr1(h)>=1.5&&!weakAltL(h)}])||[
     {name:"A zone entry: limit at the order block, wider stop on candle close (default)",buf:0.5,min:1.0,mode:"close",confirm:false},
     {name:"B lower-timeframe CHoCH entry",...B,cf:{...N}},
     {name:"C + wait for the retest (full size)",...B,cf:{...N,retest:true}},
@@ -2745,7 +2750,8 @@ window.cgBacktest=async(o={})=>{
     const st=a=>{const f=a.filter(h=>h.out&&h.out.trig>=0),cl=f.filter(h=>["t2","t1_be","stopped","timeout"].includes(h.out.status));
       const sum=cl.reduce((s,h)=>s+h.out.r,0);
       return {signals:a.length,filled:f.length,closed:cl.length,wins:cl.filter(h=>h.out.r>0).length,stopped:cl.filter(h=>h.out.status==="stopped").length,
-        early:cl.filter(h=>h.out.early).length,winRate:cl.length?cl.filter(h=>h.out.r>0).length/cl.length:null,avgR:cl.length?sum/cl.length:null,totalR:sum};};
+        early:cl.filter(h=>h.out.early).length,maxDD:(()=>{const ct=h=>h.out.st||h.out.t2t||h.out.t1t||h.out.tt||h.at;let c=0,pk=0,dd=0;
+          for(const h of cl.slice().sort((a,b)=>ct(a)-ct(b))){c+=h.out.r;pk=Math.max(pk,c);dd=Math.max(dd,pk-c);}return dd;})(),winRate:cl.length?cl.filter(h=>h.out.r>0).length/cl.length:null,avgR:cl.length?sum/cl.length:null,totalR:sum};};
     const alerted=hits.filter(h=>(h.tier==="aplus"||h.tier==="risk")&&(!v.keep||v.keep(h))),mid=from+(now-from)/2;
     res.push({name:v.name,all:st(hits),alerted:st(alerted),half1:st(alerted.filter(h=>h.at<mid)),half2:st(alerted.filter(h=>h.at>=mid)),aplus:st(hits.filter(h=>h.tier==="aplus")),risk:st(hits.filter(h=>h.tier==="risk")),
       byTf:Object.fromEntries(tfs.map(tf=>[tf,st(alerted.filter(h=>h.tf===tf))])),
