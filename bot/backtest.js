@@ -63,6 +63,7 @@ const line = (lab, x) => `${lab}: ${x.closed} closed · win ${pc(x.winRate)} · 
       const d = v.alerted.totalR - base.totalR;
       L.push(`<b>${v.name}</b>${v === r.variants[0] ? "" : ` (${d >= 0 ? "+" : ""}${d.toFixed(1)}R vs A)`}`);
       L.push(line("All alerted", v.alerted));
+      if (v.half1) L.push(`· first 6 months ${v.half1.totalR >= 0 ? "+" : ""}${v.half1.totalR.toFixed(1)}R (${v.half1.closed}) · last 6 months ${v.half2.totalR >= 0 ? "+" : ""}${v.half2.totalR.toFixed(1)}R (${v.half2.closed})`);
       L.push(line("· with the trend", v.withTrend));
       L.push(line("· all 5 checks", v.aplus));
       L.push("");

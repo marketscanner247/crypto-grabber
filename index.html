@@ -845,7 +845,7 @@ const RETEST_MAX=12;
 // Zone-entry tweaks compared in cg backtest. entry: "split" (two halves, default), "mid" (one limit at the block middle),
 // "e1" (full size at the first level). mgmt: "half" (half at T1, stop to entry, rest to T2, default), "t1all" (all out at T1).
 // be1R: move the stop to entry once price is 1R in profit, before Target 1.
-const AM={entry:"split",mgmt:"half",be1R:false};
+const AM={entry:"split",mgmt:"half",be1R:false,noFvg:false};   // noFvg: first half at the block top even when a gap is there
 function levels(d,x,sr,vp,method="ob",tf=null){
   const L=d.close.length-1,a=d.atr[L],bull=x.type.endsWith("bull"),c=d.close[L];
   // The pivot candle is where liquidity was taken: it is the order block.
@@ -865,7 +865,7 @@ function levels(d,x,sr,vp,method="ob",tf=null){
       let filled=false;for(let j=i+1;j<=L;j++)if(bull?d.low[j]<=lo:d.high[j]>=hi){filled=true;break;}
       const ce=(lo+hi)/2;if(!filled&&(bull?ce>top:ce<top)){fvg={lo,hi,ce};break;}
     }
-    e1=fvg?fvg.ce:top;e2=mid;if(fvg)e1src="fair value gap middle";
+    e1=fvg&&!AM.noFvg?fvg.ce:top;e2=mid;if(fvg&&!AM.noFvg)e1src="fair value gap middle";
     if(AM.entry==="mid"){e1=mid;e1src="order block middle";}else if(AM.entry==="e1")e2=e1;
     if(bull?c<=e1:c>=e1){e1=c;atClose=true;e1src="signal close";}
     if(bull?c<=e2:c>=e2)e2=c;
@@ -2449,13 +2449,13 @@ window.cgBacktest=async(o={})=>{
   const Z={buf:0.5,min:1.0,mode:"close",confirm:false};
   const variants=o.variants||(o.set==="ltf"?null:[
     {name:"A zone entry, as now (default)",...Z,am:{}},
-    {name:"A1 wider stop (0.75 ATR past the sweep, 1.5 ATR min)",...Z,buf:0.75,min:1.5,am:{}},
-    {name:"A2 tighter stop (0.3 ATR past the sweep, 0.75 ATR min)",...Z,buf:0.3,min:0.75,am:{}},
-    {name:"A3 one limit at the order block middle (deeper fill)",...Z,am:{entry:"mid"}},
-    {name:"A4 full size at the first level (fills more often)",...Z,am:{entry:"e1"}},
-    {name:"A5 take everything at Target 1",...Z,am:{mgmt:"t1all"}},
-    {name:"A6 stop to entry at +1R, before Target 1",...Z,am:{be1R:true}},
-    {name:"A7 stop on touch instead of close",...Z,mode:"wick",am:{}}])||[
+    {name:"P1 all out at Target 1",...Z,am:{mgmt:"t1all"}},
+    {name:"P2 P1 + tighter stop",...Z,buf:0.3,min:0.75,am:{mgmt:"t1all"}},
+    {name:"P3 P1 + first half at the block top (ignore the gap)",...Z,am:{mgmt:"t1all",noFvg:true}},
+    {name:"P4 P1 + hidden divergence only",...Z,am:{mgmt:"t1all"},keep:h=>/^hidden/.test(h.type)},
+    {name:"P5 P1 + hidden, or regular with all 5 checks",...Z,am:{mgmt:"t1all"},keep:h=>/^hidden/.test(h.type)||h.tier==="aplus"},
+    {name:"P6 P1 + score 65+ only",...Z,am:{mgmt:"t1all"},keep:h=>h.sc&&h.sc.score>=65},
+    {name:"P7 P3 + hidden, or regular with all 5 checks",...Z,am:{mgmt:"t1all",noFvg:true},keep:h=>/^hidden/.test(h.type)||h.tier==="aplus"}])||[
     {name:"A zone entry: limit at the order block, wider stop on candle close (default)",buf:0.5,min:1.0,mode:"close",confirm:false},
     {name:"B lower-timeframe CHoCH entry",...B,cf:{...N}},
     {name:"C + wait for the retest (full size)",...B,cf:{...N,retest:true}},
@@ -2487,8 +2487,8 @@ window.cgBacktest=async(o={})=>{
       const sum=cl.reduce((s,h)=>s+h.out.r,0);
       return {signals:a.length,filled:f.length,closed:cl.length,wins:cl.filter(h=>h.out.r>0).length,stopped:cl.filter(h=>h.out.status==="stopped").length,
         early:cl.filter(h=>h.out.early).length,winRate:cl.length?cl.filter(h=>h.out.r>0).length/cl.length:null,avgR:cl.length?sum/cl.length:null,totalR:sum};};
-    const alerted=hits.filter(h=>h.tier==="aplus"||h.tier==="risk");
-    res.push({name:v.name,all:st(hits),alerted:st(alerted),aplus:st(hits.filter(h=>h.tier==="aplus")),risk:st(hits.filter(h=>h.tier==="risk")),
+    const alerted=hits.filter(h=>(h.tier==="aplus"||h.tier==="risk")&&(!v.keep||v.keep(h))),mid=from+(now-from)/2;
+    res.push({name:v.name,all:st(hits),alerted:st(alerted),half1:st(alerted.filter(h=>h.at<mid)),half2:st(alerted.filter(h=>h.at>=mid)),aplus:st(hits.filter(h=>h.tier==="aplus")),risk:st(hits.filter(h=>h.tier==="risk")),
       byTf:Object.fromEntries(tfs.map(tf=>[tf,st(alerted.filter(h=>h.tf===tf))])),
       counter:st(alerted.filter(h=>/Counter/.test(h.styleK||""))),withTrend:st(alerted.filter(h=>/^Swing (long|short)$/.test(h.styleK||""))),
       byTfTrend:Object.fromEntries(tfs.map(tf=>{const x=ByTT(alerted,tf);return [tf,{with:st(x.w),counter:st(x.c)}];})),
