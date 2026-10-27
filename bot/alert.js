@@ -36,7 +36,9 @@ const SIZE = 1000, FEE = 0.001;
 const RISK = +process.env.RISK_USD || 10;              // $ lost if the stop is hit: sets the position size shown in alerts
 const MAX_OPEN = +process.env.MAX_OPEN || 3;
 // Alts move with BTC: several alt longs (or shorts) at once are one big BTC bet. At most this many open the same way.
-const MAX_SAME_DIR = +process.env.MAX_SAME_DIR || 2;           // no new "Enter now" while this many alerted trades are open
+const MAX_SAME_DIR = +process.env.MAX_SAME_DIR || 2;
+// SAFER=1: only trades whose Target 1 pays at least 1.5R (2-year backtest: worst drop −12R instead of −25R, less profit)
+const MIN_RR = /^(1|true|yes)$/i.test(process.env.SAFER || "") ? 1.5 : +process.env.MIN_RR || 0;           // no new "Enter now" while this many alerted trades are open
 const MAX_DAILY_STOPS = +process.env.MAX_DAILY_STOPS || 3;   // no new entries for the rest of the day after this many stops
 // The 120-day backtest lost money on counter-trend setups in every version, so they are not alerted unless asked for.
 const ENTRY = (process.env.ENTRY || "zone").toLowerCase();   // zone = limit orders at the order block (default) · ltf = wait for the lower-timeframe CHoCH
@@ -240,7 +242,7 @@ function daily(list, grades, setups, now, date) {
     }
     for (const b of briefs) if (await send(b.html + (SITE && b.name === "Alts" ? `\n<a href="${esc(SITE)}">Crypto Grabber</a>` : ""))) { b.sent = true; if (!state.__brief || state.__brief.date !== ny.date) state.__brief = { date: ny.date, seen: Date.now() }; }
     if (briefs.some(b => b.sent)) try { fs.writeFileSync(STATE, JSON.stringify(state)); } catch (e) {}   // don't resend if the scan fails
-    out = await page.evaluate(([tfs, entry]) => window.cgBot({ tfs, entry }), [TFS, ENTRY]);
+    out = await page.evaluate(([tfs, entry, minRR]) => window.cgBot({ tfs, entry, minRR }), [TFS, ENTRY, MIN_RR]);
     try { rot = await page.evaluate(() => window.cgRotation && window.cgRotation()); } catch (e) {}
     if (weekDue || dayDue) { try { grades = await page.evaluate(([l, n]) => window.cgGrade(l, n), [J.list, SIZE]); } catch (e) { console.error("scorecard failed:", e.message); } }
   } finally { await browser.close(); srv.close(); }

@@ -349,6 +349,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
       </div>
     </div>
     <div class="row">
+      <div class="rowhead"><span class="lbl">Trades</span>
+        <div class="seg" role="group" aria-label="Trade filter"><button data-safe="0">Most profit</button><button data-safe="1">Safer</button></div></div>
+      <span class="status" style="margin:0">2-year backtest. Most profit: +75R, worst drop −25R, bad year −10R. Safer (only trades whose Target 1 pays 1.5R or more): +56R, worst drop −12R, bad year −3R, about half the trades.</span>
+    </div>
+    <div class="row">
       <div class="rowhead"><span class="lbl">Entry</span>
         <div class="seg" role="group" aria-label="Entry style"><button data-entrymode="zone">At the zone</button><button data-entrymode="ltf">Lower-TF CHoCH</button></div></div>
       <span class="status" style="margin:0">At the zone: limit orders at the order block (best in the 1-year backtest). Lower-TF CHoCH: wait for the lower timeframe to turn first.</span>
@@ -406,7 +411,7 @@ const TF_MIN={"1m":1,"3m":3,"5m":5,"15m":15,"30m":30,"1h":60,"2h":120,"4h":240,"
 const OKX_BAR={"1m":"1m","3m":"3m","5m":"5m","15m":"15m","30m":"30m","1h":"1H","2h":"2H","4h":"4H","6h":"6Hutc","12h":"12Hutc","1d":"1Dutc","3d":"3Dutc","1w":"1Wutc","1M":"1Mutc"};
 const STD_MA=[9,21,50,200];
 const TOP_N=50,VOL_MULT=1.5,VOL_LEN=20,MAX_FAV=10;
-let S={f3d:true,favs:["15m","1h","4h","1d","3d","1w"],tfs:["1h","4h","1d"],maType:"ema",slots:[...STD_MA],periods:[...STD_MA],off:[],theme:"auto",pal:"teal",entry:"close",stopMode:"close",fClose:true,risk:10,entryMode:"zone"};
+let S={safe:false,f3d:true,favs:["15m","1h","4h","1d","3d","1w"],tfs:["1h","4h","1d"],maType:"ema",slots:[...STD_MA],periods:[...STD_MA],off:[],theme:"auto",pal:"teal",entry:"close",stopMode:"close",fClose:true,risk:10,entryMode:"zone"};
 const okP=v=>{const n=Number(v);return v!==""&&v!=null&&Number.isInteger(n)&&n>=2&&n<=300?n:null;};
 const fromSlots=sl=>[...new Set(sl.filter(n=>n!=null))].sort((x,y)=>x-y);
 try{
@@ -422,6 +427,7 @@ try{
   if(["teal","blue","violet","amber","rose"].includes(o.pal))S.pal=o.pal;
   if(+o.risk>0)S.risk=+o.risk;
   if(o.entryMode==="ltf"||o.entryMode==="zone")S.entryMode=o.entryMode;
+  if(typeof o.safe==="boolean")S.safe=o.safe;
   if(Array.isArray(o.off))S.off=o.off.filter(p=>S.periods.includes(p));
 }catch(e){}
 const save=()=>{try{const {periods,...keep}=S;localStorage.setItem("cgrab",JSON.stringify(keep));}catch(e){}};
@@ -466,6 +472,8 @@ function applySlots(sl,msg){
   S.slots=sl;S.periods=fromSlots(sl);S.off=S.off.filter(p=>S.periods.includes(p));save();renderMa();if(msg)setStatus(msg);
 }
 const readSlots=()=>[0,1,2,3].map(i=>okP($("ma"+i).value));
+document.querySelectorAll("[data-safe]").forEach(b=>{b.setAttribute("aria-pressed",(b.dataset.safe==="1")===S.safe);
+  b.onclick=()=>{S.safe=b.dataset.safe==="1";AM.minRR=S.safe?1.5:0;save();document.querySelectorAll("[data-safe]").forEach(x=>x.setAttribute("aria-pressed",(x.dataset.safe==="1")===S.safe));setStatus("Saved. Scan or check a coin again to apply it.");};});
 document.querySelectorAll("[data-entrymode]").forEach(b=>{b.setAttribute("aria-pressed",b.dataset.entrymode===S.entryMode);
   b.onclick=()=>{S.entryMode=b.dataset.entrymode;CONFIRM=S.entryMode==="ltf";save();document.querySelectorAll("[data-entrymode]").forEach(x=>x.setAttribute("aria-pressed",x.dataset.entrymode===S.entryMode));setStatus("Entry style saved. Scan or check a coin again to apply it.");};});
 $("riskUsd").value=S.risk;$("riskUsd").onchange=e=>{const v=+e.target.value;if(v>0){S.risk=v;save();}else e.target.value=S.risk;};
@@ -776,7 +784,7 @@ function actionableOf(h){
   return pr>=0.5?[false,"",`Too late to enter: ${Math.round(pr*100)}% of the way to Target 1`]:[true,`Still actionable (in trade, ${Math.max(0,Math.round(pr*100))}% of the way to Target 1)`,""];
 }
 // Alert tiers: all five checks met, or not skipped and still actionable (enter at your own risk), or neither.
-const tierOf=h=>!h.chk||!h.sc?"other":ignoredOf(h)?"other":!actionableOf(h)[0]?"other":btcBlock(h)?"other":h.chk.all?"aplus":AM.regAplus&&/^regular/.test(h.type)&&!(AM.rotLongs&&dirOf(h.type)==="bull"&&rotOnFor(h))?"other":h.sc.verdict!=="skip"?"risk":"other";
+const tierOf=h=>!h.chk||!h.sc?"other":ignoredOf(h)?"other":!actionableOf(h)[0]?"other":btcBlock(h)||ruleBlock(h)?"other":h.chk.all?"aplus":AM.regAplus&&/^regular/.test(h.type)&&!(AM.rotLongs&&dirOf(h.type)==="bull"&&rotOnFor(h))?"other":h.sc.verdict!=="skip"?"risk":"other";
 // Pop-up with the checks behind a score (tap the score or the "n/5 checks" tag).
 const HIT_BY_KEY={};
 function popHTML(h){
@@ -899,7 +907,17 @@ const RETEST_MAX=12;
 // only alerted when it meets all 5 checks (hidden divergence +66R over the year, regular −16R).
 // rotLongs: during an alt rotation (BTC ranging, dominance falling, alts speeding up) alt longs on regular divergence are
 // alerted too. 2-year backtest: alt longs in a rotation 11 trades, 73% win, +0.89R each; every other alt-long group lost.
-const AM={entry:"split",mgmt:"trail",be1R:false,noFvg:false,tStop:0,regAplus:true,btcGuard:"off",rotLongs:true};
+// noBadLongs: no counter-trend longs and no "swing long forming" longs (2 years: −16R and −17R; without them the total
+// rose from +66R to +75R and the worst drop fell from −35R to −25R). minRR: skip trades whose Target 1 pays under this
+// (the "Safer" setting, 1.5: +56R, worst drop −12R).
+const AM={entry:"split",mgmt:"trail",be1R:false,noFvg:false,tStop:0,regAplus:true,btcGuard:"off",rotLongs:true,noBadLongs:true,minRR:S.safe?1.5:0};
+const styleLab=h=>h.styleK!==undefined?h.styleK:(STRUCT[h.id]&&Object.keys(STRUCT[h.id]).length?tradeType(h,styleOf(STRUCT[h.id])).label:"");
+// Why a setup isn't alerted under the current rules (null = it can be)
+function ruleBlock(h){
+  if(AM.noBadLongs&&dirOf(h.type)==="bull"&&/^(Counter-trend long|Swing long forming)/.test(styleLab(h)||""))return `${styleLab(h)}: these longs lost money over 2 years`;
+  const lv=h.lv;if(AM.minRR&&lv&&lv.rr1<AM.minRR)return `Target 1 pays ${lv.rr1.toFixed(1)}R, under ${AM.minRR}R (Safer setting)`;
+  return null;
+}
 const rotOnFor=h=>isBtc(h.id)?false:h.rot!==undefined?!!(h.rot&&h.rot.on):!!(typeof REG!=="undefined"&&REG&&REG.alts&&REG.alts.rot&&REG.alts.rot.rotOn);
 // mgmt "trail": half at T1 with the stop to entry, the rest trails behind each new confirmed swing (2 candles each side)
 // instead of a fixed Target 2. tStop: candles allowed to reach Target 1; if it hasn't, exit at that candle's close (0 = off).   // noFvg: first half at the block top even when a gap is there
@@ -1564,6 +1582,7 @@ function signalHTML(h){
       <div class="ph"><span class="pill ${bull?"bull":"bear"}">${bull?"Long":"Short"}</span><span class="mu">${h.tf} · signal ${fmtDate(h.sigTime)}</span></div>
       ${!closed&&lv.wide?`<div class="rec gold"><b>⚠️ Skip: stop too wide</b> · The pivot was a spike, so the stop sits ${lv.riskPct.toFixed(0)}% away (${lv.ratr.toFixed(1)} ATR; normal is 1–2). Targets that far out aren't realistic.</div>`:""}
       ${!closed&&h.chk&&tierOf(h)==="risk"?`<div class="rec gold"><b>⚠️ Enter at your own risk</b> · ${h.chk.n}/${h.chk.total} checks met${(()=>{const m=h.chk.items.filter(i=>!i.ok).map(i=>i.txt).slice(0,3);return m.length?`. Missing: ${esc(m.join("; "))}`:"";})()}. If you take it, use half size.</div>`:""}
+      ${!closed&&!(tkx&&tkx.trig>=0)&&ruleBlock(h)?`<div class="rec gold"><b>⛔ Not alerted</b> · ${esc(ruleBlock(h))}.</div>`:""}
       ${btcHalf&&tierOf(h)!=="other"?`<div class="rec gold"><b>⚠️ Half size</b> · BTC is below its 4h EMA 50. Alts fall harder when BTC dumps.</div>`:""}
       ${closed?`<div class="donebn ${ti[1]==="gold"?"flat":ti[1]}"><b>${ti[0]}${h.track.trig>=0?" · "+rTxt(h.track.r):""}</b><span>${esc(ti[2])}</span></div>`:ti?`<div class="act ${ti[1]}"><b>${ti[0]}</b><span>${ti[2]}</span></div>`:""}
       <div class="${closed?"dim":""}">
@@ -2350,7 +2369,7 @@ function historyHits(series,c,tf,from=-Infinity,to=Infinity,pit=null){
       h.bt=true;h.btc=null;h.rot=null;if(pit){pit(h,series[t].ct);h.bt=false;h.pit=true;}
       if(ignoredOf(h)){h.bt=true;continue;}
       h.sc=scoreHit(h,false);h.at=series[t].ct;
-      if(pit){h.chk=checklist(h);h.tier=tierOf(h);h.styleK=(()=>{const m=STRUCT[h.id];const y=m?styleOf(m):null;return y?tradeType(h,y).label:"";})();h.bt=true;}
+      if(pit){h.chk=checklist(h);h.styleK=(()=>{const m=STRUCT[h.id];const y=m?styleOf(m):null;return y?tradeType(h,y).label:"";})();h.tier=tierOf(h);h.bt=true;}
       h.outs={};const fw=series.slice(t+1);h.fw=fw;h.sigTime=series[t].ct+1;
       for(const m of METHODS)if(h.plans[m])h.outs[m]=simulate(h.plans[m],kind==="low",fw,BT.fee);
       h.out=h.outs[h.rec.m]||{status:"broken",r:0,trig:-1};
@@ -2639,6 +2658,7 @@ $("auto").onchange=async e=>{
 // Runs the normal live scan and returns each coin's top setup with its plan, checklist and entry status.
 let LAST_SCAN=[];
 window.cgBot=async(o={})=>{
+  if(o.minRR!=null)AM.minRR=+o.minRR||0;
   if(o.entry==="ltf"||o.entry==="zone")CONFIRM=o.entry==="ltf";
   if(o.tfs&&o.tfs.length)S.tfs=sortTf(o.tfs.filter(t=>TF_MIN[t]));
   const t0=Date.now();while((!REG||regBusy)&&Date.now()-t0<60000)await new Promise(r=>setTimeout(r,500));
@@ -2696,14 +2716,11 @@ window.cgBacktest=async(o={})=>{
     weakAltL=h=>isL(h)&&!isBtc(h.id)&&!(h.rot&&h.rot.on)&&h.tier!=="aplus";
   const variants=o.variants||(o.set==="ltf"?null:[
     {name:"A old rules (before tonight)",...Z,am:{}},
-    {name:"N0 current default: half at Target 1, rest trailed · rotation longs",...Z,am:{mgmt:"trail",regAplus:true,rotLongs:true}},
-    {name:"N1 N0 + Target 1 at least 1.5R",...Z,am:N0A,keep:h=>rr1(h)>=1.5},
-    {name:"M1 N1 + alt longs only in a rotation or with all 5 checks",...Z,am:N0A,keep:h=>rr1(h)>=1.5&&!weakAltL(h)},
-    {name:"M2 N0 + longs need Target 1 at least 1.5R (shorts unchanged)",...Z,am:N0A,keep:h=>!isL(h)||rr1(h)>=1.5},
-    {name:"M3 N0 + no counter-trend longs, no 'swing long forming'",...Z,am:N0A,keep:h=>!badL(h)},
-    {name:"M4 M3 + Target 1 at least 1.5R",...Z,am:N0A,keep:h=>!badL(h)&&rr1(h)>=1.5},
-    {name:"M5 M3 + longs need Target 1 at least 1.5R",...Z,am:N0A,keep:h=>!badL(h)&&(!isL(h)||rr1(h)>=1.5)},
-    {name:"M6 M4 + alt longs only in a rotation or with all 5 checks",...Z,am:N0A,keep:h=>!badL(h)&&rr1(h)>=1.5&&!weakAltL(h)}])||[
+    {name:"N0 last default: half at Target 1, rest trailed · rotation longs",...Z,am:N0A},
+    {name:"M3 NEW DEFAULT: N0 + no counter-trend longs, no 'swing long forming'",...Z,am:{...N0A,noBadLongs:true}},
+    {name:"M4 SAFER setting: M3 + Target 1 at least 1.5R",...Z,am:{...N0A,noBadLongs:true,minRR:1.5}},
+    {name:"M7 M3 + Target 1 at least 1.2R",...Z,am:{...N0A,noBadLongs:true,minRR:1.2}},
+    {name:"M8 M3 + no 'swing short forming' either",...Z,am:{...N0A,noBadLongs:true},keep:h=>!/^Swing short forming/.test(h.styleK||"")}])||[
     {name:"A zone entry: limit at the order block, wider stop on candle close (default)",buf:0.5,min:1.0,mode:"close",confirm:false},
     {name:"B lower-timeframe CHoCH entry",...B,cf:{...N}},
     {name:"C + wait for the retest (full size)",...B,cf:{...N,retest:true}},
@@ -2742,7 +2759,7 @@ window.cgBacktest=async(o={})=>{
       if(i<60)continue;const v=viewAt(x.D,i);m[tf]=structure(v);noteHTF(id,tf,v);}
     STRUCT[id]=m;};
   const saved={buf:STOP_BUF,min:STOP_MIN,mode:S.stopMode,fee:BT.fee,confirm:CONFIRM,cf:{...CF}},res=[];
-  for(const v of variants){STOP_BUF=v.buf;STOP_MIN=v.min;S.stopMode=v.mode;CONFIRM=!!v.confirm;Object.assign(CF,v.cf||{});Object.assign(AM,AM0,{mgmt:"half",regAplus:false,btcGuard:"off",rotLongs:false},v.am||{});BT.fee=o.fee??0.15;const hits=[];
+  for(const v of variants){STOP_BUF=v.buf;STOP_MIN=v.min;S.stopMode=v.mode;CONFIRM=!!v.confirm;Object.assign(CF,v.cf||{});Object.assign(AM,AM0,{mgmt:"half",regAplus:false,btcGuard:"off",rotLongs:false,noBadLongs:false,minRR:0},v.am||{});BT.fee=o.fee??0.15;const hits=[];
     for(const b of bases){const d=data[b];if(!d)continue;
       for(const tf of tfs){const x=d[tf];if(!x||x.k.length<300)continue;const id=x.s.id(b);
         hits.push(...historyHits(x.k,{id,base:b},tf,from,now,pitFor(b,id)));}}
