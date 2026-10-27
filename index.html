@@ -923,6 +923,8 @@ const styleLab=h=>h.styleK!==undefined?h.styleK:(STRUCT[h.id]&&Object.keys(STRUC
 function ruleBlock(h){
   if(AM.noBadLongs&&dirOf(h.type)==="bull"&&/^(Counter-trend long|Swing long forming)/.test(styleLab(h)||""))return `${styleLab(h)}: these longs lost money over 2 years`;
   if(AM.noFormShorts&&dirOf(h.type)==="bear"&&/^Swing short forming/.test(styleLab(h)||""))return "Swing short forming: the 4h hasn't turned down yet, and these shorts lost money over 2 years";
+  if(AM.regAplus&&/^regular/.test(h.type)&&h.chk&&!h.chk.all&&!(AM.rotLongs&&dirOf(h.type)==="bull"&&rotOnFor(h)))
+    return `Regular divergence with ${h.chk.n}/${h.chk.total} checks: only hidden divergence, or regular with all 5 checks, is alerted (regular without them lost money over 2 years)`;
   const lv=h.lv;if(AM.minRR&&lv&&lv.rr1<AM.minRR)return `Target 1 pays ${lv.rr1.toFixed(1)}R, under ${AM.minRR}R (${AM.minRR>=1.5?"Safest":"Balanced"} setting)`;
   return null;
 }
@@ -1590,7 +1592,7 @@ function signalHTML(h){
       <div class="ph"><span class="pill ${bull?"bull":"bear"}">${bull?"Long":"Short"}</span><span class="mu">${h.tf} · signal ${fmtDate(h.sigTime)}</span></div>
       ${!closed&&lv.wide?`<div class="rec gold"><b>⚠️ Skip: stop too wide</b> · The pivot was a spike, so the stop sits ${lv.riskPct.toFixed(0)}% away (${lv.ratr.toFixed(1)} ATR; normal is 1–2). Targets that far out aren't realistic.</div>`:""}
       ${!closed&&h.chk&&tierOf(h)==="risk"?`<div class="rec gold"><b>⚠️ Enter at your own risk</b> · ${h.chk.n}/${h.chk.total} checks met${(()=>{const m=h.chk.items.filter(i=>!i.ok).map(i=>i.txt).slice(0,3);return m.length?`. Missing: ${esc(m.join("; "))}`:"";})()}. If you take it, use half size.</div>`:""}
-      ${!closed&&!(tkx&&tkx.trig>=0)&&ruleBlock(h)?`<div class="rec gold"><b>⛔ Not alerted</b> · ${esc(ruleBlock(h))}.</div>`:""}
+      ${!closed&&(ruleBlock(h)||btcBlock(h))?`<div class="rec gold"><b>⛔ Not alerted</b> · ${esc(ruleBlock(h)||btcBlock(h))}.${tkx&&tkx.trig>=0?" If you took it anyway, manage it with the plan below.":""}</div>`:""}
       ${btcHalf&&tierOf(h)!=="other"?`<div class="rec gold"><b>⚠️ Half size</b> · BTC is below its 4h EMA 50. Alts fall harder when BTC dumps.</div>`:""}
       ${closed?`<div class="donebn ${ti[1]==="gold"?"flat":ti[1]}"><b>${ti[0]}${h.track.trig>=0?" · "+rTxt(h.track.r):""}</b><span>${esc(ti[2])}</span></div>`:ti?`<div class="act ${ti[1]}"><b>${ti[0]}</b><span>${ti[2]}</span></div>`:""}
       <div class="${closed?"dim":""}">
@@ -1689,7 +1691,7 @@ function makeCard(o){
   const t=o.top;
   const lp=o.lv&&o.lv.live,lvx=o.lv&&{...o.lv,id:o.asOf?null:o.id},sty=o.struct&&Object.keys(o.struct).length?styleOf(o.struct):null,ck=t?(t.chk||(t.chk=checklist(t))):null;
   let h=`<summary class="csum"><div class="cl"><div class="sym">${esc(o.sym)}${t?`<small>${t.tf}</small>`:""}</div>
-    <div class="sub">${t?`<span class="pill ${dirOf(t.type)}">${LABEL[t.type]}</span>${outPill(t)}<span data-tp="${esc(sigKey(t))}">${trackPill(t)}</span>`:`<span class="pill flat">No setup right now</span>`}<span data-ckt>${ckTag(ck,t&&sigKey(t))}</span>${t&&t.lv&&!o.asOf?lvlTag(t.lv.rr1):""}${t&&sty?typeTag(tradeType(t,sty)):sty?trendTag(sty):""}${t&&t.conflict?`<span class="tag gold">Mixed</span>`:""}${t&&t.ctx&&t.ctx.agree.length?`<span class="tag gold">Confluence ×${t.ctx.agree.length+1}</span>`:""}${(o.others||[]).map(h=>`<span class="tag ${dirOf(h.type)}">${h.tf} ${dirOf(h.type)==="bull"?"Long":"Short"}</span>`).join("")}</div></div><div class="cr">${lp&&!o.asOf?`<span class="lp" data-live="${o.id}">${fmtP(lp)}</span>`:""}${(()=>{const k=t&&t.track,lv=t&&t.lv;
+    <div class="sub">${t?`<span class="pill ${dirOf(t.type)}">${LABEL[t.type]}</span>${outPill(t)}<span data-tp="${esc(sigKey(t))}">${trackPill(t)}</span>`:`<span class="pill flat">No setup right now</span>`}<span data-ckt>${ckTag(ck,t&&sigKey(t))}</span>${t&&t.lv&&!o.asOf?(tierOf(t)==="other"?(ruleBlock(t)||btcBlock(t)?`<span class="tag gold" title="${esc(ruleBlock(t)||btcBlock(t))}">⛔ Not alerted</span>`:""):lvlTag(t.lv.rr1)):""}${t&&sty?typeTag(tradeType(t,sty)):sty?trendTag(sty):""}${t&&t.conflict?`<span class="tag gold">Mixed</span>`:""}${t&&t.ctx&&t.ctx.agree.length?`<span class="tag gold">Confluence ×${t.ctx.agree.length+1}</span>`:""}${(o.others||[]).map(h=>`<span class="tag ${dirOf(h.type)}">${h.tf} ${dirOf(h.type)==="bull"?"Long":"Short"}</span>`).join("")}</div></div><div class="cr">${lp&&!o.asOf?`<span class="lp" data-live="${o.id}">${fmtP(lp)}</span>`:""}${(()=>{const k=t&&t.track,lv=t&&t.lv;
       if(o.asOf||!k||k.trig<0||isClosed(k)||!lv)return "";const E=k.entryP??k.avg??lv.entry,R=Math.abs(E-(k.stopA??lv.stop));
       return `<span class="pnl" data-pnl="${o.id}" data-e="${E}" data-r="${R}" data-d="${dirOf(t.type)==="bull"?1:-1}"></span>`;})()}${t?chip(t.sc):""}</div></summary><div class="cbody">`;
   if(t)h+=signalHTML(t);
@@ -1788,6 +1790,7 @@ async function scan(opts={}){
     end();return;
   }
   const only=opts.only?new Set(opts.only):null;
+  if(!bt){const have=new Set(list.map(c=>c.base));for(const b of Object.keys(wlLoad()))if(!have.has(b))list.push({id:src.id(b),base:b,watch:true});}
   const tfs=sortTf(S.tfs),jobs=[];for(const tf of tfs)for(const c of list)if(!only||only.has(c.base+"|"+tf))jobs.push({c,tf});
   const total=jobs.length,hits=[];let done=0,fails=0;if(!A){STRUCT={};HTFL={};}
   const worker=async()=>{
@@ -1858,6 +1861,11 @@ async function showClosed(){
 function setView(v){document.querySelectorAll(".vtabs [data-view]").forEach(b=>b.setAttribute("aria-selected",b.dataset.view===v));
   $("results").hidden=v!=="setups";$("closed").hidden=v!=="closed";if(v==="closed")showClosed();}
 document.querySelectorAll(".vtabs [data-view]").forEach(b=>b.onclick=()=>setView(b.dataset.view));
+// Coins you check by hand are watched for 7 days: always scanned (even outside the top 50) and shown on the main screen.
+const WL_KEY="cgrab_watch";
+const wlLoad=()=>{try{const o=JSON.parse(localStorage.getItem(WL_KEY)||"{}"),now=Date.now();return Object.fromEntries(Object.entries(o).filter(([,t])=>now-t<7*864e5));}catch(e){return {};}};
+const wlAdd=b=>{try{const o=wlLoad();o[b]=Date.now();const k=Object.keys(o).sort((x,y)=>o[y]-o[x]).slice(0,15);localStorage.setItem(WL_KEY,JSON.stringify(Object.fromEntries(k.map(x=>[x,o[x]]))));}catch(e){}};
+const wlDel=b=>{try{const o=wlLoad();delete o[b];localStorage.setItem(WL_KEY,JSON.stringify(o));}catch(e){}};
 // The setups worth watching (in a trade, ready, waiting), remembered so the next visit shows them within seconds.
 function saveMine(){try{const keep=(LAST_SCAN||[]).filter(c=>tierOf(c.top)!=="other"&&c.top.track&&!isClosed(c.top.track)).map(c=>c.top.sym+"|"+c.top.tf);
   localStorage.setItem("cgrab_mine",JSON.stringify(keep.slice(0,20)));}catch(e){}}
@@ -1914,7 +1922,9 @@ function renderScanInto(box,hits,at){
   LAST_SCAN=coins;if(!at&&MODE==="live")tjSave(coins);
   // Grouped by what to do: in a trade, ready (price within about 1 ATR of the entry), waiting. Alerted setups only;
   // all-5-checks first, then score. Everything else is folded at the bottom.
-  const alerted=coins.filter(c=>tierOf(c.top)!=="other"),rest=coins.filter(c=>tierOf(c.top)==="other");
+  const WL=at?{}:wlLoad(),watched=c=>!!WL[c.top.sym];
+  const alerted=coins.filter(c=>tierOf(c.top)!=="other"),mine=coins.filter(c=>tierOf(c.top)==="other"&&watched(c)&&!(c.top.track&&isClosed(c.top.track))),
+    rest=coins.filter(c=>tierOf(c.top)==="other"&&!mine.includes(c));
   const stateOf=c=>{const h=c.top,o=h.track,lv=h.lv;if(at)return "list";if(!o||isClosed(o))return "closed";if(o.trig>=0)return "in";
     const L=h.live||h.close,e=lv&&(lv.confirm?lv.poi:(lv.e1??lv.entry));return lv&&e!=null&&Math.abs(L-e)<=lv.atr?"ready":"wait";};
   const G={in:[],ready:[],wait:[],closed:[],list:[]};for(const c of alerted)G[stateOf(c)].push(c);
@@ -1924,12 +1934,13 @@ function renderScanInto(box,hits,at){
   const cnt=[[G.in,"in a trade"],[G.ready,"ready"],[G.wait,"waiting"]].filter(x=>x[0].length).map(x=>`<b>${x[0].length}</b> ${x[1]}`);
   head.innerHTML=at?(alerted.length?`<b>${alerted.length} alerted setup${alerted.length>1?"s":""}</b> at that time`:"No alerted setups at that time."):
     cnt.length?cnt.join(" · "):`<b>Nothing to trade right now.</b> ${rest.length?`${rest.length} signal${rest.length>1?"s":""} didn't qualify (below).`:""}`;
-  if(at||!cnt.length)box.appendChild(head);
+  if(at||(!cnt.length&&!mine.length))box.appendChild(head);
   const grp=(title,note,arr)=>{if(!arr.length)return;const g=document.createElement("div");g.className="grp";
     g.innerHTML=`<div class="gh">${title} <span>${arr.length}</span></div>${note?`<div class="gn">${note}</div>`:""}`;box.appendChild(g);arr.forEach(c=>box.appendChild(card(c)));};
   grp("🟢 In a trade","Manage these first: stops and targets.",G.in);
   grp("🎯 Ready","Price is close to the entry. Limit orders should be in.",G.ready);
   grp("⏳ Waiting","Valid setups, price still away from the entry.",G.wait);
+  grp("👀 Coins you checked","Not alerted by the current rules (the card says why), kept here for 7 days because you checked them.",mine.sort((a,b)=>((b.top.track&&b.top.track.trig>=0)-(a.top.track&&a.top.track.trig>=0))));
   grp("Alerted",null,G.list);
   const sec=(cls,title,arr,open)=>{if(!arr.length)return;const d=document.createElement("details");d.className="sec near "+cls;d.open=open;
     d.innerHTML=`<summary>${title} (${arr.length})</summary><div class="secbody"></div>`;arr.forEach(c=>d.lastElementChild.appendChild(card(c)));box.appendChild(d);};
@@ -2000,6 +2011,7 @@ async function checkCoin(){
   box.appendChild(makeCard({sym:base,id:c.id,s:used,top,conf,check:true,open:true,asOf:at,struct:STRUCT[c.id],others:all.filter(h=>h!==top),rows:rowsHTML,rowsN:prep.length,
     lv:lvFrom&&{tf:lvFrom.tf,sr:lvFrom.sr,vp:lvFrom.vp,live:lvFrom.live}}));
   setStatus(`${base}${bt?` as of ${fmtDate(at)}`:""}: ${all.length} divergence(s) on ${tfs.join(", ")} · ${used.name}`);
+  if(!bt&&top)wlAdd(base);
   lock(false);
 }
 
