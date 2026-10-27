@@ -351,7 +351,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
     <div class="row">
       <div class="rowhead"><span class="lbl">Trades</span>
         <div class="seg" role="group" aria-label="Trade filter"><button data-safe="0">Most profit</button><button data-safe="1">Safer</button></div></div>
-      <span class="status" style="margin:0">2-year backtest. Most profit: +75R, worst drop −25R, bad year −10R. Safer (only trades whose Target 1 pays 1.5R or more): +56R, worst drop −12R, bad year −3R, about half the trades.</span>
+      <span class="status" style="margin:0">2-year backtest. Most profit: +84R, worst drop −17R, bad year −2R. Safer: only trades whose Target 1 pays 1.5R or more (fewer trades, smaller drops).</span>
     </div>
     <div class="row">
       <div class="rowhead"><span class="lbl">Entry</span>
@@ -910,11 +910,14 @@ const RETEST_MAX=12;
 // noBadLongs: no counter-trend longs and no "swing long forming" longs (2 years: −16R and −17R; without them the total
 // rose from +66R to +75R and the worst drop fell from −35R to −25R). minRR: skip trades whose Target 1 pays under this
 // (the "Safer" setting, 1.5: +56R, worst drop −12R).
-const AM={entry:"split",mgmt:"trail",be1R:false,noFvg:false,tStop:0,regAplus:true,btcGuard:"off",rotLongs:true,noBadLongs:true,minRR:S.safe?1.5:0};
+// noFormShorts: no "swing short forming" either (3d down, 4h not yet). 2 years: +84R, bad year −2R, worst drop −17R
+// (with only the long filters: +75R, −10R, −25R).
+const AM={entry:"split",mgmt:"trail",be1R:false,noFvg:false,tStop:0,regAplus:true,btcGuard:"off",rotLongs:true,noBadLongs:true,noFormShorts:true,minRR:S.safe?1.5:0};
 const styleLab=h=>h.styleK!==undefined?h.styleK:(STRUCT[h.id]&&Object.keys(STRUCT[h.id]).length?tradeType(h,styleOf(STRUCT[h.id])).label:"");
 // Why a setup isn't alerted under the current rules (null = it can be)
 function ruleBlock(h){
   if(AM.noBadLongs&&dirOf(h.type)==="bull"&&/^(Counter-trend long|Swing long forming)/.test(styleLab(h)||""))return `${styleLab(h)}: these longs lost money over 2 years`;
+  if(AM.noFormShorts&&dirOf(h.type)==="bear"&&/^Swing short forming/.test(styleLab(h)||""))return "Swing short forming: the 4h hasn't turned down yet, and these shorts lost money over 2 years";
   const lv=h.lv;if(AM.minRR&&lv&&lv.rr1<AM.minRR)return `Target 1 pays ${lv.rr1.toFixed(1)}R, under ${AM.minRR}R (Safer setting)`;
   return null;
 }
@@ -2716,11 +2719,11 @@ window.cgBacktest=async(o={})=>{
     weakAltL=h=>isL(h)&&!isBtc(h.id)&&!(h.rot&&h.rot.on)&&h.tier!=="aplus";
   const variants=o.variants||(o.set==="ltf"?null:[
     {name:"A old rules (before tonight)",...Z,am:{}},
-    {name:"N0 last default: half at Target 1, rest trailed · rotation longs",...Z,am:N0A},
-    {name:"M3 NEW DEFAULT: N0 + no counter-trend longs, no 'swing long forming'",...Z,am:{...N0A,noBadLongs:true}},
-    {name:"M4 SAFER setting: M3 + Target 1 at least 1.5R",...Z,am:{...N0A,noBadLongs:true,minRR:1.5}},
-    {name:"M7 M3 + Target 1 at least 1.2R",...Z,am:{...N0A,noBadLongs:true,minRR:1.2}},
-    {name:"M8 M3 + no 'swing short forming' either",...Z,am:{...N0A,noBadLongs:true},keep:h=>!/^Swing short forming/.test(h.styleK||"")}])||[
+    {name:"M3 last default: no counter-trend longs, no 'swing long forming'",...Z,am:{...N0A,noBadLongs:true}},
+    {name:"M8 NEW DEFAULT: M3 + no 'swing short forming'",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true}},
+    {name:"M9 M8 + Target 1 at least 1.2R",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true,minRR:1.2}},
+    {name:"M10 M8 + Target 1 at least 1.5R (Safer)",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true,minRR:1.5}},
+    {name:"M11 M8 + no 'scalp long only'",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true},keep:h=>!/^Scalp long only/.test(h.styleK||"")}])||[
     {name:"A zone entry: limit at the order block, wider stop on candle close (default)",buf:0.5,min:1.0,mode:"close",confirm:false},
     {name:"B lower-timeframe CHoCH entry",...B,cf:{...N}},
     {name:"C + wait for the retest (full size)",...B,cf:{...N,retest:true}},
@@ -2759,7 +2762,7 @@ window.cgBacktest=async(o={})=>{
       if(i<60)continue;const v=viewAt(x.D,i);m[tf]=structure(v);noteHTF(id,tf,v);}
     STRUCT[id]=m;};
   const saved={buf:STOP_BUF,min:STOP_MIN,mode:S.stopMode,fee:BT.fee,confirm:CONFIRM,cf:{...CF}},res=[];
-  for(const v of variants){STOP_BUF=v.buf;STOP_MIN=v.min;S.stopMode=v.mode;CONFIRM=!!v.confirm;Object.assign(CF,v.cf||{});Object.assign(AM,AM0,{mgmt:"half",regAplus:false,btcGuard:"off",rotLongs:false,noBadLongs:false,minRR:0},v.am||{});BT.fee=o.fee??0.15;const hits=[];
+  for(const v of variants){STOP_BUF=v.buf;STOP_MIN=v.min;S.stopMode=v.mode;CONFIRM=!!v.confirm;Object.assign(CF,v.cf||{});Object.assign(AM,AM0,{mgmt:"half",regAplus:false,btcGuard:"off",rotLongs:false,noBadLongs:false,noFormShorts:false,minRR:0},v.am||{});BT.fee=o.fee??0.15;const hits=[];
     for(const b of bases){const d=data[b];if(!d)continue;
       for(const tf of tfs){const x=d[tf];if(!x||x.k.length<300)continue;const id=x.s.id(b);
         hits.push(...historyHits(x.k,{id,base:b},tf,from,now,pitFor(b,id)));}}
