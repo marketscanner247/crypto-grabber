@@ -691,7 +691,29 @@ const HTF_TF=["4h","1d","1w"];let HTFL={};
 const EMA_TF=["4h","1d"],EMA_P=[50,200];
 const noteHTF=(id,tf,d,sr)=>{if(!HTF_TF.includes(tf))return;const x={...(sr||srLevels(d)),ema:{}},c=d.close,n=c.length;
   if(EMA_TF.includes(tf))for(const p of EMA_P)if(n>=p+30)x.ema[p]=ema(c,p)[n-1];
+  if(tf==="4h"&&n>BTC_N){x.last=c[n-1];x.ago=c[n-1-BTC_N];}
   (HTFL[id]=HTFL[id]||{})[tf]=x;};
+// ---------- BTC guard ----------
+// Alts follow BTC down harder than they follow it up. For each alt trade: is BTC above its 4h EMA 50 (not dumping), and
+// is the coin beating BTC over the last 5 days (BTC_N 4h candles)? h.btc is set point-in-time in backtests; live it comes
+// from the 4h data the scan already loads. AM.btcGuard: "off", "ema" (alt longs need BTC above its 4h EMA 50), "rs" (alt
+// longs need the coin beating BTC), "long" (both), "both" (also no alt shorts on a coin beating a rising BTC).
+const BTC_N=30;
+const isBtc=id=>/^BTC[-_]?USDT?$/i.test(String(id||""));
+function btcRel(h){
+  if(h.btc!==undefined)return h.btc;
+  if(isBtc(h.id))return null;
+  const bk=Object.keys(HTFL).find(isBtc),b=bk&&HTFL[bk]["4h"],a=HTFL[h.id]&&HTFL[h.id]["4h"];
+  if(!b||b.last==null||!b.ema||b.ema[50]==null||!a||a.last==null)return null;
+  return {up:b.last>b.ema[50],rs:(a.last/a.ago-b.last/b.ago)*100};
+}
+function btcBlock(h,mode=AM.btcGuard){
+  const r=btcRel(h);if(!r||!mode||mode==="off")return null;const long=dirOf(h.type)==="bull";
+  if(long&&(mode==="ema"||mode==="long"||mode==="both")&&!r.up)return "BTC is below its 4h EMA 50: alt longs get dumped with it";
+  if(long&&(mode==="rs"||mode==="long"||mode==="both")&&r.rs<0)return `${h.sym||"The coin"} is lagging BTC (${r.rs.toFixed(1)}% over 5 days): it won't keep up if BTC rises and falls harder if BTC drops`;
+  if(!long&&mode==="both"&&r.up&&r.rs>0)return `${h.sym||"The coin"} is beating a rising BTC (+${r.rs.toFixed(1)}% over 5 days): a bad short`;
+  return null;
+}
 const emasOf=id=>{const m=HTFL[id]||{},o=[];for(const tf of EMA_TF)for(const p of EMA_P){const v=m[tf]&&m[tf].ema&&m[tf].ema[p];if(v!=null)o.push({tf,p,v});}return o;};
 async function fillCore(s,id,at,tfs=CORE_TF){
   const m=STRUCT[id]=STRUCT[id]||{};
@@ -727,7 +749,7 @@ function actionableOf(h){
   return pr>=0.5?[false,"",`Too late to enter: ${Math.round(pr*100)}% of the way to Target 1`]:[true,`Still actionable (in trade, ${Math.max(0,Math.round(pr*100))}% of the way to Target 1)`,""];
 }
 // Alert tiers: all five checks met, or not skipped and still actionable (enter at your own risk), or neither.
-const tierOf=h=>!h.chk||!h.sc?"other":ignoredOf(h)?"other":!actionableOf(h)[0]?"other":h.chk.all?"aplus":AM.regAplus&&/^regular/.test(h.type)?"other":h.sc.verdict!=="skip"?"risk":"other";
+const tierOf=h=>!h.chk||!h.sc?"other":ignoredOf(h)?"other":!actionableOf(h)[0]?"other":btcBlock(h)?"other":h.chk.all?"aplus":AM.regAplus&&/^regular/.test(h.type)?"other":h.sc.verdict!=="skip"?"risk":"other";
 // Pop-up with the checks behind a score (tap the score or the "n/5 checks" tag).
 const HIT_BY_KEY={};
 function popHTML(h){
@@ -845,9 +867,10 @@ const RETEST_MAX=12;
 // Zone-entry tweaks compared in cg backtest. entry: "split" (two halves, default), "mid" (one limit at the block middle),
 // "e1" (full size at the first level). mgmt: "half" (half at T1, stop to entry, rest to T2, default), "t1all" (all out at T1).
 // be1R: move the stop to entry once price is 1R in profit, before Target 1.
-// Defaults from the 365-day 4h backtest (round 2, "P5"): all out at Target 1, and regular divergence only alerted when
-// it meets all 5 checks (hidden divergence +65R over the year, regular −16R). Positive in both halves of the year.
-const AM={entry:"split",mgmt:"t1all",be1R:false,noFvg:false,tStop:0,regAplus:true};
+// Defaults from the 365-day 4h backtest (round 3, "P10"): half at Target 1 with the stop to entry, the rest trailed
+// under each new swing (+75R over the year, both halves positive; all out at Target 1 made +66R), and regular divergence
+// only alerted when it meets all 5 checks (hidden divergence +66R over the year, regular −16R).
+const AM={entry:"split",mgmt:"trail",be1R:false,noFvg:false,tStop:0,regAplus:true,btcGuard:"off"};
 // mgmt "trail": half at T1 with the stop to entry, the rest trails behind each new confirmed swing (2 candles each side)
 // instead of a fixed Target 2. tStop: candles allowed to reach Target 1; if it hasn't, exit at that candle's close (0 = off).   // noFvg: first half at the block top even when a gap is there
 function levels(d,x,sr,vp,method="ob",tf=null){
@@ -1042,6 +1065,8 @@ function scoreHit(h,conf){
     if(h.id!==bid&&bm){const b1=bm["1h"],b4=bm["4h"];
       if((b1&&b1.last&&b1.last.kind==="CHoCH"&&b1.last.dir===-D&&b1.ago<=6)||(b4&&b4.last&&b4.last.dir===-D&&b4.ago<=3))
         pen.push({pts:5,txt:`BTC is turning ${D>0?"down":"up"} (${b1&&b1.last&&b1.last.dir===-D&&b1.ago<=6?`1h ${b1.last.kind} ${b1.ago} candles ago`:`4h ${b4.last.kind} ${b4.ago} candles ago`})`});}
+    {const r=btcRel(h);if(r)notes.push(`BTC ${r.up?"above":"below"} its 4h EMA 50 · ${h.sym||"coin"} ${r.rs>=0?"beating":"lagging"} BTC by ${Math.abs(r.rs).toFixed(1)}% over 5 days`);
+      const bl=btcBlock(h);if(bl)notes.push(`⛔ Not alerted: ${bl}`);}
     const cx2=CTX[h.id];
     if(cx2&&cx2.fu&&cx2.fu.funding!=null){const fp=cx2.fu.funding*100,crowd=D>0?fp>=0.03:fp<=-0.03,fuel=D>0?fp<=-0.01:fp>=0.03;
       notes.push(`Funding ${fp>=0?"+":""}${fp.toFixed(3)}% (${fp>0?"longs paying, more longs open":fp<0?"shorts paying, more shorts open":"neutral"})`);
@@ -1391,9 +1416,9 @@ function trackInfo(h){
     case "open":{const ent=o.avg||h.lv.entry,part=h.lv.split&&o.fill!=null?(o.fill<1?`First half filled at ${fmtP(h.lv.e1)}; second half still waiting at ${fmtP(h.lv.e2)}.`:`Both halves filled, average ${fmtP(ent)}.`):"";
       if(o.confirm&&o.t1<0)return ["In trade","gold",o.split&&o.fill<1?`Half in at ${fmtP(o.entryP)} on the ${o.confirm} CHoCH (${fmtDate(o.tt)}). Second half: limit at ${fmtP(o.e2Lvl)} for the retest. Stop ${fmtP(o.stopA)}.`
         :`Entered ${fmtDate(o.tt)} at ${fmtP(o.entryP)}${o.split?" (average of both halves)":o.strong?" (strong CHoCH candle, full size)":""} on a ${o.confirm} CHoCH. Stop ${fmtP(o.stopA)}.`];
-      return o.t1>=0?["T1 hit · stop at entry","bull",`Target 1 reached ${fmtDate(o.t1t)}. Half taken, stop moved to the average entry (${fmtP(ent)}), aiming for Target 2.`]:["In trade","gold",`${o.atClose?`Entered at the signal close (${fmtDate(h.sigTime)}).`:`Entry filled ${fmtDate(o.tt)}.`} ${part}`.trim()];}
+      return o.t1>=0?(o.trail?["T1 hit · trailing","bull",`Target 1 reached ${fmtDate(o.t1t)}. Half taken. Stop on the rest: ${fmtP(o.stopNowLvl)}${Math.abs(o.stopNowLvl-ent)/ent<1e-6?" (entry)":""}, moved under each new swing ${h.lv&&dirOf(h.type)==="bear"?"high":"low"} on the ${h.tf}.`]:["T1 hit · stop at entry","bull",`Target 1 reached ${fmtDate(o.t1t)}. Half taken, stop moved to the average entry (${fmtP(ent)}), aiming for Target 2.`]):["In trade","gold",`${o.atClose?`Entered at the signal close (${fmtDate(h.sigTime)}).`:`Entry filled ${fmtDate(o.tt)}.`} ${part}`.trim()];}
     case "t2":return o.t1all?["Closed · target hit","bull",`Target 1 reached (${fmtDate(o.t2t)}). Whole position closed in profit.`]:["Closed · T2 hit","bull",`Both targets reached (${fmtDate(o.t2t)}). Trade closed.`];
-    case "t1_be":return ["Closed · at entry","flat","Target 1 hit, then price came back to the entry. Trade closed with half the profit."];
+    case "t1_be":return o.trail?["Closed · trailed out",o.r>0?"bull":"flat",`Target 1 hit, then the trailing stop closed the rest ${fmtDate(o.st)}. Trade ${rTxt(o.r)}.`]:["Closed · at entry","flat","Target 1 hit, then price came back to the entry. Trade closed with half the profit."];
     case "stopped":if(o.early)return ["Closed · early exit",o.r>=0?"flat":"bear",`The ${o.confirm} broke structure against the trade before Target 1 (${fmtDate(o.st)}), so it was closed early at ${o.r>=0?"+":""}${o.r.toFixed(2)}R instead of waiting for the stop.`];
       return ["Closed · stopped","bear",o.wick?`Stopped by a wick ${fmtDate(o.st)}. The candle closed back inside the stop, which looks like a stop hunt. Trade closed.`:`Stop hit ${fmtDate(o.st)}. Trade closed.`];
     default:return ["Closed · time limit","flat","No result within 200 candles. Trade closed."];
@@ -1427,7 +1452,7 @@ const trackPill=h=>{const i=trackInfo(h);if(!i)return "";const o=h.track,r=isClo
 const stPill=h=>h.track&&!h.out?`<span data-tp="${esc(sigKey(h))}">${trackPill(h)}</span>`:outPill(h);
 const outPill=h=>h.out?`<span class="pill ${outCls(h.out)}">${OUT[h.out.status]}${h.out.trig>=0?" "+rTxt(h.out.r):""}</span>`:"";
 // For someone not in the trade yet: is it still worth entering?
-const lateTxt=pr=>pr>=1?"Price has reached Target 1. If you're in, take the profit. Too late to enter.":
+const lateTxt=pr=>pr>=1?"Price has reached Target 1. If you're in, take half and move the stop to entry. Too late to enter.":
   pr>=0.5?`Too late to enter now: price is ${Math.round(pr*100)}% of the way to Target 1. Only manage it if you're already in.`:
   `Late: price is ${Math.round(pr*100)}% of the way to Target 1, so entering now cuts the reward.`;
 const sigKey=h=>[h.id,h.tf,h.type,h.time].join("|");
@@ -1479,7 +1504,7 @@ function signalHTML(h){
       ${(()=>{const oo=h.out||h.track,E=oo&&oo.entryP!=null?oo.entryP:lv.entry,sp=(oo&&oo.stopA)??lv.stop,dp=Math.abs(E-sp)/E,pos=S.risk/dp;
         return row("Size",`$${pos>=1000?Math.round(pos).toLocaleString():pos.toFixed(0)}`,`risking $${S.risk} with a ${(dp*100).toFixed(1)}% stop${lv.confirm&&!(oo&&oo.stopA!=null)?" · estimate until the CHoCH sets the stop":""}`);})()}
       ${(()=>{const oo=h.out||h.track,real=oo&&oo.stopA!=null;return row("Target 1",fmtP(lv.t1),`${pctTxt(lv.t1,real&&oo.entryP!=null?oo.entryP:lv.entry)} · ${real?"":lv.confirm?"about ":""}${(real?oo.rr1:lv.rr1).toFixed(1)}R · ${esc(lv.t1src)}`,"pos");})()}
-      ${(()=>{const oo=h.out||h.track,real=oo&&oo.stopA!=null,E=real&&oo.entryP!=null?oo.entryP:lv.entry,R2=real?Math.abs(lv.t2-E)/(oo.Rp||Math.abs(E-oo.stopA)):lv.rr2;return row(lv.confirm?"Target 2":"Next level",fmtP(lv.t2),`${pctTxt(lv.t2,E)} · ${!real&&lv.confirm?"about ":""}${R2.toFixed(1)}R · ${esc(lv.t2src)}${lv.confirm?"":" · not a target: the plan takes all profit at Target 1"}`,lv.confirm?"pos":"");})()}
+      ${(()=>{const oo=h.out||h.track,real=oo&&oo.stopA!=null,E=real&&oo.entryP!=null?oo.entryP:lv.entry,R2=real?Math.abs(lv.t2-E)/(oo.Rp||Math.abs(E-oo.stopA)):lv.rr2;return row(lv.confirm?"Target 2":"Next level",fmtP(lv.t2),`${pctTxt(lv.t2,E)} · ${!real&&lv.confirm?"about ":""}${R2.toFixed(1)}R · ${esc(lv.t2src)}${lv.confirm?"":" · not a target: the second half trails under each new swing"}`,lv.confirm?"pos":"");})()}
       </div>
       ${inTrade?`<div class="late"${late?"":" hidden"}${isLive?` data-late="${h.id}" data-entry="${E0}" data-t1="${lv.t1}"`:""}>${late?lateTxt(prog):""}</div>`:""}
       ${inv?`<div class="inv"><b>Invalidation checks</b>${inv.map(i=>`<div class="${i.ok?"ok":"no"}"><b>${i.ok?"✓":"✗"}</b><span>${esc(i.txt)}</span></div>`).join("")}</div>`:""}
@@ -1860,7 +1885,7 @@ function simulateOB(lv,bull,fwd,fee){
   const last=fwd[Math.max(0,end-1)],mtm=rem>0&&last?rem*(last.c-avg)*dir:0;
   o.status=o.t2>=0?"t2":o.stop>=0?(o.t1>=0?"t1_be":"stopped"):(end-o.trig>=200?"timeout":"open");
   o.r=(real+(o.status==="open"||o.status==="timeout"?mtm:0))/Rf-fee/lv.riskPct*f;
-  o.done=o.status!=="open";o.fill=f;o.avg=avg;
+  o.done=o.status!=="open";o.fill=f;o.avg=avg;o.trail=AM.mgmt==="trail";o.stopNowLvl=stopLvl;
   const tm=k=>k>=0&&fwd[k]?fwd[k].t:null;o.tt=tm(o.trig);o.t1t=tm(o.t1);o.t2t=tm(o.t2);o.st=tm(o.stop);
   return o;
 }
@@ -2025,8 +2050,11 @@ function simulate(lv,bull,fwd,fee,ltf){
       if(closedPast(c,stopLvl)){o.stop=i;exitP=c.c;break;}
     }else if(back(c,stopLvl)){o.stop=i;exitP=stopLvl;o.wick=!closedPast(c,stopLvl);break;}
     if(o.t1<0&&reach(c,lv.t1)){o.t1=i;stopLvl=lv.entry;if(AM.mgmt==="t1all"){o.t2=i;o.t1all=true;break;}}
-    if(o.t1>=0&&reach(c,lv.t2)){o.t2=i;break;}
+    if(AM.mgmt==="trail"&&o.t1>=0&&i-2>o.t1&&i>=4&&!c.live){const k=i-2,x=j=>bull?fwd[j].l:fwd[j].h,lower=(a,b)=>bull?a<b:a>b;
+        if([k-2,k-1,k+1,k+2].every(j=>lower(x(k),x(j)))&&lower(stopLvl,x(k)))stopLvl=x(k);}
+    else if(AM.mgmt!=="trail"&&o.t1>=0&&reach(c,lv.t2)){o.t2=i;break;}
   }
+  o.trail=AM.mgmt==="trail";o.stopNowLvl=stopLvl;
   const last=fwd[Math.max(0,end-1)],mtm=last?(last.c-lv.entry)*dir/R:0,exitR=exitP==null?0:(exitP-lv.entry)*dir/R;
   if(o.t2>=0){o.status="t2";o.r=o.t1all?rr1:0.5*rr1+0.5*rr2;}
   else if(o.stop>=0){o.status=o.t1>=0?"t1_be":"stopped";o.r=o.t1>=0?0.5*rr1+0.5*exitR:exitR;}
@@ -2124,7 +2152,7 @@ function historyHits(series,c,tf,from=-Infinity,to=Infinity,pit=null){
       if(!x)continue;
       const v=viewAt(D,t),f=filters(v);             // only data up to the signal candle
       const sr=srLevels(v),vp=volumeProfile(v),h=buildHit(v,f,x,c,tf,sr,vp);
-      h.bt=true;if(pit){pit(h,series[t].ct);h.bt=false;h.pit=true;}
+      h.bt=true;h.btc=null;if(pit){pit(h,series[t].ct);h.bt=false;h.pit=true;}
       if(ignoredOf(h)){h.bt=true;continue;}
       h.sc=scoreHit(h,false);h.at=series[t].ct;
       if(pit){h.chk=checklist(h);h.tier=tierOf(h);h.styleK=(()=>{const m=STRUCT[h.id];const y=m?styleOf(m):null;return y?tradeType(h,y).label:"";})();h.bt=true;}
@@ -2184,7 +2212,7 @@ async function runHistory(scope){
     <div class="lbl">By divergence</div>${statTable(DIV_TYPES.map(ty=>[SHORT[ty],all.filter(h=>h.type===ty)]))}
     ${(()=>{const st=all.filter(h=>h.out.stop>=0&&h.out.t1<0),w=st.filter(h=>h.out.wick).length;
       return st.length&&S.stopMode==="wick"?`<div class="late">Stop-outs: ${st.length}. Wick only (candle closed back inside): ${w} (${Math.round(w/st.length*100)}%). ${w/st.length>=0.4?"Many stops look like hunts. Try the candle-close stop in Settings.":"Most stops were real breaks, not hunts."}</div>`:"";})()}
-    <span class="status">Entry: order block retest after a liquidity sweep (sweep & reclaim when there was none) · stop on ${S.stopMode==="close"?"close":"touch"} · ${AM.mgmt==="t1all"?"all out at Target 1":"half at T1 then stop to entry, rest at T2"} · fees ${BT.fee}% · confluence not scored · ${srcName}</span>`;
+    <span class="status">Entry: order block retest after a liquidity sweep (sweep & reclaim when there was none) · stop on ${S.stopMode==="close"?"close":"touch"} · ${AM.mgmt==="t1all"?"all out at Target 1":AM.mgmt==="trail"?"half at T1, stop to entry, rest trailed under each swing":"half at T1 then stop to entry, rest at T2"} · fees ${BT.fee}% · confluence not scored · ${srcName}</span>`;
   box.appendChild(sum);
   if(scope==="top"){
     per.sort((a,b)=>b.stats.sum-a.stats.sum).forEach(p=>{
@@ -2417,7 +2445,7 @@ window.cgBot=async(o={})=>{
       return {key:[h.id,h.tf,h.type,h.time].join("|"),sym:h.sym,tf:h.tf,label:LABEL[h.type],dir:bull?"long":"short",
         score:h.sc.score,verdict:VERDICT[h.sc.verdict][0],checks:`${h.chk.n}/${h.chk.total}`,all:h.chk.all,tier:tierOf(h),actionable:actionableOf(h)[0],
         missing:h.chk.items.filter(i=>!i.ok).map(i=>i.txt),style:sty?tradeType(h,sty).label:"",styleTxt:sty?tradeType(h,sty).txt:"",
-        method:lv?MNAME[lv.method]:"",why:h.rec.why,status:tk?tk.status:null,missed:!!tk&&!!tk.missed,t1hit:!!tk&&tk.t1>=0,t1all:!!tk&&!!tk.t1all,
+        method:lv?MNAME[lv.method]:"",why:h.rec.why,status:tk?tk.status:null,missed:!!tk&&!!tk.missed,t1hit:!!tk&&tk.t1>=0,t1all:!!tk&&!!tk.t1all,r:tk&&tk.done?tk.r:null,trail:!!tk&&!!tk.trail,trailStop:tk&&tk.trail&&tk.t1>=0&&tk.stopNowLvl!=null?fmtP(tk.stopNowLvl):null,
         filledAt:tk&&tk.status==="open"?(tk.atClose?h.sigTime:tk.tt):null,stateTxt:ti?ti[0]:"",detail:ti?ti[2]:"",
         sigTime:h.sigTime,tfMs:TF_MS(h.tf),prog:lv?(live-lv.entry)/(lv.t1-lv.entry):null,
         e1:lv&&f(lv.e1),e2:lv&&f(lv.e2),e1src:lv?lv.e1src:"",split:!!lv&&!!lv.split,fill:tk&&tk.fill!=null?tk.fill:null,avg:tk&&tk.avg?f(tk.avg):null,
@@ -2457,17 +2485,13 @@ window.cgBacktest=async(o={})=>{
   const B={buf:0.5,min:1.0,mode:"close",confirm:true};
   const Z={buf:0.5,min:1.0,mode:"close",confirm:false};
   const variants=o.variants||(o.set==="ltf"?null:[
-    {name:"A zone entry, as now (default)",...Z,am:{}},
-    {name:"P1 all out at Target 1",...Z,am:{mgmt:"t1all"}},
-    {name:"P2 P1 + tighter stop",...Z,buf:0.3,min:0.75,am:{mgmt:"t1all"}},
-    {name:"P3 P1 + first half at the block top (ignore the gap)",...Z,am:{mgmt:"t1all",noFvg:true}},
-    {name:"P4 P1 + hidden divergence only",...Z,am:{mgmt:"t1all"},keep:h=>/^hidden/.test(h.type)},
-    {name:"P5 P1 + hidden, or regular with all 5 checks",...Z,am:{mgmt:"t1all"},keep:h=>/^hidden/.test(h.type)||h.tier==="aplus"},
-    {name:"P6 P1 + score 65+ only",...Z,am:{mgmt:"t1all"},keep:h=>h.sc&&h.sc.score>=65},
-    {name:"P7 P3 + hidden, or regular with all 5 checks",...Z,am:{mgmt:"t1all",noFvg:true},keep:h=>/^hidden/.test(h.type)||h.tier==="aplus"},
-    {name:"P8 P5 + Target 1 at least 1.5R",...Z,am:{mgmt:"t1all"},keep:h=>(/^hidden/.test(h.type)||h.tier==="aplus")&&(h.plans&&h.plans[h.rec.m]||h.lv||{}).rr1>=1.5},
-    {name:"P9 P5 + time stop: out if Target 1 isn't hit in 12 candles",...Z,am:{mgmt:"t1all",tStop:12},keep:h=>/^hidden/.test(h.type)||h.tier==="aplus"},
-    {name:"P10 P5, but half at Target 1 and the rest trailed under each new swing",...Z,am:{mgmt:"trail"},keep:h=>/^hidden/.test(h.type)||h.tier==="aplus"}])||[
+    {name:"A old rules (before tonight)",...Z,am:{}},
+    {name:"P5 all out at Target 1 · hidden, or regular with all 5 checks",...Z,am:{mgmt:"t1all"},keep:h=>/^hidden/.test(h.type)||h.tier==="aplus"},
+    {name:"P10 NEW DEFAULT: half at Target 1, rest trailed · hidden, or regular with all 5 checks",...Z,am:{mgmt:"trail"},keep:h=>/^hidden/.test(h.type)||h.tier==="aplus"},
+    {name:"G1 P10 + alt longs only when BTC is above its 4h EMA 50",...Z,am:{mgmt:"trail",regAplus:true,btcGuard:"ema"}},
+    {name:"G2 P10 + alt longs only when the coin is beating BTC (5 days)",...Z,am:{mgmt:"trail",regAplus:true,btcGuard:"rs"}},
+    {name:"G3 G1 + G2",...Z,am:{mgmt:"trail",regAplus:true,btcGuard:"long"}},
+    {name:"G4 G3 + no alt shorts on a coin beating a rising BTC",...Z,am:{mgmt:"trail",regAplus:true,btcGuard:"both"}}])||[
     {name:"A zone entry: limit at the order block, wider stop on candle close (default)",buf:0.5,min:1.0,mode:"close",confirm:false},
     {name:"B lower-timeframe CHoCH entry",...B,cf:{...N}},
     {name:"C + wait for the retest (full size)",...B,cf:{...N,retest:true}},
@@ -2480,17 +2504,24 @@ window.cgBacktest=async(o={})=>{
   const AM0={...AM};
   const t0=Date.now();while((!REG||regBusy)&&Date.now()-t0<60000)await new Promise(r=>setTimeout(r,500));
   const list=await pickSource(top),bases=list.map(c=>c.base),data={};let done=0;
+  if(!bases.includes("BTC"))bases.unshift("BTC");
   const q=bases.slice();
   await Promise.all(Array.from({length:4},async()=>{while(q.length){const b=q.shift(),d={};
     for(const tf of [...new Set([...tfs,...CTX])]){const ms=TF_MS(tf);
       try{const r=await rangeSeries(b,tf,from-(CTX.includes(tf)&&!tfs.includes(tf)?300:250)*ms,now);if(r&&r.k.length>=120)d[tf]={k:r.k,s:r.s,D:analyse(toK(r.k))};}catch(e){}}
     data[b]=d;done++;if(o.progress)console.log(`loaded ${done}/${bases.length}`);}}));
-  const pitFor=(b,id)=>(h,T)=>{const m={},d=data[b];HTFL[id]={};
+  const B4=(()=>{const bb=Object.keys(data).find(b=>b==="BTC"),x=bb&&data[bb]["4h"];if(!x)return null;
+    return {k:x.k,c:x.D.close,e50:ema(x.D.close,50)};})(),I4=(x,T)=>{const ms=TF_MS("4h");let lo=0,hi=x.k.length-1,r=-1;
+    while(lo<=hi){const m=(lo+hi)>>1;if(x.k[m].t+ms<=T){r=m;lo=m+1;}else hi=m-1;}return r;};
+  const btcAt=(b,T)=>{if(b==="BTC"||!B4)return null;const a=data[b]&&data[b]["4h"];if(!a)return null;
+    const i=I4(B4,T),j=I4(a,T);if(i<BTC_N+50||j<BTC_N)return null;const ac=a.D.close;
+    return {up:B4.c[i]>B4.e50[i],rs:(ac[j]/ac[j-BTC_N]-B4.c[i]/B4.c[i-BTC_N])*100};};
+  const pitFor=(b,id)=>(h,T)=>{h.btc=btcAt(b,T);const m={},d=data[b];HTFL[id]={};
     for(const tf of CTX){const x=d[tf];if(!x)continue;const ms=TF_MS(tf);let i=x.k.length-1;while(i>=0&&x.k[i].t+ms>T)i--;
       if(i<60)continue;const v=viewAt(x.D,i);m[tf]=structure(v);noteHTF(id,tf,v);}
     STRUCT[id]=m;};
   const saved={buf:STOP_BUF,min:STOP_MIN,mode:S.stopMode,fee:BT.fee,confirm:CONFIRM,cf:{...CF}},res=[];
-  for(const v of variants){STOP_BUF=v.buf;STOP_MIN=v.min;S.stopMode=v.mode;CONFIRM=!!v.confirm;Object.assign(CF,v.cf||{});Object.assign(AM,AM0,{mgmt:"half",regAplus:false},v.am||{});BT.fee=o.fee??0.15;const hits=[];
+  for(const v of variants){STOP_BUF=v.buf;STOP_MIN=v.min;S.stopMode=v.mode;CONFIRM=!!v.confirm;Object.assign(CF,v.cf||{});Object.assign(AM,AM0,{mgmt:"half",regAplus:false,btcGuard:"off"},v.am||{});BT.fee=o.fee??0.15;const hits=[];
     for(const b of bases){const d=data[b];if(!d)continue;
       for(const tf of tfs){const x=d[tf];if(!x||x.k.length<300)continue;const id=x.s.id(b);
         hits.push(...historyHits(x.k,{id,base:b},tf,from,now,pitFor(b,id)));}}
@@ -2512,6 +2543,11 @@ window.cgBacktest=async(o={})=>{
         add("Target 1 under 1.5R",h=>P(h).rr1<1.5);add("Target 1 1.5–2.5R",h=>P(h).rr1>=1.5&&P(h).rr1<2.5);add("Target 1 2.5R+",h=>P(h).rr1>=2.5);
         add("stop under 1.5 ATR",h=>P(h).ratr<1.5);add("stop 1.5–2.5 ATR",h=>P(h).ratr>=1.5&&P(h).ratr<2.5);add("stop 2.5 ATR+",h=>P(h).ratr>=2.5);
         add("longs",h=>dirOf(h.type)==="bull");add("shorts",h=>dirOf(h.type)==="bear");
+        const L=h=>dirOf(h.type)==="bull"&&h.btc,Sh=h=>dirOf(h.type)==="bear"&&h.btc;
+        add("alt longs, BTC above 4h EMA 50",h=>L(h)&&h.btc.up);add("alt longs, BTC below 4h EMA 50",h=>L(h)&&!h.btc.up);
+        add("alt longs, coin beating BTC",h=>L(h)&&h.btc.rs>=0);add("alt longs, coin lagging BTC",h=>L(h)&&h.btc.rs<0);
+        add("alt shorts, BTC above 4h EMA 50",h=>Sh(h)&&h.btc.up);add("alt shorts, BTC below 4h EMA 50",h=>Sh(h)&&!h.btc.up);
+        add("alt shorts, coin lagging BTC",h=>Sh(h)&&h.btc.rs<0);add("alt shorts, coin beating BTC",h=>Sh(h)&&h.btc.rs>=0);
         add("regular divergence",h=>/^regular/.test(h.type));add("hidden divergence",h=>/^hidden/.test(h.type));
         add("filled at the signal close",h=>h.out&&h.out.atClose);add("filled by the limit",h=>h.out&&h.out.trig>=0&&!h.out.atClose);
         add("entry from a fair value gap",h=>!!P(h).fvg);add("entry from the block top",h=>!P(h).fvg);

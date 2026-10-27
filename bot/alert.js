@@ -34,7 +34,9 @@ const SCORECARD = String(process.env.SCORECARD || "").toLowerCase() === "true";
 const DAILY = String(process.env.DAILY || "").toLowerCase() === "true";   // send today's scoreboard now (otherwise just after midnight, for the day that ended)
 const SIZE = 1000, FEE = 0.001;
 const RISK = +process.env.RISK_USD || 10;              // $ lost if the stop is hit: sets the position size shown in alerts
-const MAX_OPEN = +process.env.MAX_OPEN || 3;           // no new "Enter now" while this many alerted trades are open
+const MAX_OPEN = +process.env.MAX_OPEN || 3;
+// Alts move with BTC: several alt longs (or shorts) at once are one big BTC bet. At most this many open the same way.
+const MAX_SAME_DIR = +process.env.MAX_SAME_DIR || 2;           // no new "Enter now" while this many alerted trades are open
 const MAX_DAILY_STOPS = +process.env.MAX_DAILY_STOPS || 3;   // no new entries for the rest of the day after this many stops
 // The 120-day backtest lost money on counter-trend setups in every version, so they are not alerted unless asked for.
 const ENTRY = (process.env.ENTRY || "zone").toLowerCase();   // zone = limit orders at the order block (default) · ltf = wait for the lower-timeframe CHoCH
@@ -103,7 +105,7 @@ function plan(s) {
     : `Stop: ${esc(s.stop)} (${pct(s.stopPct)})`;
   const rr = s.rr1Now ?? s.rr1;
   return `${ent}\n${stop}\n` +
-    `Target: <b>${esc(s.t1)}</b> (${pct(s.t1Pct)}, ${rr != null ? rr.toFixed(1) : "?"}R) · take all profit there\nPrice now: ${esc(s.live)}`;
+    `Target 1: <b>${esc(s.t1)}</b> (${pct(s.t1Pct)}, ${rr != null ? rr.toFixed(1) : "?"}R) · ${s.trail ? "take half there, move the stop to entry and trail the rest" : "take all profit there"}\nPrice now: ${esc(s.live)}`;
 }
 function sizeLine(s) {
   const p = Math.abs(s.stopNowPct ?? s.stopPct); if (!p) return "";
@@ -131,7 +133,7 @@ function msgEnter(s) {
   return `${head(s, "enter")}\n\n${s.filledAt ? `Triggered ${when(s.filledAt)}` : ""}${s.filledAt && fillTxt ? " · " : ""}${fillTxt}\n\n${plan(s)}${sizeLine(s)}${ctxLines(s)}\n\n${riskNote(s)}${links(s)}`;
 }
 function msgDone(s) {
-  const t = s.missed ? "Missed: price ran to Target 1 without the entry. Don't chase it." : s.early ? "↩️ Closed early: the lower timeframe broke structure against the trade before Target 1" : { t2: s.t1all ? "✅ Target hit: whole position closed in profit" : "✅ Target 2 hit", t1_be: "Target 1 hit, rest closed at entry", stopped: "❌ Stopped out", no_trigger: "Entry never triggered, setup expired", timeout: "Closed (time limit)" }[s.status] || s.stateTxt;
+  const t = s.missed ? "Missed: price ran to Target 1 without the entry. Don't chase it." : s.early ? "↩️ Closed early: the lower timeframe broke structure against the trade before Target 1" : { t2: s.t1all ? "✅ Target hit: whole position closed in profit" : "✅ Target 2 hit", t1_be: s.trail ? `✅ Target 1 hit, then the trailing stop closed the rest${s.r != null ? ` (${s.r >= 0 ? "+" : ""}${s.r.toFixed(2)}R in total)` : ""}` : "Target 1 hit, rest closed at entry", stopped: "❌ Stopped out", no_trigger: "Entry never triggered, setup expired", timeout: "Closed (time limit)" }[s.status] || s.stateTxt;
   return `⚪ <b>${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b>: ${esc(t)}\n${esc(s.detail || "")}`;
 }
 
@@ -162,7 +164,7 @@ function scorecard(list, grades, now) {
   else {
     L.push(`Entered: <b>${S.ent}</b> of ${S.n} alerts${S.notFilled ? ` (${S.notFilled} never filled)` : ""}${S.waiting ? ` · ${S.waiting} still waiting` : ""}`);
     if (S.closed) {
-      L.push(`✅ Won: <b>${S.wins}</b>${S.t2 || S.be ? ` (${[S.t2 && `${S.t2} hit the target`, S.be && `${S.be} Target 1 then entry`].filter(Boolean).join(", ")})` : ""}`);
+      L.push(`✅ Won: <b>${S.wins}</b>${S.t2 || S.be ? ` (${[S.t2 && `${S.t2} hit the target`, S.be && `${S.be} Target 1 then trailed out`].filter(Boolean).join(", ")})` : ""}`);
       L.push(`❌ Stop loss: <b>${S.stop}</b>${S.timeout ? ` · ⏱ closed on time limit: ${S.timeout}` : ""}`);
       L.push(`Win rate: <b>${Math.round(S.wins / S.closed * 100)}%</b> · average ${R(S.avgR)} per trade`);
       L.push(`Profit: ${usd(S.pnl)} · fees −$${S.fees.toFixed(2)} · <b>Net ${usd(S.net)}</b>`);
@@ -259,6 +261,7 @@ function daily(list, grades, setups, now, date) {
   const ok = s => (!ALLOW_COUNTER && /^Counter/.test(s.style || "")) ? false : MIN === "any" ? true : s.all ? true : MIN === "take" ? s.score >= 70 && s.actionable : MIN === "risk" ? s.tier === "risk" : false;
   // risk caps: count the alerted trades still open, and today's stop-outs (New York day)
   const openN = () => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && v.enter > 0 && !v.done).length;
+  const openDir = d => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && v.enter > 0 && !v.done && v.dir === d).length;
   const stopsToday = () => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && v.res === "stopped" && v.done && nyNow(v.done).date === ny.date).length;
   for (const s of out.setups) {
     const st = state[s.key] || {};
@@ -267,10 +270,10 @@ function daily(list, grades, setups, now, date) {
     const recent = s.filledAt && now - s.filledAt <= Math.max(2 * s.tfMs, 45 * 60e3);
     if (s.status === "open" && !s.t1hit && !st.enter && (ok(s) || st.ready)) {
       if (recent && (s.prog == null || s.prog < 0.5)) {
-        const capOpen = openN() >= MAX_OPEN, capDay = stopsToday() >= MAX_DAILY_STOPS;
-        if (capOpen || capDay) {
-          if (await send(`⛔ <b>Skipped: ${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b>\n${capDay ? `${MAX_DAILY_STOPS} stop-outs today: no new entries until tomorrow (New York time).` : `${MAX_OPEN} alerted trades are already open (limit ${MAX_OPEN}).`}`)) { st.enter = -2; sent.push(`skipped ${s.sym} ${s.tf}`); }
-        } else if (await send(msgEnter(s))) { st.enter = now; jot(s); sent.push(`enter ${s.sym} ${s.tf}`); }
+        const capOpen = openN() >= MAX_OPEN, capDay = stopsToday() >= MAX_DAILY_STOPS, capDir = openDir(s.dir) >= MAX_SAME_DIR;
+        if (capOpen || capDay || capDir) {
+          if (await send(`⛔ <b>Skipped: ${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b>\n${capDay ? `${MAX_DAILY_STOPS} stop-outs today: no new entries until tomorrow (New York time).` : capOpen ? `${MAX_OPEN} alerted trades are already open (limit ${MAX_OPEN}).` : `Already ${openDir(s.dir)} ${s.dir}s open. Alts move together with BTC, so another ${s.dir} doubles the same bet (limit ${MAX_SAME_DIR}).`}`)) { st.enter = -2; sent.push(`skipped ${s.sym} ${s.tf}`); }
+        } else if (await send(msgEnter(s))) { st.enter = now; st.dir = s.dir; jot(s); sent.push(`enter ${s.sym} ${s.tf}`); }
       }
       else st.enter = st.enter || -1;   // too late to chase; remember so it is not sent later
     } else if (s.status === "pending" && s.chochDone && !st.conf && ok(s)) {
@@ -278,7 +281,9 @@ function daily(list, grades, setups, now, date) {
     } else if (s.status === "pending" && !st.ready && ok(s) && s.near) {
       if (await send(msgReady(s))) { st.ready = now; jot(s); sent.push(`ready ${s.sym} ${s.tf}`); }
     } else if (st.enter > 0 && !st.t1 && s.t1hit && s.status === "open") {
-      if (await send(`🎯 <b>${esc(s.sym)} ${esc(s.tf)} ${s.dir}: Target 1 hit (${esc(s.t1)})</b>\nTake half off and move the stop to entry (${esc(s.entry)}). Target 2: ${esc(s.t2)}.\n${links(s)}`)) { st.t1 = now; sent.push(`t1 ${s.sym} ${s.tf}`); }
+      if (await send(`🎯 <b>${esc(s.sym)} ${esc(s.tf)} ${s.dir}: Target 1 hit (${esc(s.t1)})</b>\nTake half off and move the stop to entry (${esc(s.entry)}). ${s.trail ? `Let the rest run: you'll get a message each time the stop moves up under a new ${esc(s.tf)} swing ${s.dir === "long" ? "low" : "high"}.` : `Target 2: ${esc(s.t2)}.`}\n${links(s)}`)) { st.t1 = now; st.trailAt = s.trailStop; sent.push(`t1 ${s.sym} ${s.tf}`); }
+    } else if (st.enter > 0 && st.t1 && s.trail && s.status === "open" && s.trailStop && s.trailStop !== st.trailAt) {
+      if (await send(`🔒 <b>${esc(s.sym)} ${esc(s.tf)} ${s.dir}: move the stop to ${esc(s.trailStop)}</b>\nNew ${esc(s.tf)} swing ${s.dir === "long" ? "low" : "high"} confirmed. The stop on the remaining half trails behind it (exit on a ${esc(s.tf)} close past it).\n${links(s)}`)) { st.trailAt = s.trailStop; sent.push(`trail ${s.sym} ${s.tf}`); }
     } else if (st.enter > 0 && !st.done && ["t2", "t1_be", "stopped", "timeout"].includes(s.status)) {
       if (await send(msgDone(s))) { st.done = now; st.res = s.status; sent.push(`done ${s.sym} ${s.tf}`); }
     }
