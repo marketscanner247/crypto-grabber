@@ -221,7 +221,7 @@ function daily(list, grades, setups, now, date) {
   const page = await browser.newPage({ timezoneId: TZ });
   page.on("pageerror", e => console.error("page error:", e.message));
   if (process.env.CG_MOCK) await require(path.resolve(process.env.CG_MOCK)).install(page);
-  let out, briefs = [];
+  let out, briefs = [], rot = null;
   const ny = nyNow(+process.env.MOCK_NOW || Date.now());
   const briefDue = BRIEF || (ny.hm >= "09:30" && ny.hm < "12:00" && !(state.__brief && state.__brief.date === ny.date));
   const J = state.__journal = state.__journal && Array.isArray(state.__journal.list) ? state.__journal : { list: [] };
@@ -241,6 +241,7 @@ function daily(list, grades, setups, now, date) {
     for (const b of briefs) if (await send(b.html + (SITE && b.name === "Alts" ? `\n<a href="${esc(SITE)}">Crypto Grabber</a>` : ""))) { b.sent = true; if (!state.__brief || state.__brief.date !== ny.date) state.__brief = { date: ny.date, seen: Date.now() }; }
     if (briefs.some(b => b.sent)) try { fs.writeFileSync(STATE, JSON.stringify(state)); } catch (e) {}   // don't resend if the scan fails
     out = await page.evaluate(([tfs, entry]) => window.cgBot({ tfs, entry }), [TFS, ENTRY]);
+    try { rot = await page.evaluate(() => window.cgRotation && window.cgRotation()); } catch (e) {}
     if (weekDue || dayDue) { try { grades = await page.evaluate(([l, n]) => window.cgGrade(l, n), [J.list, SIZE]); } catch (e) { console.error("scorecard failed:", e.message); } }
   } finally { await browser.close(); srv.close(); }
 
@@ -254,6 +255,16 @@ function daily(list, grades, setups, now, date) {
       `\n${esc(out.status)}`);
   }
   for (const b of briefs) if (b.sent) sent.push(`${b.name} brief`);
+  // Alt rotation: BTC range-bound + BTC dominance falling + alts picking up pace. One message when all three line up
+  // (at most once a day), one when it fades (down to 1 of 3 or fewer).
+  if (rot) {
+    const R0 = state.__rot || {}, html = s => s.replace(/<(?!\/?b>)[^>]+>/g, "");
+    if (rot.on && !R0.on && (!R0.onAt || now - R0.onAt > 24 * 36e5)) {
+      if (await send(`🚀 <b>Alt rotation starting</b>\nBTC is ranging, BTC dominance is falling${rot.btcd != null ? ` (${rot.btcd.toFixed(1)}%)` : ""} and alts are picking up pace (7 days: alts ${rot.alt7 >= 0 ? "+" : ""}${(rot.alt7 || 0).toFixed(1)}% vs BTC ${rot.btc7 >= 0 ? "+" : ""}${(rot.btc7 || 0).toFixed(1)}%).\nMoney tends to rotate into alts now: favour longs on the strongest alts, on pullbacks. Be careful shorting alts.${SITE ? `\n<a href="${esc(SITE)}">Crypto Grabber</a>` : ""}`)) { state.__rot = { on: true, onAt: now }; sent.push("rotation on"); }
+    } else if (!rot.on && R0.on && rot.n <= 1) {
+      if (await send(`⚪ <b>Alt rotation fading</b>\n${html(rot.line)}`)) { state.__rot = { on: false, onAt: R0.onAt, offAt: now }; sent.push("rotation off"); }
+    }
+  }
   if (grades && weekDue) { if (await send(scorecard(J.list, grades, now))) { state.__week = { date: ny.date, seen: now }; sent.push("weekly scorecard"); } }
   if (grades && dayDue) { if (await send(daily(J.list, grades, out.setups, now, repDate))) { if (!DAILY) state.__day = { date: repDate, seen: now }; sent.push("daily scoreboard"); } }
   // every alerted trade goes into the journal with its fixed plan, so the scorecard can grade it later

@@ -2426,6 +2426,11 @@ async function loadRegime(at){
         const then=k=>m.reduce((a,c)=>a+(c.market_cap||0)/(1+chg(c,k)/100),0),bThen=k=>b.market_cap/(1+chg(b,k)/100);
         R.dom7=alts.btcd*(bThen("7d")/b.market_cap)/(then("7d")/now);R.dom30=alts.btcd*(bThen("30d")/b.market_cap)/(then("30d")/now);}
     }catch(e){}}
+    // Alt rotation: BTC range-bound, BTC dominance falling this week, and alts picking up pace against BTC. When all three
+    // line up, money tends to rotate from BTC into alts. Without a dominance reading (history), alts beating BTC this week stands in.
+    {const ddom=R.dom7!=null&&alts.btcd!=null?alts.btcd-R.dom7:null;
+      R.rot3={btcRange:btc.cls==="side",domFall:ddom!=null?ddom<=-0.3:R.rel7>0,pace:R.pace.cls==="up",domProxy:ddom==null};
+      R.rotN=[R.rot3.btcRange,R.rot3.domFall,R.rot3.pace].filter(Boolean).length;R.rotOn=R.rotN===3;}
     // Who is leading: dominance trend, ALT/BTC structure, pace and ETH/BTC each vote
     const votes=[];
     if(R.dom7!=null){const dd=alts.btcd-R.dom7;votes.push(dd<=-0.3?1:dd>=0.3?-1:0);}
@@ -2470,11 +2475,13 @@ function paintRegime(){
   const st=btc.st,flip=st&&st.trend>0&&st.swingLow!=null?`Flips below <b>${fc(st.swingLow)}</b>`:st&&st.trend<0&&st.swingHigh!=null?`Flips above <b>${fc(st.swingHigh)}</b>`:`Range <b>${fc(btc.range[0])}–${fc(btc.range[1])}</b>`;
   set("btc",btc,`${btc.cls==="side"?`Range <b>${fc(btc.range[0])}–${fc(btc.range[1])}</b>`:flip}${btc.btc4?`<br>4h ${btc.btc4.up?"above":"<b>below</b>"} EMA 50`:""}`);
   const Rt=alts.rot,dd=Rt.dom7!=null?alts.btcd-Rt.dom7:null,arrow=dd!=null?(dd>=0.3?"↑":dd<=-0.3?"↓":"→"):({up:"↓",down:"↑",side:"→"})[Rt.lead.cls];
-  set("alts",{state:alts.view.tile,cls:alts.view.cls},`BTC dominance ${alts.btcd!=null?`<b>${alts.btcd.toFixed(1)}%</b> `:""}${({"↑":"rising","↓":"falling","→":"flat"})[arrow]}`);
+  if(Rt.rotOn)set("alts",{state:"Alt rotation",cls:"up"},"BTC ranging · dominance <b>falling</b> · alts speeding up");
+  else set("alts",{state:alts.view.tile,cls:alts.view.cls},`BTC dominance ${alts.btcd!=null?`<b>${alts.btcd.toFixed(1)}%</b> `:""}${({"↑":"rising","↓":"falling","→":"flat"})[arrow]}`);
   set("mkt",mkt,`<b>${mkt.breadth.toFixed(0)}%</b> of coins above EMA 50`);
   const open=document.querySelector('.rt[aria-expanded="true"]');if(open)showRegDetail(open.dataset.reg);
 }
 const lc1=t=>t?t.charAt(0).toLowerCase()+t.slice(1):"";
+const rotLine=R=>R&&R.rot3?`${R.rotOn?"🚀 ":""}<b>Alt rotation check (${R.rotN}/3):</b> ${R.rot3.btcRange?"✓":"✗"} BTC range-bound · ${R.rot3.domFall?"✓":"✗"} BTC dominance falling${R.rot3.domProxy?" (alts beating BTC)":""} · ${R.rot3.pace?"✓":"✗"} alts picking up pace${R.rotOn?". <b>All three: money is rotating into alts.</b>":""}`:"";
 function showRegDetail(k){
   const box=$("regDetail");if(!REG){box.hidden=true;return;}
   const r=REG[k],when=MODE==="bt"?` · as of ${fmtDate(REG.at)}`:"";
@@ -2498,6 +2505,7 @@ function showRegDetail(k){
         `<b>${R.lead.label}</b> · ${lc1(R.pace.txt)}`,
         r.btcd!=null?`<b>BTC dominance:</b> ${r.btcd.toFixed(1)}%${dd!=null?`, ${dd>=0.3?"<b>rising</b> (money favours BTC)":dd<=-0.3?"<b>falling</b> (money moving into alts)":"flat"} this week`:""}`:"",
         `<b>7 days:</b> alts ${sg(R.alt7)} vs BTC ${sg(R.btc7)}`,
+        rotLine(R),
         R.season?`<b>Season:</b> ${R.season}${R.s90?` (index ${R.s90.v}/100)`:""}`:""];},
     mkt:()=>[`<b>Market · ${r.state}</b>${when}`,`<b>${r.breadth.toFixed(0)}%</b> of the top ${r.n} coins are above their EMA 50 (above 60% strong, under 40% weak)`,
       `BTC ${REG.btc.state} · Alts ${lc1(REG.alts.view.txt)} · ${lc1(REG.alts.rot.lead.label)}`]
@@ -2587,9 +2595,8 @@ window.cgBacktest=async(o={})=>{
     {name:"P5 all out at Target 1 · hidden, or regular with all 5 checks",...Z,am:{mgmt:"t1all"},keep:h=>/^hidden/.test(h.type)||h.tier==="aplus"},
     {name:"P10 NEW DEFAULT: half at Target 1, rest trailed · hidden, or regular with all 5 checks",...Z,am:{mgmt:"trail"},keep:h=>/^hidden/.test(h.type)||h.tier==="aplus"},
     {name:"G1 P10 + alt longs only when BTC is above its 4h EMA 50",...Z,am:{mgmt:"trail",regAplus:true,btcGuard:"ema"}},
-    {name:"G2 P10 + alt longs only when the coin is beating BTC (5 days)",...Z,am:{mgmt:"trail",regAplus:true,btcGuard:"rs"}},
-    {name:"G3 G1 + G2",...Z,am:{mgmt:"trail",regAplus:true,btcGuard:"long"}},
-    {name:"G4 G3 + no alt shorts on a coin beating a rising BTC",...Z,am:{mgmt:"trail",regAplus:true,btcGuard:"both"}}])||[
+    {name:"R1 P10 + no alt shorts during an alt rotation",...Z,am:{mgmt:"trail",regAplus:true},keep:h=>!(h.rot&&h.rot.on&&dirOf(h.type)==="bear")},
+    {name:"R2 P10 + during a rotation, alt longs on regular divergence too",...Z,am:{mgmt:"trail",regAplus:false},keep:h=>/^hidden/.test(h.type)||h.tier==="aplus"||(h.rot&&h.rot.on&&dirOf(h.type)==="bull")}])||[
     {name:"A zone entry: limit at the order block, wider stop on candle close (default)",buf:0.5,min:1.0,mode:"close",confirm:false},
     {name:"B lower-timeframe CHoCH entry",...B,cf:{...N}},
     {name:"C + wait for the retest (full size)",...B,cf:{...N,retest:true}},
@@ -2614,7 +2621,16 @@ window.cgBacktest=async(o={})=>{
   const btcAt=(b,T)=>{if(b==="BTC"||!B4)return null;const a=data[b]&&data[b]["4h"];if(!a)return null;
     const i=I4(B4,T),j=I4(a,T);if(i<BTC_N+50||j<BTC_N)return null;const ac=a.D.close;
     return {up:B4.c[i]>B4.e50[i],rs:(ac[j]/ac[j-BTC_N]-B4.c[i]/B4.c[i-BTC_N])*100};};
-  const pitFor=(b,id)=>(h,T)=>{h.btc=btcAt(b,T);const m={},d=data[b];HTFL[id]={};
+  const ROT=(()=>{const B=data.BTC&&data.BTC["1d"];if(!B)return null;const day=TF_MS("1d"),alts=Object.keys(data).filter(b=>b!=="BTC"&&data[b]["1d"]);
+    const I=(x,T)=>{let lo=0,hi=x.k.length-1,r=-1;while(lo<=hi){const m=(lo+hi)>>1;if(x.k[m].t+day<=T){r=m;lo=m+1;}else hi=m-1;}return r;};
+    const days=[];for(let i=60;i<B.k.length;i++){const T=B.k[i].t+day,bc=B.D.close;
+      const b7=bc[i]/bc[i-7]-1,b30=bc[i]/bc[i-30]-1;let s7=0,s30=0,n=0;
+      for(const a of alts){const x=data[a]["1d"],j=I(x,T);if(j<30)continue;const c=x.D.close;s7+=c[j]/c[j-7]-1;s30+=c[j]/c[j-30]-1;n++;}
+      if(n<5)continue;const rel7=(s7/n-b7)*100,rel30=(s30/n-b30)*100,range=classify(viewAt(B.D,i)).cls==="side",pace=rel7>=1&&rel7/7>rel30/30;
+      days.push({T,range,dom:rel7>0,pace,on:range&&rel7>0&&pace});}
+    return days;})();
+  const rotAt=T=>{if(!ROT)return null;let lo=0,hi=ROT.length-1,r=null;while(lo<=hi){const m=(lo+hi)>>1;if(ROT[m].T<=T){r=ROT[m];lo=m+1;}else hi=m-1;}return r;};
+  const pitFor=(b,id)=>(h,T)=>{h.btc=btcAt(b,T);h.rot=b==="BTC"?null:rotAt(T);const m={},d=data[b];HTFL[id]={};
     for(const tf of CTX){const x=d[tf];if(!x)continue;const ms=TF_MS(tf);let i=x.k.length-1;while(i>=0&&x.k[i].t+ms>T)i--;
       if(i<60)continue;const v=viewAt(x.D,i);m[tf]=structure(v);noteHTF(id,tf,v);}
     STRUCT[id]=m;};
@@ -2646,6 +2662,9 @@ window.cgBacktest=async(o={})=>{
         add("alt longs, coin beating BTC",h=>L(h)&&h.btc.rs>=0);add("alt longs, coin lagging BTC",h=>L(h)&&h.btc.rs<0);
         add("alt shorts, BTC above 4h EMA 50",h=>Sh(h)&&h.btc.up);add("alt shorts, BTC below 4h EMA 50",h=>Sh(h)&&!h.btc.up);
         add("alt shorts, coin lagging BTC",h=>Sh(h)&&h.btc.rs<0);add("alt shorts, coin beating BTC",h=>Sh(h)&&h.btc.rs>=0);
+        const AL=h=>dirOf(h.type)==="bull"&&h.rot,AS=h=>dirOf(h.type)==="bear"&&h.rot;
+        add("alt longs, ROTATION ON (BTC ranging + alts outpacing)",h=>AL(h)&&h.rot.on);add("alt longs, BTC ranging, no rotation",h=>AL(h)&&h.rot.range&&!h.rot.on);
+        add("alt longs, BTC trending",h=>AL(h)&&!h.rot.range);add("alt shorts, ROTATION ON",h=>AS(h)&&h.rot.on);add("alt shorts, rotation off",h=>AS(h)&&!h.rot.on);
         add("regular divergence",h=>/^regular/.test(h.type));add("hidden divergence",h=>/^hidden/.test(h.type));
         add("filled at the signal close",h=>h.out&&h.out.atClose);add("filled by the limit",h=>h.out&&h.out.trig>=0&&!h.out.atClose);
         add("entry from a fair value gap",h=>!!P(h).fvg);add("entry from the block top",h=>!P(h).fvg);
@@ -2752,12 +2771,16 @@ window.cgBrief=async(sym="BTC")=>{
 };
 // ---------- daily alts brief (New York open) ----------
 // Short read of the altcoin market: are alts worth trading today, who is leading, and the strongest / weakest names.
+// For the alert bot: is the alt rotation on right now?
+window.cgRotation=async()=>{const t0=Date.now();while((!REG||regBusy)&&Date.now()-t0<60000)await new Promise(r=>setTimeout(r,500));
+  if(!REG)return null;const R=REG.alts.rot;return {on:!!R.rotOn,n:R.rotN,flags:R.rot3,btcd:REG.alts.btcd,alt7:R.alt7,btc7:R.btc7,line:rotLine(R)};};
 window.cgAltBrief=async()=>{
   const t0=Date.now();while((!REG||regBusy)&&Date.now()-t0<60000)await new Promise(r=>setTimeout(r,500));
   if(!REG)throw new Error("market data unavailable");
   const A=REG.alts,R=A.rot,M=REG.mkt,sg=v=>v==null?"–":`${v>=0?"+":""}${v.toFixed(1)}%`,dd=R.dom7!=null&&A.btcd!=null?A.btcd-R.dom7:null;
   const id=A.cls==="up"?1:A.cls==="down"?-1:0,ld=R.lead.cls==="up"?1:R.lead.cls==="down"?-1:0;
-  const [bias,what]=id>0&&ld>0?["🟢 Alts favoured","Alts are rising and beating BTC. Look for longs on the strongest alts on pullbacks."]
+  const [bias,what]=R.rotOn?["🚀 Alt rotation","BTC is ranging, its dominance is falling and alts are picking up pace: money is rotating into alts. Favour longs on the strongest alts, on pullbacks."]
+    :id>0&&ld>0?["🟢 Alts favoured","Alts are rising and beating BTC. Look for longs on the strongest alts on pullbacks."]
     :id<0&&ld<0?["🔴 Alts weak","Alts are falling and losing to BTC. Avoid alt longs; shorts on bounces work best."]
     :id>0&&ld<0?["⚪ BTC favoured","Alts are rising but lagging BTC. BTC is the stronger long; alts may trail."]
     :id<0&&ld>0?["⚪ Alts holding up","Alts are falling but holding up better than BTC. If BTC stops falling, alts are likely to lead."]
@@ -2769,6 +2792,7 @@ window.cgAltBrief=async()=>{
     A.btcd!=null?`<b>BTC dominance:</b> ${A.btcd.toFixed(1)}%${dd!=null?`, ${dd>=0.3?"rising this week (money favours BTC)":dd<=-0.3?"falling this week (money moving into alts)":"flat this week"}`:""}`:null,
     `<b>ALT/BTC:</b> ${R.st.trend>0&&!R.st.chop?"uptrend, alts gaining on BTC":R.st.trend<0&&!R.st.chop?"downtrend, alts losing to BTC":"ranging"}${R.eth?` · <b>ETH/BTC:</b> ${STR_TXT(R.eth.st).toLowerCase()}`:""}`,
     `<b>7 days:</b> alts ${sg(R.alt7)} vs BTC ${sg(R.btc7)}`,
+    rotLine(R)||null,
     R.season?`<b>Season:</b> ${R.season}${R.s90?` (index ${R.s90.v}/100)`:""}`:null,
     `<b>Breadth:</b> ${M.breadth.toFixed(0)}% of the top ${M.n} coins above their EMA 50`,
     mv.length>=6?`<b>Strongest 7d:</b> ${mv.slice(0,3).map(nm).join(", ")}\n<b>Weakest 7d:</b> ${mv.slice(-3).reverse().map(nm).join(", ")}`:null].filter(x=>x!==null);
