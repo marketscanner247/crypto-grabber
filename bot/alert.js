@@ -94,7 +94,7 @@ function head(s, kind) {
   const title = (risky(s) ? "HIGH RISK · " : "") + (kind === "enter" ? `ENTER ${s.dir.toUpperCase()} NOW` : kind === "ready" ? `SETUP READY · ${s.dir}` : "UPDATE");
   return `${icon} <b>${title} · ${esc(s.sym)} ${esc(s.tf)}</b>${lvlLine(s)}\n${esc(s.label)} · ${esc(s.style)} · score ${s.score} · ${s.all ? "✓ all 5 checks" : `${s.checks} checks`}`;
 }
-const riskNote = s => risky(s) ? `⚠️ Enter at your own risk. Missing: ${esc(s.missing.slice(0, 3).join("; "))}.\nIf you take it: half size.\n` : "";
+const riskNote = s => risky(s) ? `⚠️ Enter at your own risk. Missing: ${esc(s.missing.slice(0, 3).join("; "))}.\nHalf size (already in the Size line).\n` : "";
 function plan(s) {
   const w = s.dir === "long" ? "Buy" : "Sell";
   if (s.confirm) {   // top-down entry: zone on the setup's timeframe, entry on a lower-timeframe CHoCH
@@ -116,8 +116,8 @@ function plan(s) {
 }
 function sizeLine(s) {
   const p = Math.abs(s.stopNowPct ?? s.stopPct); if (!p) return "";
-  const risk = s.btcHalf ? RISK / 2 : RISK, pos = risk / (p / 100);
-  return `\nSize: risk $${risk} → $${pos >= 1000 ? Math.round(pos).toLocaleString("en-US") : pos.toFixed(0)} position${s.btcHalf ? " (half size: BTC is below its 4h EMA 50)" : ""}${s.confirm && !s.entryNow ? " (estimate, final at the CHoCH)" : ""}`;
+  const why = [risky(s) && "high risk", s.btcHalf && "BTC below its 4h EMA 50"].filter(Boolean), risk = why.length ? RISK / 2 : RISK, pos = risk / (p / 100);
+  return `\nSize: risk $${risk} → $${pos >= 1000 ? Math.round(pos).toLocaleString("en-US") : pos.toFixed(0)} position${why.length ? ` (half size: ${why.join(", ")})` : ""}${s.confirm && !s.entryNow ? " (estimate, final at the CHoCH)" : ""}`;
 }
 const ctxLines = s => s.notes && s.notes.length ? `\n${s.notes.map(esc).join("\n")}` : "";
 function links(s) {

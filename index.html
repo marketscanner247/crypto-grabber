@@ -401,6 +401,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
   </div>
 
   <div class="vtabs" role="tablist"><button role="tab" data-view="setups" aria-selected="true">Setups</button><button role="tab" data-view="closed" aria-selected="false">Closed trades</button></div>
+  <div id="openT"></div>
   <div id="results"></div>
   <div id="closed" hidden></div>
   <div id="pop" class="pop" hidden><div class="popc" role="dialog" aria-label="Score details"><button class="popx" aria-label="Close">×</button><div class="popb"></div></div></div>
@@ -1591,7 +1592,7 @@ function signalHTML(h){
     html+=`<div class="plan2">
       <div class="ph"><span class="pill ${bull?"bull":"bear"}">${bull?"Long":"Short"}</span><span class="mu">${h.tf} · signal ${fmtDate(h.sigTime)}</span></div>
       ${!closed&&lv.wide?`<div class="rec gold"><b>⚠️ Skip: stop too wide</b> · The pivot was a spike, so the stop sits ${lv.riskPct.toFixed(0)}% away (${lv.ratr.toFixed(1)} ATR; normal is 1–2). Targets that far out aren't realistic.</div>`:""}
-      ${!closed&&h.chk&&tierOf(h)==="risk"?`<div class="rec gold"><b>⚠️ Enter at your own risk</b> · ${h.chk.n}/${h.chk.total} checks met${(()=>{const m=h.chk.items.filter(i=>!i.ok).map(i=>i.txt).slice(0,3);return m.length?`. Missing: ${esc(m.join("; "))}`:"";})()}. If you take it, use half size.</div>`:""}
+      ${!closed&&h.chk&&tierOf(h)==="risk"?`<div class="rec gold"><b>⚠️ Enter at your own risk</b> · ${h.chk.n}/${h.chk.total} checks met${(()=>{const m=h.chk.items.filter(i=>!i.ok).map(i=>i.txt).slice(0,3);return m.length?`. Missing: ${esc(m.join("; "))}`:"";})()}. Half size: the Size below is already halved.</div>`:""}
       ${!closed&&(ruleBlock(h)||btcBlock(h))?`<div class="rec gold"><b>⛔ Not alerted</b> · ${esc(ruleBlock(h)||btcBlock(h))}.${tkx&&tkx.trig>=0?" If you took it anyway, manage it with the plan below.":""}</div>`:""}
       ${btcHalf&&tierOf(h)!=="other"?`<div class="rec gold"><b>⚠️ Half size</b> · BTC is below its 4h EMA 50. Alts fall harder when BTC dumps.</div>`:""}
       ${closed?`<div class="donebn ${ti[1]==="gold"?"flat":ti[1]}"><b>${ti[0]}${h.track.trig>=0?" · "+rTxt(h.track.r):""}</b><span>${esc(ti[2])}</span></div>`:ti?`<div class="act ${ti[1]}"><b>${ti[0]}</b><span>${ti[2]}</span></div>`:""}
@@ -1615,8 +1616,8 @@ function signalHTML(h){
         if(lv.confirm&&sa==null)return row("Stop (est.)",fmtP(sp),`set at the CHoCH: just past the lowest ${lv.confirm} ${bull?"low":"high"} in the zone`,"neg");
         if(trailing)return row("Stop now",fmtP(tkx.stopNowLvl),`trailing under each new ${h.tf} swing ${bull?"low":"high"} · started at ${fmtP(sp)}`,"neg");
         return row(sw?"Stop (at least)":"Stop",fmtP(sp),`${fromEntry(sp)} · risk ${rk.toFixed(1)}%${sw?` · moves just past the sweep ${bull?"low":"high"} if it goes further`:""}${lv.stopMode==="close"?` · on close, hard ${fmtP(sp-(bull?1:-1)*0.5*Math.abs(E-sp))}`:""}`,"neg");})()}
-      ${(()=>{const oo=h.out||h.track,E=oo&&oo.entryP!=null?oo.entryP:lv.entry,sp=(oo&&oo.stopA)??lv.stop,dp=Math.abs(E-sp)/E,rk=btcHalf?S.risk/2:S.risk,pos=rk/dp;
-        return row("Size",`$${pos>=1000?Math.round(pos).toLocaleString():pos.toFixed(0)}`,`risking $${rk}${btcHalf?" (half: BTC weak)":""} with a ${(dp*100).toFixed(1)}% stop${lv.confirm&&!(oo&&oo.stopA!=null)?" · estimate until the CHoCH sets the stop":""}`);})()}
+      ${(()=>{const oo=h.out||h.track,E=oo&&oo.entryP!=null?oo.entryP:lv.entry,sp=(oo&&oo.stopA)??lv.stop,dp=Math.abs(E-sp)/E,hr=!h.out&&tierOf(h)==="risk",half=btcHalf||hr,rk=half?S.risk/2:S.risk,pos=rk/dp;
+        return row("Size",`$${pos>=1000?Math.round(pos).toLocaleString():pos.toFixed(0)}`,`risking $${rk}${half?` (half: ${[hr&&"high risk",btcHalf&&"BTC weak"].filter(Boolean).join(", ")})`:""} with a ${(dp*100).toFixed(1)}% stop${lv.confirm&&!(oo&&oo.stopA!=null)?" · estimate until the CHoCH sets the stop":""}`);})()}
       ${(()=>{const oo=h.out||h.track,real=oo&&oo.stopA!=null;return row("Target 1",fmtP(lv.t1),`${pctTxt(lv.t1,real&&oo.entryP!=null?oo.entryP:lv.entry)} · ${real?"":lv.confirm?"about ":""}${(real&&oo.rr1!=null?oo.rr1:lv.rr1).toFixed(1)}R · ${esc(lv.t1src)}`,"pos");})()}
       </div>
       ${inTrade?`<div class="late"${late?"":" hidden"}${isLive?` data-late="${h.id}" data-entry="${E0}" data-t1="${lv.t1}"`:""}>${late?lateTxt(prog):""}</div>`:""}
@@ -1687,7 +1688,7 @@ function structHTML(map,sty,t){
 const lvlTag=rr=>rr==null?"":rr>=1.5?`<span class="tag aplus" title="Target 1 pays ${rr.toFixed(1)}R: fits all three levels">🛡️ Safest</span>`:rr>=1.2?`<span class="tag" title="Target 1 pays ${rr.toFixed(1)}R">⚖️ Balanced</span>`:`<span class="tag gold" title="Target 1 pays ${rr.toFixed(1)}R: Most profit only">🚀 Most profit</span>`;
 const ckTag=(ck,key)=>{const a=key?` data-pop="${esc(key)}" role="button" tabindex="0"`:"";return ck&&ck.all?`<span class="tag aplus"${a}>✓ All checks</span>`:ck?`<span class="tag"${a}>${ck.n}/${ck.total} checks</span>`:"";};
 function makeCard(o){
-  const el=document.createElement("details");el.className="card"+(o.conf?" conf":"");el.open=!!o.open;el.dataset.k=o.id+"|"+(o.top?o.top.tf:"");
+  const el=document.createElement("details");el.className="card"+(o.conf?" conf":"");el.open=!!o.open;el.dataset.k=o.id+"|"+(o.top?o.top.tf:"");if(o.top&&!o.asOf)el.dataset.sk=sigKey(o.top);
   const t=o.top;
   const lp=o.lv&&o.lv.live,lvx=o.lv&&{...o.lv,id:o.asOf?null:o.id},sty=o.struct&&Object.keys(o.struct).length?styleOf(o.struct):null,ck=t?(t.chk||(t.chk=checklist(t))):null;
   let h=`<summary class="csum"><div class="cl"><div class="sym">${esc(o.sym)}${t?`<small>${t.tf}</small>`:""}</div>
@@ -1828,38 +1829,74 @@ async function scan(opts={}){
   if(!A)say(`${t} · ${coins} coin(s) with signals · ${tfs.join(", ")}${fails?` · ${fails} failed`:""}`);
   if(!bt){notify(hits);if(!only)saveMine();}
   end();
-  if(!bt)pollLive();
+  if(!bt){pollLive();paintOpen();}
 }
 let LAST_RENDER="";
 // ---------- closed trades ----------
 // Every alerted setup the app sees is kept on this phone (its fixed plan), and the Closed trades tab re-plays them on
 // real prices with the same engine as the scorecard, so a trade that closed while the app was shut still shows up.
 const TJ_KEY="cgrab_trades";
+// Every setup the app shows (alerted or not) is kept on this device with its fixed plan. A trade that filled stays in
+// "In a trade" until it closes, even after the scan stops finding its signal; the result is kept once known.
 const tjLoad=()=>{try{return JSON.parse(localStorage.getItem(TJ_KEY)||"[]");}catch(e){return [];}};
-function tjSave(coins){try{const L=tjLoad(),have=new Set(L.map(x=>x.key)),now=Date.now();
-  for(const c of coins){const h=c.top;if(!h||!h.lv||tierOf(h)==="other"||have.has(sigKey(h)))continue;
-    L.push({key:sigKey(h),sym:h.sym,tf:h.tf,dir:dirOf(h.type)==="bull"?"long":"short",sigTime:h.sigTime,all:!!(h.chk&&h.chk.all),seen:now,plan:JSON.parse(JSON.stringify(h.lv))});}
-  const keep=L.filter(x=>now-x.seen<=60*864e5).slice(-300);localStorage.setItem(TJ_KEY,JSON.stringify(keep));}catch(e){}}
+const tjWrite=L=>{try{const now=Date.now();localStorage.setItem(TJ_KEY,JSON.stringify(L.filter(x=>now-x.seen<=60*864e5).slice(-400)));}catch(e){}};
+function tjSave(coins){if(navigator.webdriver)return;try{const L=tjLoad(),by=new Map(L.map(x=>[x.key,x])),now=Date.now();
+  for(const c of coins){const h=c.top;if(!h||!h.lv||!h.sigTime)continue;const k=sigKey(h),al=tierOf(h)!=="other";
+    const o=by.get(k);if(o){if(al)o.alerted=true;continue;}
+    const t={key:k,sym:h.sym,tf:h.tf,dir:dirOf(h.type)==="bull"?"long":"short",sigTime:h.sigTime,all:!!(h.chk&&h.chk.all),alerted:al,
+      why:al?null:(ruleBlock(h)||btcBlock(h)||"below the alert rules"),rr1:h.lv.rr1,seen:now,plan:JSON.parse(JSON.stringify(h.lv))};
+    L.push(t);by.set(k,t);}
+  tjWrite(L);}catch(e){}}
 const OUT_TXT={t2:"Target hit",t1_be:"Target 1, then trailed out",stopped:"Stopped",timeout:"Closed on time limit"};
+// Re-play the saved trades that aren't settled yet; settled results (closed, or never filled) are stored and not re-played.
+let TJ_BUSY=null;
+async function tjGrade(){
+  if(TJ_BUSY)return TJ_BUSY;
+  TJ_BUSY=(async()=>{const L=tjLoad(),todo=L.filter(t=>!t.res);
+    if(todo.length){let g=[];try{g=await window.cgGrade(todo,1000);}catch(e){}
+      const by=new Map(g.map(x=>[x.key,x]));
+      for(const t of todo){const x=by.get(t.key);if(!x||x.err)continue;t.g=x;
+        if(OUT_TXT[x.status]||(x.status==="no_trigger"))t.res=x;}
+      const fresh=tjLoad(),m=new Map(L.map(t=>[t.key,t]));for(const f of fresh){const t=m.get(f.key);if(t){f.g=t.g;if(t.res)f.res=t.res;}}tjWrite(fresh);return fresh;}
+    return L;})();
+  try{return await TJ_BUSY;}finally{TJ_BUSY=null;}
+}
+const gOf=t=>t.res||t.g;
+const rTx=x=>`${x>=0?"+":""}${x.toFixed(2)}R`,usdTx=x=>`${x>=0?"+":"−"}$${Math.abs(x).toFixed(2)}`;
+function openRow(t){const g=gOf(t),bull=t.dir==="long",E=g.entryP??t.plan.entry,R=Math.abs(E-(g.stopA??t.plan.stop));
+  const stop=g.t1&&g.stopNow!=null?`trailing stop ${fmtP(g.stopNow)}`:`stop ${fmtP(g.stopA??t.plan.stop)}`;
+  return `<div class="ctr" data-sym="${esc(t.sym)}" role="button" tabindex="0"><span class="cs">${esc(t.sym)}<small>${t.tf} · ${t.dir}</small>${t.alerted?lvlTag(t.rr1):`<span class="tag gold">⛔ not alerted</span>`}</span>
+    <span class="cr2"><span class="lp" data-live="${esc((src||BINANCE).id(t.sym))}">${fmtP(g.last??E)}</span><br><span class="pnl" data-pnl="${esc((src||BINANCE).id(t.sym))}" data-e="${E}" data-r="${R}" data-d="${bull?1:-1}">${rTx(g.r)}</span></span>
+    <span class="cn">${g.t1?"🎯 Target 1 hit, half taken · ":""}entered ${g.enteredAt?fmtDate(g.enteredAt):"?"} at ${fmtP(E)} · ${stop} · Target 1 ${fmtP(t.plan.t1)}${t.alerted?"":` · ${esc(t.why||"")}`}</span></div>`;}
+// "In a trade" on the main screen: every saved trade that filled and hasn't closed, except ones the scan already shows.
+async function paintOpen(){
+  if(MODE!=="live"||navigator.webdriver)return;const box=$("openT");if(!box)return;
+  const L=await tjGrade(),shown=new Set([...document.querySelectorAll("#results details.card")].map(c=>c.dataset.sk).filter(Boolean));
+  const open=L.filter(t=>{const g=gOf(t);return g&&!t.res&&g.status==="open"&&g.fill>0&&!shown.has(t.key);}).sort((a,b)=>(gOf(b).enteredAt||0)-(gOf(a).enteredAt||0));
+  box.innerHTML=open.length?`<div class="grp"><div class="gh">🟢 In a trade <span>${open.length}</span></div><div class="gn">Saved on this device; stays here until the stop or a target closes it. Tap to check the coin.</div></div>${open.map(openRow).join("")}`:"";
+  box.querySelectorAll(".ctr").forEach(r=>r.onclick=()=>{$("q").value=r.dataset.sym;updScanLabel&&updScanLabel();checkCoin();});
+  pollLive();
+}
 async function showClosed(){
-  const box=$("closed"),L=tjLoad();
-  if(!L.length){box.innerHTML=`<div class="empty">No trades yet. Every setup the app alerts is kept here, and its result shows once it closes.</div>`;return;}
-  box.innerHTML=`<div class="status">Checking ${L.length} saved setup${L.length>1?"s":""} on real prices…</div>`;
-  let g=[];try{g=await window.cgGrade(L,1000);}catch(e){box.innerHTML=`<div class="status err">Couldn't load prices. Try again in a moment.</div>`;return;}
-  const by=new Map(g.map(x=>[x.key,x])),rows=L.map(t=>({t,g:by.get(t.key)})).filter(x=>x.g&&!x.g.err&&x.g.fill>0);
-  const closed=rows.filter(x=>OUT_TXT[x.g.status]).sort((a,b)=>(b.g.closedAt||0)-(a.g.closedAt||0)),open=rows.filter(x=>x.g.status==="open");
-  const R=x=>`${x>=0?"+":""}${x.toFixed(2)}R`,usd=x=>`${x>=0?"+":"−"}$${Math.abs(x).toFixed(2)}`,risk=S.risk;
-  const tot=closed.reduce((a,x)=>a+x.g.r,0),won=closed.filter(x=>x.g.r>0).length;
-  let h=`<div class="csumry">${closed.length?`<b>${closed.length}</b> closed · <b>${won}</b> won (${Math.round(won/closed.length*100)}%) · total <b class="${tot>=0?"pos":"neg"}">${R(tot)}</b> = ${usd(tot*risk)} at $${risk} risk per trade`:"No closed trades yet."}${open.length?` · ${open.length} still open`:""}</div>`;
-  h+=closed.map(({t,g})=>`<div class="ctr" data-sym="${esc(t.sym)}" role="button" tabindex="0"><span class="cs">${esc(t.sym)}<small>${t.tf} · ${t.dir}</small></span>
-    <span class="cr2 ${g.r>=0?"pos":"neg"}">${R(g.r)} · ${usd(g.r*risk)}</span>
-    <span class="cn">${OUT_TXT[g.status]}${g.closedAt?` · closed ${fmtDate(g.closedAt)}`:""}${g.enteredAt?` · entered ${fmtDate(g.enteredAt)}`:""}${t.all?" · all 5 checks":""}</span></div>`).join("");
-  h+=`<div class="status" style="margin-top:8px">Saved on this phone for 60 days. Results re-played on real prices with today's rules (trailing stop after Target 1, fees not included). Tap a trade to check the coin.</div>`;
+  const box=$("closed");if(!tjLoad().length){box.innerHTML=`<div class="empty">No trades yet. Every setup the app shows is kept here, and its result shows once it closes.</div>`;return;}
+  box.innerHTML=`<div class="status">Checking saved trades on real prices…</div>`;
+  const L=await tjGrade(),risk=S.risk,rows=L.filter(t=>{const g=gOf(t);return g&&g.fill>0;});
+  const closed=rows.filter(t=>OUT_TXT[gOf(t).status]).sort((a,b)=>(gOf(b).closedAt||0)-(gOf(a).closedAt||0)),open=rows.filter(t=>gOf(t).status==="open");
+  const sum=a=>{const tot=a.reduce((x,t)=>x+gOf(t).r,0),won=a.filter(t=>gOf(t).r>0).length;return a.length?`<b>${a.length}</b> closed · <b>${won}</b> won (${Math.round(won/a.length*100)}%) · <b class="${tot>=0?"pos":"neg"}">${rTx(tot)}</b> = ${usdTx(tot*risk)}`:"none yet";};
+  const al=closed.filter(t=>t.alerted),na=closed.filter(t=>!t.alerted);
+  let h=`<div class="csumry">Alerted: ${sum(al)}${na.length?`<br>Not alerted: ${sum(na)}`:""}<br><span class="mu2">at $${risk} risk per trade</span></div>`;
+  if(open.length)h+=`<div class="grp"><div class="gh">🟢 Open now <span>${open.length}</span></div></div>`+open.map(openRow).join("");
+  if(closed.length)h+=`<div class="grp"><div class="gh">Closed <span>${closed.length}</span></div></div>`;
+  h+=closed.map(t=>{const g=gOf(t);return `<div class="ctr" data-sym="${esc(t.sym)}" role="button" tabindex="0"><span class="cs">${esc(t.sym)}<small>${t.tf} · ${t.dir}</small>${t.alerted?lvlTag(t.rr1):`<span class="tag gold">⛔ not alerted</span>`}</span>
+    <span class="cr2 ${g.r>=0?"pos":"neg"}">${rTx(g.r)} · ${usdTx(g.r*risk)}</span>
+    <span class="cn">${OUT_TXT[g.status]}${g.closedAt?` · closed ${fmtDate(g.closedAt)}`:""}${g.enteredAt?` · entered ${fmtDate(g.enteredAt)}`:""}${t.all?" · all 5 checks":""}</span></div>`;}).join("");
+  h+=`<div class="status" style="margin-top:8px">Saved on this device for 60 days. Results re-played on real prices with today's rules (trailing stop after Target 1, fees not included). Tap a trade to check the coin.</div>`;
   box.innerHTML=h;
   box.querySelectorAll(".ctr").forEach(r=>r.onclick=()=>{setView("setups");$("q").value=r.dataset.sym;updScanLabel&&updScanLabel();checkCoin();});
+  pollLive();
 }
 function setView(v){document.querySelectorAll(".vtabs [data-view]").forEach(b=>b.setAttribute("aria-selected",b.dataset.view===v));
-  $("results").hidden=v!=="setups";$("closed").hidden=v!=="closed";if(v==="closed")showClosed();}
+  $("results").hidden=v!=="setups";$("openT").hidden=v!=="setups";$("closed").hidden=v!=="closed";if(v==="closed")showClosed();}
 document.querySelectorAll(".vtabs [data-view]").forEach(b=>b.onclick=()=>setView(b.dataset.view));
 // Coins you check by hand are watched for 7 days: always scanned (even outside the top 50) and shown on the main screen.
 const WL_KEY="cgrab_watch";
@@ -1880,6 +1917,7 @@ async function autoLoad(){
   if(navigator.webdriver||MODE!=="live")return;   // not in the alert bot's headless browser
   await null;   // let the rest of the page script finish setting up (live prices) first
   if(snapShow())pollLive();
+  paintOpen();
   const t0=Date.now();while((!REG||regBusy)&&Date.now()-t0<15000)await new Promise(r=>setTimeout(r,300));
   let mine=[];try{mine=JSON.parse(localStorage.getItem("cgrab_mine")||"[]");}catch(e){}
   if(mine.length)await scan({auto:true,first:true,only:mine});
@@ -2011,7 +2049,7 @@ async function checkCoin(){
   box.appendChild(makeCard({sym:base,id:c.id,s:used,top,conf,check:true,open:true,asOf:at,struct:STRUCT[c.id],others:all.filter(h=>h!==top),rows:rowsHTML,rowsN:prep.length,
     lv:lvFrom&&{tf:lvFrom.tf,sr:lvFrom.sr,vp:lvFrom.vp,live:lvFrom.live}}));
   setStatus(`${base}${bt?` as of ${fmtDate(at)}`:""}: ${all.length} divergence(s) on ${tfs.join(", ")} · ${used.name}`);
-  if(!bt&&top)wlAdd(base);
+  if(!bt&&top){wlAdd(base);tjSave([{top}]);}
   lock(false);
 }
 
@@ -2720,7 +2758,8 @@ window.cgGrade=async(list,size=1000)=>{
       if(lv.confirm){const lm=TF_MS(lv.confirm);try{lt=await ltfRows(id,lv.confirm,t.sigTime,Math.min(Date.now(),t.sigTime+999*lm));}catch(e){lt=[];}}
       const o=simulate(lv,t.dir==="long",fwd,0,lt),fill=o.fill!=null?o.fill:o.trig>=0?1:0;
       const usd=o.r*(o.Rp||Math.abs(lv.entry-lv.stop))*size/(o.entryP||lv.entry);
-      out.push({key:t.key,status:o.status,missed:!!o.missed,early:!!o.early,fill,r:o.r,usd,t1:o.t1>=0,enteredAt:o.tt||null,closedAt:o.t2t||o.st||null});
+      out.push({key:t.key,status:o.status,missed:!!o.missed,early:!!o.early,fill,r:o.r,usd,t1:o.t1>=0,enteredAt:o.tt||null,closedAt:o.t2t||o.st||null,
+        entryP:o.entryP??o.avg??null,stopA:o.stopA??null,stopNow:o.stopNowLvl??null,last:fwd.length?fwd[fwd.length-1].c:null});
     }catch(e){out.push({key:t.key,err:String(e&&e.message||e)});}
   }
   return out;
