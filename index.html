@@ -1942,7 +1942,7 @@ const TR_STATUS={pending:"Waiting for entry",open:"In trade",t2:"Target 2 hit",t
 function trRow(t){
   const g=gOf(t),bull=t.dir==="long",P=t.plan||{},E=g.entryP??P.entry,first=g.stopA??P.stop,R=Math.abs(E-first),id=(src||BINANCE).id(t.sym),$r=r=>usdTx(usdOfR(r,E,R));
   const open=g.status==="open",lvl=(t.sent?`<span class="tag aplus">📨 Telegram</span>`:t.dyor?`<span class="tag gold">🔍 DYOR</span>`:"")+(t.alerted?lvlTag(t.rr1??P.rr1):""),res=open?null:g.r;
-  const st=open?(g.t1?"🎯 T1 hit · trailing":"In trade"):({t1_be:"T1 + trail",t2:"Target 2",stopped:"Stopped",timeout:"Time limit"}[g.status]||g.status);
+  const st=open?(g.t1?"🎯 T1 hit · trailing":`${bull?"🟢":"🔴"} In trade`):({t1_be:g.r>0?"💰 T1 + trail":"⚖️ At entry",t2:"🏆 Target 2",stopped:"🛑 Stop loss",timeout:"⏱ Time limit"}[g.status]||g.status);
   const when=open?(g.enteredAt?`since ${fmtDate(g.enteredAt)}`:""):(g.closedAt?fmtDate(g.closedAt):"");
   const row=(k,v,n,c)=>`<div class="pr"><span class="pk">${k}</span><span class="pv ${c||""}">${v}</span><span class="pn">${n||""}</span></div>`;
   const stopNow=open&&g.t1&&g.stopNow!=null?g.stopNow:null;
@@ -2864,6 +2864,7 @@ window.cgBot=async(o={})=>{
         stopNow:tk&&tk.stopA!=null?f(tk.stopA):null,stopNowPct:tk&&tk.stopA!=null?pc(tk.stopA):null,rr1Now:tk&&tk.stopA!=null?tk.rr1:null,
         notes:[...(h.sc.notes||[]),...(h.sc.plus||[]).map(p=>"✓ "+p.txt),...(h.sc.pen||[]).filter(p=>/funding|BTC is turning|Leverage-led|cross/.test(p.txt)).map(p=>"✗ "+p.txt)],
         confirm:lv?lv.confirm||null:null,early:!!tk&&!!tk.early,chochDone:!!tk&&!!tk.choch&&tk.status==="pending",splitLimit:tk&&tk.split&&tk.fill<1&&tk.e2Lvl!=null?f(tk.e2Lvl):null,strongIn:!!tk&&!!tk.strong,retLvl:tk&&tk.retLvl!=null?f(tk.retLvl):null,retSrc:tk&&tk.retSrc||"",retStop:tk&&tk.retStop!=null?f(tk.retStop):null,retStopPct:tk&&tk.retStop!=null&&tk.retLvl?((tk.retStop/tk.retLvl-1)*100):null,poi:lv&&lv.poi!=null?f(lv.poi):null,entryNow:tk&&tk.entryP!=null?f(tk.entryP):null,chochLvl:tk&&tk.chochLvl!=null?f(tk.chochLvl):null,touched:!!tk&&tk.touched>=0,
+        wl:lv?{e1:lv.e1??lv.entry,e2:lv.e2??null,entry:lv.entry,stop:tk&&tk.stopA!=null?tk.stopA:lv.stop,t1:lv.t1,atClose:!!lv.atClose,ret:tk&&tk.retLvl!=null?tk.retLvl:null,retStop:tk&&tk.retStop!=null?tk.retStop:null,trail:tk&&tk.trail&&tk.t1>=0&&tk.stopNowLvl!=null?tk.stopNowLvl:null}:null,
         plan:lv?{confirm:lv.confirm,poi:lv.poi,deepLvl:lv.deepLvl,win:lv.win,tf:lv.tf,emaOk:lv.emaOk,volMin:lv.volMin,maxSweeps:lv.maxSweeps,earlyExit:lv.earlyExit,retest:lv.retest,splitE:lv.splitE,strong:lv.strong,fvgEdge:lv.fvgEdge,hlBos:lv.hlBos,sweeps0:lv.sweeps0,method:lv.method,pivot:lv.pivot,atClose:lv.atClose,e1:lv.e1,e2:lv.e2,split:lv.split,stopMode:lv.stopMode,entry:lv.entry,stop:lv.stop,t1:lv.t1,t2:lv.t2,rr1:lv.rr1,rr2:lv.rr2,riskPct:lv.riskPct,atr:lv.atr}:null};})};
 };
 // ---------- weekly scorecard ----------

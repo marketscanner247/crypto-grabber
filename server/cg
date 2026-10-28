@@ -7,12 +7,34 @@ once() {   # one check right now, with extra settings (e.g. BRIEF=true), as the 
   set -a; . "$ENVF"; set +a
   runuser -u cg -- env $(grep -v '^\s*#' "$ENVF" | xargs) "$@" bash "$DIR/server/run.sh"
 }
+watchsvc() {   # ⚡ the live watcher: instant entry / Target 1 / stop alerts between the 5-minute checks
+  cat > /etc/systemd/system/crypto-grabber-watch.service <<EOF2
+[Unit]
+Description=Crypto Grabber live price watcher (instant entry alerts)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=cg
+Group=cg
+EnvironmentFile=$ENVF
+ExecStart=/usr/bin/env node $DIR/bot/watch.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF2
+  systemctl daemon-reload && systemctl enable --quiet crypto-grabber-watch && systemctl restart crypto-grabber-watch
+}
 case "${1:-status}" in
   status)
     systemctl is-active --quiet crypto-grabber.timer && echo "Alerts: ON (every 5 minutes)" || echo "Alerts: OFF  (turn on with: cg start)"
     systemctl list-timers crypto-grabber.timer --no-pager | sed -n '1,2p'
+    systemctl is-active --quiet crypto-grabber-watch && echo "Live watcher: ON ⚡ ($(journalctl -u crypto-grabber-watch --no-pager -o cat -n 300 | grep -E '^..:..:.. watching' | tail -1 | cut -c10-))" || echo "Live watcher: OFF (turn on with: cg update)"
     echo; echo "Last checks:"; journalctl -u crypto-grabber --no-pager -o short-iso -n 200 | grep -E "setup\(s\)|Sent:|No new alerts|rror|failed" | tail -8 ;;
   log)       journalctl -u crypto-grabber -f -o cat ;;
+  watch)     journalctl -u crypto-grabber-watch -n 30 -f -o cat ;;
   test)      once TEST=true ;;
   brief)     once BRIEF=true ;;
   scorecard) once SCORECARD=true ;;
@@ -25,9 +47,9 @@ case "${1:-status}" in
     runuser -u cg -- git -C "$DIR" pull --ff-only
     runuser -u cg -- env $(grep -v '^\s*#' "$ENVF" | xargs) bash -c "cd $DIR/bot && npm install --no-audit --no-fund --silent && npx playwright install chromium"
     (cd "$DIR/bot" && set -a && . "$ENVF" && set +a && npx playwright install-deps chromium >/dev/null)
-    install -m 755 "$DIR/server/cg" /usr/local/bin/cg; echo "Updated." ;;
-  stop)      systemctl disable --now crypto-grabber.timer && echo "Alerts paused." ;;
-  start)     systemctl enable --now crypto-grabber.timer && echo "Alerts on, every 5 minutes." ;;
+    install -m 755 "$DIR/server/cg" /usr/local/bin/cg; watchsvc; echo "Updated. Live watcher: $(systemctl is-active crypto-grabber-watch)" ;;
+  stop)      systemctl disable --now crypto-grabber.timer crypto-grabber-watch && echo "Alerts paused (5-minute checks and the live watcher)." ;;
+  start)     systemctl enable --now crypto-grabber.timer && watchsvc && echo "Alerts on: checks every 5 minutes, live watcher ⚡ on." ;;
   token)     echo "Edit $ENVF (nano $ENVF), save, done. It's read on every check." ;;
   dyor)      # connect a second Telegram chat (a private channel) for the 🔍 DYOR alerts
     [ "$(id -u)" = 0 ] || { echo "Run as root (or: sudo cg ...)"; exit 1; }
@@ -56,6 +78,7 @@ case "${1:-status}" in
   *) cat <<'EOF'
 cg            status: on/off, next check, last results
 cg log        watch checks live (Ctrl+C to stop watching)
+cg watch      see the live watcher: which coins it watches and what it sent (Ctrl+C to stop)
 cg test       send the "connected" test message now
 cg brief      send the BTC, ETH and alts briefs now
 cg scorecard  send the weekly scorecard now

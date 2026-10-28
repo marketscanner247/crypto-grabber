@@ -28,6 +28,8 @@ const http = require("http"), fs = require("fs"), path = require("path");
 const { chromium } = require("playwright");
 
 const ROOT = path.join(__dirname, ".."), STATE = path.join(__dirname, "state.json"), REC = path.join(__dirname, "record.json");
+// live watcher (watch.js): this run tells it what to watch; it tells this run what it already sent
+const WATCH = path.join(__dirname, "watch.json"), WSTATE = path.join(__dirname, "watch-state.json");
 const GH_TOKEN = process.env.CG_GITHUB_TOKEN || "", GH_REPO = process.env.CG_GITHUB_REPO || "marketscanner247/crypto-grabber", GH_PATH = "data/trades.json";
 const TOKEN = process.env.TELEGRAM_TOKEN || "", CHAT = process.env.TELEGRAM_CHAT_ID || "";
 const MIN = (process.env.ALERT_MIN || "risk").toLowerCase();
@@ -127,10 +129,12 @@ async function publishRec(rec, now) {
   if (!put.ok) { console.error("trade record publish failed:", put.status, put.j && put.j.message); return false; }
   rec.pubSig = sig; rec.pubFull = full; rec.pubAt = now; return true;
 }
+// One emoji per message type, always first: 🟡 setup ready · 🟢/🔴 entered long/short · 🎯 Target 1 · 🔒 stop moved ·
+// 🏆 Target 2 · 💰 closed in profit · 🛑 stop loss hit · ⏱ time limit · ⛔ skipped. DYOR messages put 🔍 in front.
+const R2 = r => r == null ? "" : ` (${r >= 0 ? "+" : ""}${r.toFixed(2)}R)`;
 function head(s, kind) {
-  const icon = risky(s) ? "⚠️" : kind === "enter" ? (s.dir === "long" ? "🟢" : "🔴") : kind === "ready" ? "🟡" : "⚪";
-  const title = (risky(s) ? "HIGH RISK · " : "") + (kind === "enter" ? `ENTER ${s.dir.toUpperCase()} NOW` : kind === "ready" ? `SETUP READY · ${s.dir}` : "UPDATE");
-  return `${icon} <b>${title} · ${esc(s.sym)} ${esc(s.tf)}</b>${lvlLine(s)}\n${esc(s.label)} · ${esc(s.style)} · score ${s.score} · ${s.all ? "✓ all 5 checks" : `${s.checks} checks`}`;
+  const title = kind === "enter" ? `${s.dir === "long" ? "🟢" : "🔴"} <b>ENTERED ${s.dir.toUpperCase()}` : kind === "ready" ? `🟡 <b>SETUP READY · ${s.dir}` : `⚪ <b>UPDATE`;
+  return `${title} · ${esc(s.sym)} ${esc(s.tf)}</b>${risky(s) ? " · ⚠️ HIGH RISK" : ""}${lvlLine(s)}\n${esc(s.label)} · ${esc(s.style)} · score ${s.score} · ${s.all ? "✓ all 5 checks" : `${s.checks} checks`}`;
 }
 const riskNote = s => risky(s) ? `⚠️ Enter at your own risk. Missing: ${esc(s.missing.slice(0, 3).join("; "))}.\nHalf size (already in the Size line).\n` : "";
 function plan(s) {
@@ -177,9 +181,14 @@ function msgEnter(s) {
   const fillTxt = s.split && s.fill != null ? (s.fill < 1 ? `First half filled at ${esc(s.e1)}. Keep the second half as a limit at ${esc(s.e2)}.` : `Both halves filled, average ${esc(s.avg || s.entry)}.`) : "";
   return `${head(s, "enter")}\n\n${s.filledAt ? `Triggered ${when(s.filledAt)}` : ""}${s.filledAt && fillTxt ? " · " : ""}${fillTxt}\n\n${plan(s)}${sizeLine(s)}${ctxLines(s)}\n\n${riskNote(s)}${links(s)}`;
 }
+function doneHead(s) {
+  if (s.missed) return "⏭ <b>MISSED</b>";
+  if (s.early) return `↩️ <b>CLOSED EARLY</b>${R2(s.r)}`;
+  return { t2: `🏆 <b>TARGET 2 HIT</b>${R2(s.r)}`, t1_be: s.r != null && s.r > 0 ? `💰 <b>CLOSED IN PROFIT</b> · Target 1 + trailing stop${R2(s.r)}` : `⚖️ <b>CLOSED AT ENTRY</b> · after Target 1${R2(s.r)}`,
+    stopped: `🛑 <b>STOP LOSS HIT</b>${R2(s.r)}`, timeout: `⏱ <b>CLOSED · TIME LIMIT</b>${R2(s.r)}`, no_trigger: "⚪ <b>EXPIRED</b> · entry never filled" }[s.status] || `⚪ <b>${esc(s.status)}</b>`;
+}
 function msgDone(s) {
-  const t = s.missed ? "Missed: price ran to Target 1 without the entry. Don't chase it." : s.early ? "↩️ Closed early: the lower timeframe broke structure against the trade before Target 1" : { t2: s.t1all ? "✅ Target hit: whole position closed in profit" : "✅ Target 2 hit", t1_be: s.trail ? `✅ Target 1 hit, then the trailing stop closed the rest${s.r != null ? ` (${s.r >= 0 ? "+" : ""}${s.r.toFixed(2)}R in total)` : ""}` : "Target 1 hit, rest closed at entry", stopped: "❌ Stopped out", no_trigger: "Entry never triggered, setup expired", timeout: "Closed (time limit)" }[s.status] || s.stateTxt;
-  return `⚪ <b>${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b>: ${esc(t)}\n${esc(s.detail || "")}`;
+  return `${doneHead(s)} · <b>${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b>\n${esc(s.missed ? "Price ran to Target 1 without the entry. Don't chase it." : s.detail || "")}`;
 }
 
 // Weekly scorecard: every alerted trade of the last 7 days, re-played on real prices with a $1,000 position.
@@ -337,12 +346,24 @@ function daily(list, grades, setups, now, date) {
   const jot = s => { const rr = rec.list.find(x => x.key === s.key); if (rr) rr.sent = true;   // the trade record knows what reached Telegram
     if (s.plan && !J.list.some(x => x.key === s.key)) J.list.push({ key: s.key, sym: s.sym, tf: s.tf, dir: s.dir, all: !!s.all, score: s.score, sigTime: s.sigTime, at: now, plan: s.plan }); };
   const ok = s => TFS.includes(s.tf) && okS(s);
+  // ⚡ what the live watcher already sent between checks: never send it again
+  let wst = {}; try { wst = JSON.parse(fs.readFileSync(WSTATE, "utf8")); } catch (e) {}
+  const wEntered = new Set();
+  for (const [k, w] of Object.entries(wst)) {
+    if (!w || typeof w !== "object") continue; const st = state[k] = state[k] || {};
+    if (w.enter && !st.enter) { st.enter = w.enter; st.dir = w.dir; st.ready = st.ready || Math.abs(w.enter); st.live = true; if (w.enter > 0) wEntered.add(k); }
+    if (w.t1 && !st.t1) st.t1 = w.t1;
+    if (w.done && !st.done) { st.done = w.done; st.res = "stopped"; }
+    st.seen = st.seen || now;
+  }
   // risk caps: count the alerted trades still open, and today's stop-outs (New York day)
-  const openN = () => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && v.enter > 0 && !v.done).length;
-  const openDir = d => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && v.enter > 0 && !v.done && v.dir === d).length;
-  const stopsToday = () => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && v.res === "stopped" && v.done && nyNow(v.done).date === ny.date).length;
+  const openN = () => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && !k.startsWith("dyor:") && v.enter > 0 && !v.done).length;
+  const openDir = d => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && !k.startsWith("dyor:") && v.enter > 0 && !v.done && v.dir === d).length;
+  const stopsToday = () => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && !k.startsWith("dyor:") && v.res === "stopped" && v.done && nyNow(v.done).date === ny.date).length;
   for (const s of out.setups) {
     const st = state[s.key] || {};
+    if (wEntered.has(s.key)) { jot(s); sent.push(`enter ${s.sym} ${s.tf} (live)`); }
+    if (st.live && st.enter > 0 && !st.done && s.status === "no_trigger") { st.done = now; st.res = "no_trigger"; }
     if (process.env.BOT_DEBUG) console.log(`  · ${s.sym} ${s.tf} ${s.dir} ${s.status} (${s.stateTxt}) checks ${s.checks} score ${s.score} method ${s.method}`);
     if (!ok(s) && !st.ready && !st.enter) continue;
     const recent = s.filledAt && now - s.filledAt <= Math.max(2 * s.tfMs, 45 * 60e3);
@@ -350,7 +371,7 @@ function daily(list, grades, setups, now, date) {
       if (recent && (s.prog == null || s.prog < 0.5)) {
         const capOpen = openN() >= MAX_OPEN, capDay = stopsToday() >= MAX_DAILY_STOPS, capDir = openDir(s.dir) >= MAX_SAME_DIR;
         if (capOpen || capDay || capDir) {
-          if (await send(`⛔ <b>Skipped: ${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b>\n${capDay ? `${MAX_DAILY_STOPS} stop-outs today: no new entries until tomorrow (New York time).` : capOpen ? `${MAX_OPEN} alerted trades are already open (limit ${MAX_OPEN}).` : `Already ${openDir(s.dir)} ${s.dir}s open. Alts move together with BTC, so another ${s.dir} doubles the same bet (limit ${MAX_SAME_DIR}).`}`)) { st.enter = -2; sent.push(`skipped ${s.sym} ${s.tf}`); }
+          if (await send(`⛔ <b>SKIPPED · ${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b>\n${capDay ? `${MAX_DAILY_STOPS} stop-outs today: no new entries until tomorrow (New York time).` : capOpen ? `${MAX_OPEN} alerted trades are already open (limit ${MAX_OPEN}).` : `Already ${openDir(s.dir)} ${s.dir}s open. Alts move together with BTC, so another ${s.dir} doubles the same bet (limit ${MAX_SAME_DIR}).`}`)) { st.enter = -2; sent.push(`skipped ${s.sym} ${s.tf}`); }
         } else if (await send(msgEnter(s))) { st.enter = now; st.dir = s.dir; jot(s); sent.push(`enter ${s.sym} ${s.tf}`); }
       }
       else st.enter = st.enter || -1;   // too late to chase; remember so it is not sent later
@@ -359,9 +380,9 @@ function daily(list, grades, setups, now, date) {
     } else if (s.status === "pending" && !st.ready && ok(s) && s.near) {
       if (await send(msgReady(s))) { st.ready = now; jot(s); sent.push(`ready ${s.sym} ${s.tf}`); }
     } else if (st.enter > 0 && !st.t1 && s.t1hit && s.status === "open") {
-      if (await send(`🎯 <b>${esc(s.sym)} ${esc(s.tf)} ${s.dir}: Target 1 hit (${esc(s.t1)})</b>\nTake half off and move the stop to entry (${esc(s.entry)}). ${s.trail ? `Let the rest run: you'll get a message each time the stop moves up under a new ${esc(s.tf)} swing ${s.dir === "long" ? "low" : "high"}.` : `Target 2: ${esc(s.t2)}.`}\n${links(s)}`)) { st.t1 = now; st.trailAt = s.trailStop; sent.push(`t1 ${s.sym} ${s.tf}`); }
+      if (await send(`🎯 <b>TARGET 1 HIT · ${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b> (${esc(s.t1)})\nTake half off and move the stop to entry (${esc(s.entry)}). ${s.trail ? `Let the rest run: you'll get a message each time the stop moves up under a new ${esc(s.tf)} swing ${s.dir === "long" ? "low" : "high"}.` : `Target 2: ${esc(s.t2)}.`}\n${links(s)}`)) { st.t1 = now; st.trailAt = s.trailStop; sent.push(`t1 ${s.sym} ${s.tf}`); }
     } else if (st.enter > 0 && st.t1 && s.trail && s.status === "open" && s.trailStop && s.trailStop !== st.trailAt) {
-      if (await send(`🔒 <b>${esc(s.sym)} ${esc(s.tf)} ${s.dir}: move the stop to ${esc(s.trailStop)}</b>\nNew ${esc(s.tf)} swing ${s.dir === "long" ? "low" : "high"} confirmed. The stop on the remaining half trails behind it (exit on a ${esc(s.tf)} close past it).\n${links(s)}`)) { st.trailAt = s.trailStop; sent.push(`trail ${s.sym} ${s.tf}`); }
+      if (await send(`🔒 <b>STOP MOVED · ${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b> → ${esc(s.trailStop)}\nNew ${esc(s.tf)} swing ${s.dir === "long" ? "low" : "high"} confirmed. The stop on the remaining half trails behind it (exit on a ${esc(s.tf)} close past it).\n${links(s)}`)) { st.trailAt = s.trailStop; sent.push(`trail ${s.sym} ${s.tf}`); }
     } else if (st.enter > 0 && !st.done && ["t2", "t1_be", "stopped", "timeout"].includes(s.status)) {
       if (await send(msgDone(s))) { st.done = now; st.res = s.status; sent.push(`done ${s.sym} ${s.tf}`); }
     }
@@ -372,20 +393,41 @@ function daily(list, grades, setups, now, date) {
     let nD = 0;
     const why = s => !TFS.includes(s.tf) ? `${s.tf} setup: not backtested` : whyNot(s) || "below the alert rules";
     const lv = s => { const L = LVL(s.rr1); return L ? ` · ${{ safe: "🛡️ Safest", bal: "⚖️ Balanced", max: "🚀 Most profit" }[L.k]}-size target` : ""; };
-    const line1 = (s, what) => `🔍 <b>DYOR · ${what} · ${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b>${lv(s)}\n${esc(why(s))}`;
+    const line1 = (s, what) => `🔍 ${what} · ${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b> · DYOR${lv(s)}\n${esc(why(s))}`;
     const lvls = s => `Entry ${esc(s.entry)} · Stop ${esc(s.stopNow || s.stop)} · Target 1 ${esc(s.t1)}${s.rr1 != null ? ` (${s.rr1.toFixed(1)}R)` : ""}`;
     for (const s of out.setups) {
       if (ok(s) || !DYOR_TFS.includes(s.tf) || nD >= DYOR_MAX) continue;
       const k = "dyor:" + s.key, d = state[k] || {}, mark = () => { const r = rec.list.find(x => x.key === s.key); if (r) r.dyor = true; };
       const recent = s.filledAt && now - s.filledAt <= Math.max(2 * s.tfMs, 45 * 60e3);
-      if (s.status === "pending" && s.near && !d.ready) { if (await send(`${line1(s, "setup ready")}\n${lvls(s)}\nPrice now ${esc(s.live)}\n${links(s)}`, DYOR_CHAT)) { d.ready = now; nD++; mark(); } }
-      else if (s.status === "open" && !d.enter && recent && (s.prog == null || s.prog < 0.5)) { if (await send(`${line1(s, "entered")}\n${lvls(s)}${sizeLine({ ...s, all: false })}\n${links(s)}`, DYOR_CHAT)) { d.enter = now; nD++; mark(); } }
-      else if (d.enter > 0 && !d.t1 && s.t1hit && s.status === "open") { if (await send(`🔍 🎯 <b>DYOR · ${esc(s.sym)} ${esc(s.tf)}: Target 1 hit</b> · take half, stop to entry, trail the rest`, DYOR_CHAT)) d.t1 = now; }
-      else if (d.enter > 0 && !d.done && ["t2", "t1_be", "stopped", "timeout"].includes(s.status)) { if (await send(`🔍 ⚪ <b>DYOR · ${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b>: ${s.status === "stopped" ? "❌ stopped" : "✅ closed"}${s.r != null ? ` (${s.r >= 0 ? "+" : ""}${s.r.toFixed(2)}R)` : ""}`, DYOR_CHAT)) d.done = now; }
+      if (s.status === "pending" && s.near && !d.ready) { if (await send(`${line1(s, "🟡 <b>SETUP READY")}\n${lvls(s)}\nPrice now ${esc(s.live)}\n${links(s)}`, DYOR_CHAT)) { d.ready = now; nD++; mark(); } }
+      else if (s.status === "open" && !d.enter && recent && (s.prog == null || s.prog < 0.5)) { if (await send(`${line1(s, `${s.dir === "long" ? "🟢" : "🔴"} <b>ENTERED ${s.dir.toUpperCase()}`)}\n${lvls(s)}${sizeLine({ ...s, all: false })}\n${links(s)}`, DYOR_CHAT)) { d.enter = now; nD++; mark(); } }
+      else if (d.enter > 0 && !d.t1 && s.t1hit && s.status === "open") { if (await send(`🔍 🎯 <b>TARGET 1 HIT · ${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b> · DYOR\nTake half, move the stop to entry, trail the rest.`, DYOR_CHAT)) d.t1 = now; }
+      else if (d.enter > 0 && !d.done && ["t2", "t1_be", "stopped", "timeout"].includes(s.status)) { if (await send(`🔍 ${doneHead(s)} · <b>${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b> · DYOR`, DYOR_CHAT)) d.done = now; }
       if (Object.keys(d).length) state[k] = { ...d, seen: now };
     }
     if (nD) sent.push(`${nD} DYOR`);
   }
+  // ⚡ the live watcher's list: setups waiting for a limit fill (alerted ones and DYOR ones) and open trades
+  try {
+    const items = [], hardOf = (e, st) => st + 0.5 * (st - e);
+    for (const s of out.setups) {
+      const w = s.wl; if (!w || !s.plan) continue;
+      const main = ok(s), dyor = !main && DYOR_CHAT && DYOR_TFS.includes(s.tf); if (!main && !dyor) continue;
+      const key = main ? s.key : "dyor:" + s.key, st = state[key] || {};
+      const base = { key, sym: s.sym, tf: s.tf, dir: s.dir, id: s.key.split("|")[0], perp: /\.P$/.test(s.chart || ""), chat: main ? "main" : "dyor", trail: !!s.trail, link: links(s) };
+      if (s.status === "pending" && !st.enter && !w.atClose && s.method !== "Sweep & reclaim" && (!s.confirm || (s.chochDone && w.ret != null))) {
+        const e1 = s.confirm ? w.ret : w.e1, stop = s.confirm ? (w.retStop ?? w.stop) : w.stop;
+        if (!isFinite(e1) || !isFinite(stop) || !isFinite(w.t1)) continue;
+        items.push({ ...base, state: "wait", e1, e2: s.split && !s.confirm ? w.e2 : null, split: !!s.split && !s.confirm, entry: e1, stop, hard: hardOf(e1, stop), t1: w.t1,
+          msg: main ? msgEnter(s) : `🔍 ${s.dir === "long" ? "🟢" : "🔴"} <b>ENTERED ${s.dir.toUpperCase()} · ${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b> · DYOR\nEntry ${esc(s.e1 || s.entry)} · Stop ${esc(s.stop)} · Target 1 ${esc(s.t1)}${s.rr1 != null ? ` (${s.rr1.toFixed(1)}R)` : ""}\nPrice now: ${esc(s.live)}${sizeLine({ ...s, all: false })}\n${links(s)}` });
+      } else if (st.enter > 0 && !st.done && ["open", "pending"].includes(s.status)) {
+        items.push({ ...base, state: "open", entry: w.entry, stop: w.stop, hard: hardOf(w.entry, w.stop), t1: w.t1, t1hit: !!st.t1 || s.t1hit, trailLvl: w.trail });
+      }
+    }
+    const caps = { open: openN(), long: openDir("long"), short: openDir("short"), stops: stopsToday(), maxOpen: MAX_OPEN, maxDir: MAX_SAME_DIR, maxStops: MAX_DAILY_STOPS };
+    fs.writeFileSync(WATCH + ".tmp", JSON.stringify({ at: now, caps, items })); fs.renameSync(WATCH + ".tmp", WATCH);
+    console.log(`Live watcher list: ${items.filter(x => x.state === "wait").length} waiting for entry, ${items.filter(x => x.state === "open").length} open`);
+  } catch (e) { console.error("could not write the live watcher list:", e.message); }
   // forget anything older than 10 days
   J.list = J.list.filter(t => now - t.at <= 35 * 864e5); J.seen = now;
   for (const k of Object.keys(state)) if (now - (state[k].seen || 0) > 10 * 864e5) delete state[k];

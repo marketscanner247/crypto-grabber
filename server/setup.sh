@@ -82,6 +82,7 @@ EOF
 install -m 755 "$DIR/server/cg" /usr/local/bin/cg
 systemctl daemon-reload
 systemctl enable --now crypto-grabber.timer >/dev/null
+cg start >/dev/null || true   # also starts the live watcher
 
 echo
 echo "Done. Sending a test message now..."
