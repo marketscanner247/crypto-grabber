@@ -1072,6 +1072,8 @@ function flagOf(d,bull){
 // Power of Three (accumulation, manipulation, distribution) on the daily candle (UTC day): a long is PO3-aligned when
 // price has already dipped below today's open (the manipulation, a stop hunt) and closed back above it; a short mirrors it.
 // Only for setups on 4h or lower.
+// 2-year 4h backtest: neither helped (flag-only +0.43R/trade on a quarter of the trades; PO3-aligned +0.31R vs +0.44R),
+// so they are not used in the rules or shown on cards; the brief keeps a PO3 line as context.
 function po3Of(d,bull,tf){
   if(!tf||TF_MIN[tf]>240)return null;
   const L=d.close.length-1,ds=Math.floor(d.time[L]/864e5)*864e5;let i0=L;while(i0>0&&d.time[i0-1]>=ds)i0--;
@@ -1725,7 +1727,7 @@ function makeCard(o){
   const t=o.top;
   const lp=o.lv&&o.lv.live,lvx=o.lv&&{...o.lv,id:o.asOf?null:o.id},sty=o.struct&&Object.keys(o.struct).length?styleOf(o.struct):null,ck=t?(t.chk||(t.chk=checklist(t))):null;
   let h=`<summary class="csum"><div class="cl"><div class="sym">${esc(o.sym)}${t?`<small>${t.tf}</small>`:""}</div>
-    <div class="sub">${t?`<span class="pill ${dirOf(t.type)}">${LABEL[t.type]}</span>${outPill(t)}<span data-tp="${esc(sigKey(t))}">${trackPill(t)}</span>`:`<span class="pill flat">No setup right now</span>`}<span data-ckt>${ckTag(ck,t&&sigKey(t))}</span>${t&&t.flag?`<span class="tag" title="Pole ${fmtP(t.flag.poleBot)}–${fmtP(t.flag.poleTop)}, flag pulled back ${Math.round(t.flag.retr*100)}%">🚩 ${t.flag.kind==="bear"?"Bear":"Bull"} flag</span>`:""}${t&&t.po3?`<span class="tag" title="Price swept today's open (${fmtP(t.po3.open)}) and reclaimed it: manipulation done">PO3</span>`:""}${t&&t.lv&&!o.asOf?(tierOf(t)==="other"?(ruleBlock(t)||btcBlock(t)?`<span class="tag gold" title="${esc(ruleBlock(t)||btcBlock(t))}">⛔ Not alerted</span>`:""):lvlTag(t.lv.rr1)):""}${t&&sty?typeTag(tradeType(t,sty)):sty?trendTag(sty):""}${t&&t.conflict?`<span class="tag gold">Mixed</span>`:""}${t&&t.ctx&&t.ctx.agree.length?`<span class="tag gold">Confluence ×${t.ctx.agree.length+1}</span>`:""}${(o.others||[]).map(h=>`<span class="tag ${dirOf(h.type)}">${h.tf} ${dirOf(h.type)==="bull"?"Long":"Short"}</span>`).join("")}</div></div><div class="cr">${lp&&!o.asOf?`<span class="lp" data-live="${o.id}">${fmtP(lp)}</span>`:""}${(()=>{const k=t&&t.track,lv=t&&t.lv;
+    <div class="sub">${t?`<span class="pill ${dirOf(t.type)}">${LABEL[t.type]}</span>${outPill(t)}<span data-tp="${esc(sigKey(t))}">${trackPill(t)}</span>`:`<span class="pill flat">No setup right now</span>`}<span data-ckt>${ckTag(ck,t&&sigKey(t))}</span>${t&&t.lv&&!o.asOf?(tierOf(t)==="other"?(ruleBlock(t)||btcBlock(t)?`<span class="tag gold" title="${esc(ruleBlock(t)||btcBlock(t))}">⛔ Not alerted</span>`:""):lvlTag(t.lv.rr1)):""}${t&&sty?typeTag(tradeType(t,sty)):sty?trendTag(sty):""}${t&&t.conflict?`<span class="tag gold">Mixed</span>`:""}${t&&t.ctx&&t.ctx.agree.length?`<span class="tag gold">Confluence ×${t.ctx.agree.length+1}</span>`:""}${(o.others||[]).map(h=>`<span class="tag ${dirOf(h.type)}">${h.tf} ${dirOf(h.type)==="bull"?"Long":"Short"}</span>`).join("")}</div></div><div class="cr">${lp&&!o.asOf?`<span class="lp" data-live="${o.id}">${fmtP(lp)}</span>`:""}${(()=>{const k=t&&t.track,lv=t&&t.lv;
       if(o.asOf||!k||k.trig<0||isClosed(k)||!lv)return "";const E=k.entryP??k.avg??lv.entry,R=Math.abs(E-(k.stopA??lv.stop));
       return `<span class="pnl" data-pnl="${o.id}" data-e="${E}" data-r="${R}" data-d="${dirOf(t.type)==="bull"?1:-1}"></span>`;})()}${t?chip(t.sc):""}</div></summary><div class="cbody">`;
   if(t)h+=signalHTML(t);
