@@ -20,7 +20,7 @@
 //   BROWSER_CHANNEL=chrome  use the installed Google Chrome instead of Playwright's Chromium
 //   TELEGRAM_DYOR_CHAT_ID  a second chat (e.g. a private channel with this bot as admin; set it with: cg dyor). Setups that
 //                    don't make the main alerts (below the rules, or on a timeframe that isn't backtested) go there, short
-//                    and marked 🔍 DYOR. DYOR_TFS: timeframes scanned for it (default 1h,4h,1d).
+//                    and marked 🔍 DYOR. DYOR_TFS: timeframes scanned for it (default 15m,1h,4h,1d,3d,1w: everything except the main alerts).
 //   CG_GITHUB_TOKEN  a GitHub token that can write this repo's contents: the permanent trade record (bot/record.json on
 //                    the server) is then published to data/trades.json, which the app reads on every device
 //   CG_GITHUB_REPO   owner/repo for that file (default marketscanner247/crypto-grabber)
@@ -33,7 +33,7 @@ const TOKEN = process.env.TELEGRAM_TOKEN || "", CHAT = process.env.TELEGRAM_CHAT
 const MIN = (process.env.ALERT_MIN || "risk").toLowerCase();
 const TFS = (process.env.ALERT_TFS || "4h").split(",").map(s => s.trim()).filter(Boolean);
 const DYOR_CHAT = process.env.TELEGRAM_DYOR_CHAT_ID || "";
-const DYOR_TFS = DYOR_CHAT ? (process.env.DYOR_TFS || "1h,4h,1d").split(",").map(s => s.trim()).filter(Boolean) : [];
+const DYOR_TFS = DYOR_CHAT ? (process.env.DYOR_TFS || "15m,1h,4h,1d,3d,1w").split(",").map(s => s.trim()).filter(Boolean) : [];
 const ORDER = ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d", "3d", "1w"];
 const SCAN_TFS = [...new Set([...TFS, ...DYOR_TFS])].sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));
 const DYOR_MAX = +process.env.DYOR_MAX_PER_RUN || 8;   // keeps a burst (e.g. right after a 4h close) from flooding the channel

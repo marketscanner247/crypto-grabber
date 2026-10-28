@@ -42,7 +42,7 @@ case "${1:-status}" in
     ID=${PICK%%$'\t'*}; TITLE=${PICK#*$'\t'}
     sed -i '/^TELEGRAM_DYOR_CHAT_ID=/d' "$ENVF"; printf 'TELEGRAM_DYOR_CHAT_ID=%s\n' "$ID" >> "$ENVF"; chmod 600 "$ENVF"
     curl -s -o /dev/null "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" --data-urlencode "chat_id=${ID}" \
-      --data-urlencode "text=🔍 DYOR alerts connected. Setups that don't make the main alerts (below the rules, or 1h / 1d) will come here."
+      --data-urlencode "text=🔍 DYOR alerts connected. Setups that don't make the main alerts (below the rules, or any other timeframe: 15m, 1h, 1d, 3d, 1w) will come here."
     echo "Saved: DYOR alerts go to '${TITLE}'. You should see a 'DYOR alerts connected' message there."
     ;;
   github)    # save the GitHub token for the shared trade record (hidden input, never shown)
@@ -65,7 +65,7 @@ cg backtest   test the rules on real prices: cg backtest [days] [timeframes], e.
               (add ltf at the end for the lower-timeframe entries: cg backtest 365 4h ltf)
 cg update     pull the latest files from GitHub and reinstall (normally automatic)
 cg github     save the GitHub token for the shared trade record (phone and PC see the same trades)
-cg dyor       connect a second Telegram channel for the 🔍 DYOR alerts (setups below the rules, 1h / 1d)
+cg dyor       connect a second Telegram channel for the 🔍 DYOR alerts (setups below the rules, and 15m / 1h / 1d / 3d / 1w)
 cg stop       pause alerts        cg start   turn them back on
 EOF
   ;;
