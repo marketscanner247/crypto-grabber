@@ -18,10 +18,14 @@
 //   BRIEF=true  send the daily BTC, ETH and alts briefs now (otherwise once a day, on the first run after 9:30 am New York time)
 //   SCORECARD=true  send the weekly scorecard now (otherwise once a week, on the first run after 6 pm New York time on Sunday)
 //   BROWSER_CHANNEL=chrome  use the installed Google Chrome instead of Playwright's Chromium
+//   CG_GITHUB_TOKEN  a GitHub token that can write this repo's contents: the permanent trade record (bot/record.json on
+//                    the server) is then published to data/trades.json, which the app reads on every device
+//   CG_GITHUB_REPO   owner/repo for that file (default marketscanner247/crypto-grabber)
 const http = require("http"), fs = require("fs"), path = require("path");
 const { chromium } = require("playwright");
 
-const ROOT = path.join(__dirname, ".."), STATE = path.join(__dirname, "state.json");
+const ROOT = path.join(__dirname, ".."), STATE = path.join(__dirname, "state.json"), REC = path.join(__dirname, "record.json");
+const GH_TOKEN = process.env.CG_GITHUB_TOKEN || "", GH_REPO = process.env.CG_GITHUB_REPO || "marketscanner247/crypto-grabber", GH_PATH = "data/trades.json";
 const TOKEN = process.env.TELEGRAM_TOKEN || "", CHAT = process.env.TELEGRAM_CHAT_ID || "";
 const MIN = (process.env.ALERT_MIN || "risk").toLowerCase();
 const TFS = (process.env.ALERT_TFS || "4h").split(",").map(s => s.trim()).filter(Boolean);
@@ -89,6 +93,32 @@ function serve() {
 }
 
 const risky = s => !s.all;
+const okS = s => (!ALLOW_COUNTER && /^Counter/.test(s.style || "")) ? false : MIN === "any" ? true : s.all ? true : MIN === "take" ? s.score >= 70 && s.actionable : MIN === "risk" ? s.tier === "risk" : false;
+const whyNot = s => okS(s) ? null : (s.block || (/^Counter/.test(s.style || "") ? `${s.style}: the bot skips counter-trend setups` : "below the alert rules"));
+// ---------- permanent trade record ----------
+// Every setup the bot sees (alerted or not) with its fixed plan; open ones are re-played each run until they close.
+// Setups that never filled are dropped after 7 days; filled trades are kept for good.
+function loadRec() { try { const r = JSON.parse(fs.readFileSync(REC, "utf8")); if (Array.isArray(r.list)) return r; } catch (e) {} return { list: [] }; }
+const trimRec = r => { const g = r.g || {}, p = r.plan || {};
+  return { key: r.key, sym: r.sym, tf: r.tf, dir: r.dir, sigTime: r.sigTime, seen: r.seen, alerted: !!r.alerted, why: r.why || null, rr1: p.rr1 ?? null, all: !!r.all, score: r.score ?? null,
+    entry: p.entry, stop: p.stop, t1: p.t1, status: g.status || "pending", r: g.r ?? 0, fill: g.fill ?? 0, t1hit: !!g.t1, enteredAt: g.enteredAt || null, closedAt: g.closedAt || null,
+    entryP: g.entryP ?? null, stopA: g.stopA ?? null, stopNow: g.stopNow ?? null, last: g.last ?? null }; };
+async function gh(method, url, body) {
+  const r = await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${url}`, { method, headers: { authorization: `Bearer ${GH_TOKEN}`, accept: "application/vnd.github+json", "user-agent": "crypto-grabber-bot", "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  return { ok: r.ok, status: r.status, j: await r.json().catch(() => ({})) };
+}
+// Publish when a trade opens, hits Target 1 or closes; otherwise at most every 30 minutes (live P/L).
+async function publishRec(rec, now) {
+  if (!GH_TOKEN) return null;
+  const list = rec.list.filter(r => r.g && (r.g.fill > 0 || r.g.status === "pending")).map(trimRec);
+  const sig = JSON.stringify(list.map(t => [t.key, t.status, t.t1hit, t.alerted])), full = JSON.stringify(list);
+  if (sig === rec.pubSig && (full === rec.pubFull || now - (rec.pubAt || 0) < 30 * 60e3)) return null;
+  const body = JSON.stringify({ updated: now, note: "Crypto Grabber trade record, written by the alert bot", trades: list });
+  const cur = await gh("GET", `${GH_PATH}?ref=main`);
+  const put = await gh("PUT", GH_PATH, { message: "trades: update record", content: Buffer.from(body).toString("base64"), sha: cur.ok ? cur.j.sha : undefined, branch: "main" });
+  if (!put.ok) { console.error("trade record publish failed:", put.status, put.j && put.j.message); return false; }
+  rec.pubSig = sig; rec.pubFull = full; rec.pubAt = now; return true;
+}
 function head(s, kind) {
   const icon = risky(s) ? "⚠️" : kind === "enter" ? (s.dir === "long" ? "🟢" : "🔴") : kind === "ready" ? "🟡" : "⚪";
   const title = (risky(s) ? "HIGH RISK · " : "") + (kind === "enter" ? `ENTER ${s.dir.toUpperCase()} NOW` : kind === "ready" ? `SETUP READY · ${s.dir}` : "UPDATE");
@@ -247,6 +277,7 @@ function daily(list, grades, setups, now, date) {
   const repDate = DAILY ? ny.date : yday;
   const weekDue = SCORECARD || (ny.wd === "Sun" && ny.hm >= "18:00" && !(state.__week && state.__week.date === ny.date));
   let grades = null;
+  const rec = loadRec();
   try {
     await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "load" });
     // briefs first, so they land right at 9:30 instead of after the scan
@@ -257,9 +288,21 @@ function daily(list, grades, setups, now, date) {
     if (briefs.some(b => b.sent)) try { fs.writeFileSync(STATE, JSON.stringify(state)); } catch (e) {}   // don't resend if the scan fails
     out = await page.evaluate(([tfs, entry, minRR]) => window.cgBot({ tfs, entry, minRR }), [TFS, ENTRY, MIN_RR]);
     try { rot = await page.evaluate(() => window.cgRotation && window.cgRotation()); } catch (e) {}
+    try {
+      for (const s of out.setups) { if (!s.plan || !s.sigTime) continue; let r = rec.list.find(x => x.key === s.key);
+        if (!r) rec.list.push(r = { key: s.key, sym: s.sym, tf: s.tf, dir: s.dir, sigTime: s.sigTime, seen: nowT, alerted: okS(s), why: whyNot(s), all: !!s.all, score: s.score, plan: s.plan });
+        else if (okS(s) && !r.alerted) { r.alerted = true; r.why = null; } }
+      const todo = rec.list.filter(r => !r.done).slice(-80);
+      if (todo.length) { const g = await page.evaluate(([l, n]) => window.cgGrade(l, n), [todo, SIZE]);
+        for (const x of g) { const r = rec.list.find(y => y.key === x.key); if (!r || x.err) continue; r.g = x;
+          if (["t2", "t1_be", "stopped", "timeout", "no_trigger"].includes(x.status)) r.done = true; } }
+    } catch (e) { console.error("trade record update failed:", e.message); }
     if (weekDue || dayDue) { try { grades = await page.evaluate(([l, n]) => window.cgGrade(l, n), [J.list, SIZE]); } catch (e) { console.error("scorecard failed:", e.message); } }
   } finally { await browser.close(); srv.close(); }
 
+  rec.list = rec.list.filter(r => !(r.done && !(r.g && r.g.fill > 0) && nowT - r.seen > 7 * 864e5));
+  try { const pub = await publishRec(rec, nowT); if (pub) console.log("Trade record published to GitHub."); } catch (e) { console.error("trade record publish failed:", e.message); }
+  try { fs.writeFileSync(REC, JSON.stringify(rec)); } catch (e) { console.error("could not save the trade record:", e.message); }
   console.log(`${out.status} · ${out.setups.length} setup(s)`);
   if (out.market) console.log(`Market: BTC ${out.market.btc} · Alts ${out.market.alts} · ${out.market.mkt} · ${out.market.lead}`);
   const now = +process.env.MOCK_NOW || Date.now(), sent = [];   // MOCK_NOW is only used by tests

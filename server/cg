@@ -29,6 +29,14 @@ case "${1:-status}" in
   stop)      systemctl disable --now crypto-grabber.timer && echo "Alerts paused." ;;
   start)     systemctl enable --now crypto-grabber.timer && echo "Alerts on, every 5 minutes." ;;
   token)     echo "Edit $ENVF (nano $ENVF), save, done. It's read on every check." ;;
+  github)    # save the GitHub token for the shared trade record (hidden input, never shown)
+    [ "$(id -u)" = 0 ] || { echo "Run as root (or: sudo cg ...)"; exit 1; }
+    read -rsp "Paste your GitHub token (hidden), then press Enter: " T </dev/tty; echo
+    [ -n "$T" ] || { echo "Nothing pasted, nothing changed."; exit 1; }
+    sed -i '/^CG_GITHUB_TOKEN=/d' "$ENVF"; printf 'CG_GITHUB_TOKEN=%s\n' "$T" >> "$ENVF"; chmod 600 "$ENVF"
+    echo "Saved. Running one check to publish the trade record..."
+    once >/tmp/cg-github.log 2>&1; grep -E "Trade record|publish failed|record" /tmp/cg-github.log || echo "Done. If nothing was published yet, it publishes on the next change."
+    ;;
   *) cat <<'EOF'
 cg            status: on/off, next check, last results
 cg log        watch checks live (Ctrl+C to stop watching)
@@ -40,6 +48,7 @@ cg run        run one check now
 cg backtest   test the rules on real prices: cg backtest [days] [timeframes], e.g. cg backtest 365 4h
               (add ltf at the end for the lower-timeframe entries: cg backtest 365 4h ltf)
 cg update     pull the latest files from GitHub and reinstall (normally automatic)
+cg github     save the GitHub token for the shared trade record (phone and PC see the same trades)
 cg stop       pause alerts        cg start   turn them back on
 EOF
   ;;

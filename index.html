@@ -1862,6 +1862,28 @@ async function tjGrade(){
   try{return await TJ_BUSY;}finally{TJ_BUSY=null;}
 }
 const gOf=t=>t.res||t.g;
+// ---------- shared trade record (written by the alert bot on the server, kept in the GitHub repo) ----------
+// Every device reads the same file, so phone and PC show the same trades, and nothing expires.
+const DATA_URL=(()=>{const h=location.hostname,m=h.match(/^([^.]+)\.github\.io$/i),seg=location.pathname.split("/").filter(Boolean)[0];
+  const repo=m&&seg?`${m[1]}/${seg}`:"marketscanner247/crypto-grabber";return `https://raw.githubusercontent.com/${repo}/main/data/trades.json`;})();
+let SREC=null,SREC_AT=0,SREC_ERR=false;
+async function srvLoad(){
+  if(SREC&&Date.now()-SREC_AT<60e3)return SREC;
+  try{const r=await fetch(`${DATA_URL}?t=${Math.floor(Date.now()/60e3)}`,{cache:"no-store"});
+    if(r.ok){SREC=await r.json();SREC_AT=Date.now();SREC_ERR=false;}else SREC_ERR=r.status!==404?r.status:"none";}catch(e){SREC_ERR=true;}
+  return SREC;
+}
+const fromSrv=x=>({key:x.key,sym:x.sym,tf:x.tf,dir:x.dir,sigTime:x.sigTime,seen:x.seen,alerted:x.alerted,why:x.why,rr1:x.rr1,all:x.all,src:"server",
+  plan:{entry:x.entry,stop:x.stop,t1:x.t1,rr1:x.rr1},
+  g:{status:x.status,r:x.r,fill:x.fill,t1:x.t1hit,enteredAt:x.enteredAt,closedAt:x.closedAt,entryP:x.entryP,stopA:x.stopA,stopNow:x.stopNow,last:x.last}});
+// This device's saved trades plus the server record (the server's result wins for the same trade).
+async function allTrades(){
+  const [L,S]=await Promise.all([tjGrade(),srvLoad()]),m=new Map(L.map(t=>[t.key,t]));
+  for(const x of (S&&S.trades)||[]){const t=fromSrv(x),o=m.get(t.key);
+    if(!o)m.set(t.key,t);else{const done=OUT_TXT[t.g.status];if(done||!o.g||!(gOf(o)&&gOf(o).fill>0))m.set(t.key,{...o,...t,res:done?t.g:o.res,g:t.g});}}
+  return [...m.values()];
+}
+const syncLine=()=>SREC?`Synced with the server record · updated ${fmtDate(SREC.updated)}`:SREC_ERR==="none"||SREC_ERR===404?"Server record not set up yet: showing this device only.":SREC_ERR?"Couldn't reach the server record: showing this device only.":"";
 const rTx=x=>`${x>=0?"+":""}${x.toFixed(2)}R`,usdTx=x=>`${x>=0?"+":"−"}$${Math.abs(x).toFixed(2)}`;
 function openRow(t){const g=gOf(t),bull=t.dir==="long",E=g.entryP??t.plan.entry,R=Math.abs(E-(g.stopA??t.plan.stop));
   const stop=g.t1&&g.stopNow!=null?`trailing stop ${fmtP(g.stopNow)}`:`stop ${fmtP(g.stopA??t.plan.stop)}`;
@@ -1871,16 +1893,16 @@ function openRow(t){const g=gOf(t),bull=t.dir==="long",E=g.entryP??t.plan.entry,
 // "In a trade" on the main screen: every saved trade that filled and hasn't closed, except ones the scan already shows.
 async function paintOpen(){
   if(MODE!=="live"||navigator.webdriver)return;const box=$("openT");if(!box)return;
-  const L=await tjGrade(),shown=new Set([...document.querySelectorAll("#results details.card")].map(c=>c.dataset.sk).filter(Boolean));
+  const L=await allTrades(),shown=new Set([...document.querySelectorAll("#results details.card")].map(c=>c.dataset.sk).filter(Boolean));
   const open=L.filter(t=>{const g=gOf(t);return g&&!t.res&&g.status==="open"&&g.fill>0&&!shown.has(t.key);}).sort((a,b)=>(gOf(b).enteredAt||0)-(gOf(a).enteredAt||0));
-  box.innerHTML=open.length?`<div class="grp"><div class="gh">🟢 In a trade <span>${open.length}</span></div><div class="gn">Saved on this device; stays here until the stop or a target closes it. Tap to check the coin.</div></div>${open.map(openRow).join("")}`:"";
+  box.innerHTML=open.length?`<div class="grp"><div class="gh">🟢 In a trade <span>${open.length}</span></div><div class="gn">Stays here until the stop or a target closes it. ${esc(syncLine())} Tap to check the coin.</div></div>${open.map(openRow).join("")}`:"";
   box.querySelectorAll(".ctr").forEach(r=>r.onclick=()=>{$("q").value=r.dataset.sym;updScanLabel&&updScanLabel();checkCoin();});
   pollLive();
 }
 async function showClosed(){
-  const box=$("closed");if(!tjLoad().length){box.innerHTML=`<div class="empty">No trades yet. Every setup the app shows is kept here, and its result shows once it closes.</div>`;return;}
+  const box=$("closed");await srvLoad();if(!tjLoad().length&&!(SREC&&SREC.trades&&SREC.trades.length)){box.innerHTML=`<div class="empty">No trades yet. Every setup the app shows is kept here, and its result shows once it closes.</div>`;return;}
   box.innerHTML=`<div class="status">Checking saved trades on real prices…</div>`;
-  const L=await tjGrade(),risk=S.risk,rows=L.filter(t=>{const g=gOf(t);return g&&g.fill>0;});
+  const L=await allTrades(),risk=S.risk,rows=L.filter(t=>{const g=gOf(t);return g&&g.fill>0;});
   const closed=rows.filter(t=>OUT_TXT[gOf(t).status]).sort((a,b)=>(gOf(b).closedAt||0)-(gOf(a).closedAt||0)),open=rows.filter(t=>gOf(t).status==="open");
   const sum=a=>{const tot=a.reduce((x,t)=>x+gOf(t).r,0),won=a.filter(t=>gOf(t).r>0).length;return a.length?`<b>${a.length}</b> closed · <b>${won}</b> won (${Math.round(won/a.length*100)}%) · <b class="${tot>=0?"pos":"neg"}">${rTx(tot)}</b> = ${usdTx(tot*risk)}`:"none yet";};
   const al=closed.filter(t=>t.alerted),na=closed.filter(t=>!t.alerted);
@@ -1890,7 +1912,7 @@ async function showClosed(){
   h+=closed.map(t=>{const g=gOf(t);return `<div class="ctr" data-sym="${esc(t.sym)}" role="button" tabindex="0"><span class="cs">${esc(t.sym)}<small>${t.tf} · ${t.dir}</small>${t.alerted?lvlTag(t.rr1):`<span class="tag gold">⛔ not alerted</span>`}</span>
     <span class="cr2 ${g.r>=0?"pos":"neg"}">${rTx(g.r)} · ${usdTx(g.r*risk)}</span>
     <span class="cn">${OUT_TXT[g.status]}${g.closedAt?` · closed ${fmtDate(g.closedAt)}`:""}${g.enteredAt?` · entered ${fmtDate(g.enteredAt)}`:""}${t.all?" · all 5 checks":""}</span></div>`;}).join("");
-  h+=`<div class="status" style="margin-top:8px">Saved on this device for 60 days. Results re-played on real prices with today's rules (trailing stop after Target 1, fees not included). Tap a trade to check the coin.</div>`;
+  h+=`<div class="status" style="margin-top:8px">${syncLine()}</div><div class="status" style="margin-top:4px">Trades the bot sees are kept for good on the server; ones only this device saw are kept here for 60 days. Results re-played on real prices with today's rules (trailing stop after Target 1, fees not included). Tap a trade to check the coin.</div>`;
   box.innerHTML=h;
   box.querySelectorAll(".ctr").forEach(r=>r.onclick=()=>{setView("setups");$("q").value=r.dataset.sym;updScanLabel&&updScanLabel();checkCoin();});
   pollLive();
@@ -2731,7 +2753,7 @@ window.cgBot=async(o={})=>{
       const tk=h.track,lv=h.lv,bull=dirOf(h.type)==="bull",live=h.live||h.close,ti=trackInfo(h);
       const f=v=>v==null?null:fmtP(v),pc=v=>lv?((v/lv.entry-1)*100):null;
       return {key:[h.id,h.tf,h.type,h.time].join("|"),sym:h.sym,tf:h.tf,label:LABEL[h.type],dir:bull?"long":"short",
-        score:h.sc.score,verdict:VERDICT[h.sc.verdict][0],checks:`${h.chk.n}/${h.chk.total}`,all:h.chk.all,tier:tierOf(h),actionable:actionableOf(h)[0],
+        score:h.sc.score,verdict:VERDICT[h.sc.verdict][0],checks:`${h.chk.n}/${h.chk.total}`,all:h.chk.all,tier:tierOf(h),block:tierOf(h)==="other"?(ruleBlock(h)||btcBlock(h)||"below the alert rules"):null,actionable:actionableOf(h)[0],
         missing:h.chk.items.filter(i=>!i.ok).map(i=>i.txt),style:sty?tradeType(h,sty).label:"",styleTxt:sty?tradeType(h,sty).txt:"",
         method:lv?MNAME[lv.method]:"",why:h.rec.why,status:tk?tk.status:null,missed:!!tk&&!!tk.missed,t1hit:!!tk&&tk.t1>=0,t1all:!!tk&&!!tk.t1all,btcHalf:(()=>{const r=btcRel(h);return !!r&&dirOf(h.type)==="bull"&&!r.up;})(),r:tk&&tk.done?tk.r:null,trail:!!tk&&!!tk.trail,trailStop:tk&&tk.trail&&tk.t1>=0&&tk.stopNowLvl!=null?fmtP(tk.stopNowLvl):null,
         filledAt:tk&&tk.status==="open"?(tk.atClose?h.sigTime:tk.tt):null,stateTxt:ti?ti[0]:"",detail:ti?ti[2]:"",
