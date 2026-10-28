@@ -1929,7 +1929,7 @@ async function allTrades(){
     if(!o)m.set(t.key,t);else{const done=OUT_TXT[t.g.status];if(done||!o.g||!(gOf(o)&&gOf(o).fill>0))m.set(t.key,{...o,...t,res:done?t.g:o.res,g:t.g});}}
   return [...m.values()];
 }
-const syncLine=()=>SREC?`Synced with the server record · updated ${fmtDate(SREC.updated)}`:SREC_ERR==="none"||SREC_ERR===404?"Server record not set up yet: showing this device only.":SREC_ERR?"Couldn't reach the server record: showing this device only.":"";
+const syncLine=()=>SREC?`Prices and R are live · trade status from the server, checked every 5 minutes (last change ${fmtDate(SREC.updated)})`:SREC_ERR==="none"||SREC_ERR===404?"Server record not set up yet: showing this device only.":SREC_ERR?"Couldn't reach the server record: showing this device only.":"";
 const rTx=x=>`${x>=0?"+":""}${x.toFixed(2)}R`,usdTx=x=>`${x>=0?"+":"−"}$${Math.abs(x).toFixed(2)}`;
 // ---------- Open trades / Closed trades tabs ----------
 // "Sent" means the Telegram bot actually alerted it (from the server record). Everything else says why it wasn't sent.
