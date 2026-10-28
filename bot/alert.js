@@ -18,6 +18,9 @@
 //   BRIEF=true  send the daily BTC, ETH and alts briefs now (otherwise once a day, on the first run after 9:30 am New York time)
 //   SCORECARD=true  send the weekly scorecard now (otherwise once a week, on the first run after 6 pm New York time on Sunday)
 //   BROWSER_CHANNEL=chrome  use the installed Google Chrome instead of Playwright's Chromium
+//   TELEGRAM_DYOR_CHAT_ID  a second chat (e.g. a private channel with this bot as admin; set it with: cg dyor). Setups that
+//                    don't make the main alerts (below the rules, or on a timeframe that isn't backtested) go there, short
+//                    and marked 🔍 DYOR. DYOR_TFS: timeframes scanned for it (default 1h,4h,1d).
 //   CG_GITHUB_TOKEN  a GitHub token that can write this repo's contents: the permanent trade record (bot/record.json on
 //                    the server) is then published to data/trades.json, which the app reads on every device
 //   CG_GITHUB_REPO   owner/repo for that file (default marketscanner247/crypto-grabber)
@@ -29,6 +32,11 @@ const GH_TOKEN = process.env.CG_GITHUB_TOKEN || "", GH_REPO = process.env.CG_GIT
 const TOKEN = process.env.TELEGRAM_TOKEN || "", CHAT = process.env.TELEGRAM_CHAT_ID || "";
 const MIN = (process.env.ALERT_MIN || "risk").toLowerCase();
 const TFS = (process.env.ALERT_TFS || "4h").split(",").map(s => s.trim()).filter(Boolean);
+const DYOR_CHAT = process.env.TELEGRAM_DYOR_CHAT_ID || "";
+const DYOR_TFS = DYOR_CHAT ? (process.env.DYOR_TFS || "1h,4h,1d").split(",").map(s => s.trim()).filter(Boolean) : [];
+const ORDER = ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d", "3d", "1w"];
+const SCAN_TFS = [...new Set([...TFS, ...DYOR_TFS])].sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));
+const DYOR_MAX = +process.env.DYOR_MAX_PER_RUN || 8;   // keeps a burst (e.g. right after a 4h close) from flooding the channel
 const TZ = process.env.TZ_NAME || "America/Toronto";
 const repo = process.env.GITHUB_REPOSITORY || "";
 const SITE = process.env.SITE_URL || (repo ? `https://${repo.split("/")[0].toLowerCase()}.github.io/${repo.split("/")[1]}/` : "");
@@ -37,7 +45,7 @@ const BRIEF = String(process.env.BRIEF || "").toLowerCase() === "true";
 const SCORECARD = String(process.env.SCORECARD || "").toLowerCase() === "true";
 const DAILY = String(process.env.DAILY || "").toLowerCase() === "true";   // send today's scoreboard now (otherwise just after midnight, for the day that ended)
 const SIZE = 1000, FEE = 0.001;
-const RISK = +process.env.RISK_USD || 10;              // $ lost if the stop is hit: sets the position size shown in alerts
+const POS = +process.env.POSITION_USD || 1000;        // every trade is a fixed $1,000 position (half size $500)
 const MAX_OPEN = +process.env.MAX_OPEN || 3;
 // Alts move with BTC: several alt longs (or shorts) at once are one big BTC bet. At most this many open the same way.
 const MAX_SAME_DIR = +process.env.MAX_SAME_DIR || 2;
@@ -62,13 +70,13 @@ const esc = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").re
 const pct = v => v == null ? "" : `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`;
 const when = t => new Date(t).toLocaleString("en-CA", { timeZone: TZ, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: true });
 
-async function send(html) {
-  if (!TOKEN || !CHAT) { console.log("\n[dry run, no Telegram secrets]\n" + html.replace(/<[^>]+>/g, "")); return true; }
+async function send(html, chat = CHAT) {
+  if (!TOKEN || !chat) { console.log("\n[dry run, no Telegram secrets]\n" + html.replace(/<[^>]+>/g, "")); return true; }
   for (let i = 0; i < 3; i++) {
     try {
       const r = await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ chat_id: CHAT, text: html, parse_mode: "HTML", disable_web_page_preview: true })
+        body: JSON.stringify({ chat_id: chat, text: html, parse_mode: "HTML", disable_web_page_preview: true })
       });
       const j = await r.json();
       if (j.ok) return true;
@@ -100,7 +108,7 @@ const whyNot = s => okS(s) ? null : (s.block || (/^Counter/.test(s.style || "") 
 // Setups that never filled are dropped after 7 days; filled trades are kept for good.
 function loadRec() { try { const r = JSON.parse(fs.readFileSync(REC, "utf8")); if (Array.isArray(r.list)) return r; } catch (e) {} return { list: [] }; }
 const trimRec = r => { const g = r.g || {}, p = r.plan || {};
-  return { key: r.key, sym: r.sym, tf: r.tf, dir: r.dir, sigTime: r.sigTime, seen: r.seen, alerted: !!r.alerted, why: r.why || null, rr1: p.rr1 ?? null, all: !!r.all, score: r.score ?? null,
+  return { key: r.key, sym: r.sym, tf: r.tf, dir: r.dir, sigTime: r.sigTime, seen: r.seen, alerted: !!r.alerted, sent: !!r.sent, dyor: !!r.dyor, why: r.why || null, rr1: p.rr1 ?? null, all: !!r.all, score: r.score ?? null,
     entry: p.entry, stop: p.stop, t1: p.t1, status: g.status || "pending", r: g.r ?? 0, fill: g.fill ?? 0, t1hit: !!g.t1, enteredAt: g.enteredAt || null, closedAt: g.closedAt || null,
     entryP: g.entryP ?? null, stopA: g.stopA ?? null, stopNow: g.stopNow ?? null, last: g.last ?? null }; };
 async function gh(method, url, body) {
@@ -111,7 +119,7 @@ async function gh(method, url, body) {
 async function publishRec(rec, now) {
   if (!GH_TOKEN) return null;
   const list = rec.list.filter(r => r.g && (r.g.fill > 0 || r.g.status === "pending")).map(trimRec);
-  const sig = JSON.stringify(list.map(t => [t.key, t.status, t.t1hit, t.alerted])), full = JSON.stringify(list);
+  const sig = JSON.stringify(list.map(t => [t.key, t.status, t.t1hit, t.alerted, t.sent, t.dyor])), full = JSON.stringify(list);
   if (sig === rec.pubSig && (full === rec.pubFull || now - (rec.pubAt || 0) < 30 * 60e3)) return null;
   const body = JSON.stringify({ updated: now, note: "Crypto Grabber trade record, written by the alert bot", trades: list });
   const cur = await gh("GET", `${GH_PATH}?ref=main`);
@@ -146,8 +154,8 @@ function plan(s) {
 }
 function sizeLine(s) {
   const p = Math.abs(s.stopNowPct ?? s.stopPct); if (!p) return "";
-  const why = [risky(s) && "high risk", s.btcHalf && "BTC below its 4h EMA 50"].filter(Boolean), risk = why.length ? RISK / 2 : RISK, pos = risk / (p / 100);
-  return `\nSize: risk $${risk} → $${pos >= 1000 ? Math.round(pos).toLocaleString("en-US") : pos.toFixed(0)} position${why.length ? ` (half size: ${why.join(", ")})` : ""}${s.confirm && !s.entryNow ? " (estimate, final at the CHoCH)" : ""}`;
+  const why = [risky(s) && "high risk", s.btcHalf && "BTC below its 4h EMA 50"].filter(Boolean), pos = why.length ? POS / 2 : POS;
+  return `\nSize: $${pos.toLocaleString("en-US")} position${why.length ? ` (half size: ${why.join(", ")})` : ""} · lose about $${(pos * p / 100).toFixed(0)} at the stop${s.confirm && !s.entryNow ? " (estimate, final at the CHoCH)" : ""}`;
 }
 const ctxLines = s => s.notes && s.notes.length ? `\n${s.notes.map(esc).join("\n")}` : "";
 function links(s) {
@@ -158,11 +166,11 @@ function msgReady(s) {
 }
 // Lower timeframe confirmed: tell the trader to place the limit order at the retest level now.
 function msgConfirm(s) {
-  const up = s.dir === "long", w = up ? "BUY" : "SELL", p = Math.abs(s.retStopPct || 0), pos = p ? RISK / (p / 100) : null;
+  const up = s.dir === "long", w = up ? "BUY" : "SELL", p = Math.abs(s.retStopPct || 0), pos = p ? POS : null;
   return `🔔 <b>${risky(s) ? "⚠️ " : ""}CONFIRMED · PLACE LIMIT ${w} · ${esc(s.sym)} ${esc(s.tf)}</b>${lvlLine(s)}\n` +
     `The ${esc(s.confirm)} broke structure ${up ? "up" : "down"} (CHoCH). Don't chase it: wait for the retest.\n\n` +
     `Limit ${w.toLowerCase()}: <b>${esc(s.retLvl)}</b> (retest of ${esc(s.retSrc)})\nStop: <b>${esc(s.retStop)}</b>${p ? ` (${p.toFixed(1)}%)` : ""}\n` +
-    `Target 1: ${esc(s.t1)} · Target 2: ${esc(s.t2)}\nPrice now: ${esc(s.live)}${pos ? `\nSize: risk $${RISK} → $${pos >= 1000 ? Math.round(pos).toLocaleString("en-US") : pos.toFixed(0)} position` : ""}` +
+    `Target 1: ${esc(s.t1)} · Target 2: ${esc(s.t2)}\nPrice now: ${esc(s.live)}${pos ? `\nSize: $${pos.toLocaleString("en-US")} position · lose about $${(pos * p / 100).toFixed(0)} at the stop` : ""}` +
     `${ctxLines(s)}\n\nCancel the order if it hasn't filled within about 12 ${esc(s.confirm)} candles, or if price runs to Target 1 first.\n${links(s)}`;
 }
 function msgEnter(s) {
@@ -232,7 +240,7 @@ function daily(list, grades, setups, now, date) {
   const today = rows.filter(t => t.g.fill > 0 && CLOSED.includes(t.g.status) && isToday(t.g.closedAt || t.at));
   const open = rows.filter(t => t.g.fill > 0 && t.g.status === "open");
   const pnl = today.reduce((a, t) => a + t.g.usd - t.g.fill * SIZE * FEE * 2, 0), R = today.reduce((a, t) => a + t.g.r, 0);
-  const ok = s => (!ALLOW_COUNTER && /^Counter/.test(s.style || "")) ? false : MIN === "any" ? true : s.all ? true : MIN === "take" ? s.score >= 70 && s.actionable : MIN === "risk" ? s.tier === "risk" : false;
+  const ok = s => TFS.includes(s.tf) && okS(s);
   const pend = setups.filter(s => s.status === "pending" && ok(s));
   const waiting = pend.filter(s => s.confirm && s.touched), ready = pend.filter(s => !(s.confirm && s.touched) && s.near);
   const tag = t => `${esc(t.sym)} ${esc(t.tf)} ${t.dir}`, rTxt = v => `${v >= 0 ? "+" : ""}${v.toFixed(2)}R`;
@@ -286,12 +294,15 @@ function daily(list, grades, setups, now, date) {
     }
     for (const b of briefs) if (await send(b.html + (SITE && b.name === "Alts" ? `\n<a href="${esc(SITE)}">Crypto Grabber</a>` : ""))) { b.sent = true; if (!state.__brief || state.__brief.date !== ny.date) state.__brief = { date: ny.date, seen: Date.now() }; }
     if (briefs.some(b => b.sent)) try { fs.writeFileSync(STATE, JSON.stringify(state)); } catch (e) {}   // don't resend if the scan fails
-    out = await page.evaluate(([tfs, entry, minRR]) => window.cgBot({ tfs, entry, minRR }), [TFS, ENTRY, MIN_RR]);
+    out = await page.evaluate(([tfs, entry, minRR]) => window.cgBot({ tfs, entry, minRR }), [SCAN_TFS, ENTRY, MIN_RR]);
     try { rot = await page.evaluate(() => window.cgRotation && window.cgRotation()); } catch (e) {}
     try {
       for (const s of out.setups) { if (!s.plan || !s.sigTime) continue; let r = rec.list.find(x => x.key === s.key);
         if (!r) rec.list.push(r = { key: s.key, sym: s.sym, tf: s.tf, dir: s.dir, sigTime: s.sigTime, seen: nowT, alerted: okS(s), why: whyNot(s), all: !!s.all, score: s.score, plan: s.plan });
         else if (okS(s) && !r.alerted) { r.alerted = true; r.why = null; } }
+      // trades the bot already alerted (its scorecard journal) count as sent
+      for (const t of J.list) { const r = rec.list.find(x => x.key === t.key); if (r) r.sent = true;
+        else if (t.plan) rec.list.push({ key: t.key, sym: t.sym, tf: t.tf, dir: t.dir, sigTime: t.sigTime, seen: t.at, alerted: true, sent: true, why: null, all: !!t.all, score: t.score, plan: t.plan }); }
       const todo = rec.list.filter(r => !r.done).slice(-80);
       if (todo.length) { const g = await page.evaluate(([l, n]) => window.cgGrade(l, n), [todo, SIZE]);
         for (const x of g) { const r = rec.list.find(y => y.key === x.key); if (!r || x.err) continue; r.g = x;
@@ -300,9 +311,6 @@ function daily(list, grades, setups, now, date) {
     if (weekDue || dayDue) { try { grades = await page.evaluate(([l, n]) => window.cgGrade(l, n), [J.list, SIZE]); } catch (e) { console.error("scorecard failed:", e.message); } }
   } finally { await browser.close(); srv.close(); }
 
-  rec.list = rec.list.filter(r => !(r.done && !(r.g && r.g.fill > 0) && nowT - r.seen > 7 * 864e5));
-  try { const pub = await publishRec(rec, nowT); if (pub) console.log("Trade record published to GitHub."); } catch (e) { console.error("trade record publish failed:", e.message); }
-  try { fs.writeFileSync(REC, JSON.stringify(rec)); } catch (e) { console.error("could not save the trade record:", e.message); }
   console.log(`${out.status} · ${out.setups.length} setup(s)`);
   if (out.market) console.log(`Market: BTC ${out.market.btc} · Alts ${out.market.alts} · ${out.market.mkt} · ${out.market.lead}`);
   const now = +process.env.MOCK_NOW || Date.now(), sent = [];   // MOCK_NOW is only used by tests
@@ -326,8 +334,9 @@ function daily(list, grades, setups, now, date) {
   if (grades && weekDue) { if (await send(scorecard(J.list, grades, now))) { state.__week = { date: ny.date, seen: now }; sent.push("weekly scorecard"); } }
   if (grades && dayDue) { if (await send(daily(J.list, grades, out.setups, now, repDate))) { if (!DAILY) state.__day = { date: repDate, seen: now }; sent.push("daily scoreboard"); } }
   // every alerted trade goes into the journal with its fixed plan, so the scorecard can grade it later
-  const jot = s => { if (s.plan && !J.list.some(x => x.key === s.key)) J.list.push({ key: s.key, sym: s.sym, tf: s.tf, dir: s.dir, all: !!s.all, score: s.score, sigTime: s.sigTime, at: now, plan: s.plan }); };
-  const ok = s => (!ALLOW_COUNTER && /^Counter/.test(s.style || "")) ? false : MIN === "any" ? true : s.all ? true : MIN === "take" ? s.score >= 70 && s.actionable : MIN === "risk" ? s.tier === "risk" : false;
+  const jot = s => { const rr = rec.list.find(x => x.key === s.key); if (rr) rr.sent = true;   // the trade record knows what reached Telegram
+    if (s.plan && !J.list.some(x => x.key === s.key)) J.list.push({ key: s.key, sym: s.sym, tf: s.tf, dir: s.dir, all: !!s.all, score: s.score, sigTime: s.sigTime, at: now, plan: s.plan }); };
+  const ok = s => TFS.includes(s.tf) && okS(s);
   // risk caps: count the alerted trades still open, and today's stop-outs (New York day)
   const openN = () => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && v.enter > 0 && !v.done).length;
   const openDir = d => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && v.enter > 0 && !v.done && v.dir === d).length;
@@ -358,9 +367,32 @@ function daily(list, grades, setups, now, date) {
     }
     if (Object.keys(st).length) state[s.key] = { ...st, seen: now };
   }
+  // 🔍 DYOR: everything the main alerts leave out, short, to the second chat. Not counted in the risk caps or the scorecard.
+  if (DYOR_CHAT) {
+    let nD = 0;
+    const why = s => !TFS.includes(s.tf) ? `${s.tf} setup: not backtested` : whyNot(s) || "below the alert rules";
+    const lv = s => { const L = LVL(s.rr1); return L ? ` · ${{ safe: "🛡️ Safest", bal: "⚖️ Balanced", max: "🚀 Most profit" }[L.k]}-size target` : ""; };
+    const line1 = (s, what) => `🔍 <b>DYOR · ${what} · ${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b>${lv(s)}\n${esc(why(s))}`;
+    const lvls = s => `Entry ${esc(s.entry)} · Stop ${esc(s.stopNow || s.stop)} · Target 1 ${esc(s.t1)}${s.rr1 != null ? ` (${s.rr1.toFixed(1)}R)` : ""}`;
+    for (const s of out.setups) {
+      if (ok(s) || !DYOR_TFS.includes(s.tf) || nD >= DYOR_MAX) continue;
+      const k = "dyor:" + s.key, d = state[k] || {}, mark = () => { const r = rec.list.find(x => x.key === s.key); if (r) r.dyor = true; };
+      const recent = s.filledAt && now - s.filledAt <= Math.max(2 * s.tfMs, 45 * 60e3);
+      if (s.status === "pending" && s.near && !d.ready) { if (await send(`${line1(s, "setup ready")}\n${lvls(s)}\nPrice now ${esc(s.live)}\n${links(s)}`, DYOR_CHAT)) { d.ready = now; nD++; mark(); } }
+      else if (s.status === "open" && !d.enter && recent && (s.prog == null || s.prog < 0.5)) { if (await send(`${line1(s, "entered")}\n${lvls(s)}${sizeLine({ ...s, all: false })}\n${links(s)}`, DYOR_CHAT)) { d.enter = now; nD++; mark(); } }
+      else if (d.enter > 0 && !d.t1 && s.t1hit && s.status === "open") { if (await send(`🔍 🎯 <b>DYOR · ${esc(s.sym)} ${esc(s.tf)}: Target 1 hit</b> · take half, stop to entry, trail the rest`, DYOR_CHAT)) d.t1 = now; }
+      else if (d.enter > 0 && !d.done && ["t2", "t1_be", "stopped", "timeout"].includes(s.status)) { if (await send(`🔍 ⚪ <b>DYOR · ${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b>: ${s.status === "stopped" ? "❌ stopped" : "✅ closed"}${s.r != null ? ` (${s.r >= 0 ? "+" : ""}${s.r.toFixed(2)}R)` : ""}`, DYOR_CHAT)) d.done = now; }
+      if (Object.keys(d).length) state[k] = { ...d, seen: now };
+    }
+    if (nD) sent.push(`${nD} DYOR`);
+  }
   // forget anything older than 10 days
   J.list = J.list.filter(t => now - t.at <= 35 * 864e5); J.seen = now;
   for (const k of Object.keys(state)) if (now - (state[k].seen || 0) > 10 * 864e5) delete state[k];
+  // the trade record goes last, so it knows which trades this run sent to Telegram
+  rec.list = rec.list.filter(r => !(r.done && !(r.g && r.g.fill > 0) && nowT - r.seen > 7 * 864e5));
+  try { const pub = await publishRec(rec, nowT); if (pub) console.log("Trade record published to GitHub."); } catch (e) { console.error("trade record publish failed:", e.message); }
+  try { fs.writeFileSync(REC, JSON.stringify(rec)); } catch (e) { console.error("could not save the trade record:", e.message); }
   fs.writeFileSync(STATE, JSON.stringify(state));
   console.log(sent.length ? `Sent: ${sent.join(", ")}` : "No new alerts.");
 })().catch(e => { console.error(e); try { fs.existsSync(STATE) || fs.writeFileSync(STATE, "{}"); } catch (_) {} process.exit(1); });

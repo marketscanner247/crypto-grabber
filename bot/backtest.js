@@ -69,6 +69,12 @@ const line = (lab, x) => `${lab}: ${x.closed} closed · win ${pc(x.winRate)} · 
       L.push(line("· all 5 checks", v.aplus));
       L.push("");
     }
+    const m9 = r.variants.find(v => /^M9/.test(v.name));
+    if (m9 && m9.cuts) {
+      L.push(`<b>Inside M9 (default): flags and PO3</b>`);
+      for (const [lab, x] of m9.cuts) if (/^(flag|PO3)/.test(lab) && x.closed) L.push(line(`· ${lab}`, x));
+      L.push("");
+    }
     const a = r.variants[0];
     if (a.cuts) {
       L.push(`<b>Inside A: which setups made the money</b>`);

@@ -29,6 +29,22 @@ case "${1:-status}" in
   stop)      systemctl disable --now crypto-grabber.timer && echo "Alerts paused." ;;
   start)     systemctl enable --now crypto-grabber.timer && echo "Alerts on, every 5 minutes." ;;
   token)     echo "Edit $ENVF (nano $ENVF), save, done. It's read on every check." ;;
+  dyor)      # connect a second Telegram chat (a private channel) for the 🔍 DYOR alerts
+    [ "$(id -u)" = 0 ] || { echo "Run as root (or: sudo cg ...)"; exit 1; }
+    set -a; . "$ENVF"; set +a
+    echo "1. In Telegram: create a new Channel (private), e.g. 'Crypto Grabber DYOR'."
+    echo "2. Channel info -> Administrators -> Add admin -> pick your alerts bot -> allow 'Post messages' -> Save."
+    echo "3. Post any message in the channel (e.g. hi)."
+    read -rp "Done? Press Enter... " _ </dev/tty
+    OUT=$(curl -s "https://api.telegram.org/bot${TELEGRAM_TOKEN}/getUpdates")
+    PICK=$(printf '%s' "$OUT" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{let id="",t="";try{for(const u of JSON.parse(d).result||[]){const c=(u.channel_post||u.message||u.my_chat_member||u.edited_channel_post||{}).chat;if(c&&c.type!=="private"){id=c.id;t=c.title||"";}}}catch(e){}process.stdout.write(id?id+"\t"+t:"");});')
+    [ -n "$PICK" ] || { echo "Couldn't find the channel. Check the bot is an admin there, post another message, and run: cg dyor"; exit 1; }
+    ID=${PICK%%$'\t'*}; TITLE=${PICK#*$'\t'}
+    sed -i '/^TELEGRAM_DYOR_CHAT_ID=/d' "$ENVF"; printf 'TELEGRAM_DYOR_CHAT_ID=%s\n' "$ID" >> "$ENVF"; chmod 600 "$ENVF"
+    curl -s -o /dev/null "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" --data-urlencode "chat_id=${ID}" \
+      --data-urlencode "text=🔍 DYOR alerts connected. Setups that don't make the main alerts (below the rules, or 1h / 1d) will come here."
+    echo "Saved: DYOR alerts go to '${TITLE}'. You should see a 'DYOR alerts connected' message there."
+    ;;
   github)    # save the GitHub token for the shared trade record (hidden input, never shown)
     [ "$(id -u)" = 0 ] || { echo "Run as root (or: sudo cg ...)"; exit 1; }
     read -rsp "Paste your GitHub token (hidden), then press Enter: " T </dev/tty; echo
@@ -49,6 +65,7 @@ cg backtest   test the rules on real prices: cg backtest [days] [timeframes], e.
               (add ltf at the end for the lower-timeframe entries: cg backtest 365 4h ltf)
 cg update     pull the latest files from GitHub and reinstall (normally automatic)
 cg github     save the GitHub token for the shared trade record (phone and PC see the same trades)
+cg dyor       connect a second Telegram channel for the 🔍 DYOR alerts (setups below the rules, 1h / 1d)
 cg stop       pause alerts        cg start   turn them back on
 EOF
   ;;
