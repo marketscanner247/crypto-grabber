@@ -1919,7 +1919,7 @@ async function srvLoad(){
     if(r.ok){SREC=await r.json();SREC_AT=Date.now();SREC_ERR=false;try{localStorage.setItem("cgrab_srec",JSON.stringify(SREC));}catch(e){}}else SREC_ERR=r.status!==404?r.status:"none";}catch(e){SREC_ERR=true;}
   return SREC;
 }
-const fromSrv=x=>({key:x.key,sym:x.sym,tf:x.tf,dir:x.dir,sigTime:x.sigTime,seen:x.seen,alerted:x.alerted,why:x.why,rr1:x.rr1,all:x.all,src:"server",
+const fromSrv=x=>({key:x.key,sym:x.sym,tf:x.tf,dir:x.dir,sigTime:x.sigTime,seen:x.seen,alerted:x.alerted,sent:!!x.sent,why:x.why,rr1:x.rr1,all:x.all,src:"server",
   plan:{entry:x.entry,stop:x.stop,t1:x.t1,rr1:x.rr1},
   g:{status:x.status,r:x.r,fill:x.fill,t1:x.t1hit,enteredAt:x.enteredAt,closedAt:x.closedAt,entryP:x.entryP,stopA:x.stopA,stopNow:x.stopNow,last:x.last}});
 // This device's saved trades plus the server record (the server's result wins for the same trade).
@@ -1932,13 +1932,16 @@ async function allTrades(){
 const syncLine=()=>SREC?`Synced with the server record · updated ${fmtDate(SREC.updated)}`:SREC_ERR==="none"||SREC_ERR===404?"Server record not set up yet: showing this device only.":SREC_ERR?"Couldn't reach the server record: showing this device only.":"";
 const rTx=x=>`${x>=0?"+":""}${x.toFixed(2)}R`,usdTx=x=>`${x>=0?"+":"−"}$${Math.abs(x).toFixed(2)}`;
 // ---------- Open trades / Closed trades tabs ----------
+// "Sent" means the Telegram bot actually alerted it (from the server record). Everything else says why it wasn't sent.
+const notSentWhy=t=>!t.alerted?(t.why||"below the alert rules"):t.tf!=="4h"?`meets the rules, but the bot only watches 4h (this is a ${t.tf} setup)`
+  :t.src!=="server"?"meets the rules; seen by this device, not in the bot's record":"meets the rules, but the bot didn't send it (it filled before the bot saw it, or a risk limit skipped it)";
 // Each trade is one row that expands in place (tap to open, tap again to close) with its plan, result and a chart.
 // The tabs keep what they show: switching tabs is instant, and updates (every scan, or when a tab is opened and the data
 // is over 2 minutes old) are merged in without closing rows you have open or moving the page.
 const TR_STATUS={pending:"Waiting for entry",open:"In trade",t2:"Target 2 hit",t1_be:"Target 1, then trailed out",stopped:"Stopped",timeout:"Closed on time limit"};
 function trRow(t){
   const g=gOf(t),bull=t.dir==="long",P=t.plan||{},E=g.entryP??P.entry,first=g.stopA??P.stop,R=Math.abs(E-first),id=(src||BINANCE).id(t.sym),$r=r=>usdTx(usdOfR(r,E,R));
-  const open=g.status==="open",lvl=t.alerted?lvlTag(t.rr1??P.rr1):"",res=open?null:g.r;
+  const open=g.status==="open",lvl=(t.sent?`<span class="tag aplus">📨 Telegram</span>`:"")+(t.alerted?lvlTag(t.rr1??P.rr1):""),res=open?null:g.r;
   const st=open?(g.t1?"🎯 T1 hit · trailing":"In trade"):({t1_be:"T1 + trail",t2:"Target 2",stopped:"Stopped",timeout:"Time limit"}[g.status]||g.status);
   const when=open?(g.enteredAt?`since ${fmtDate(g.enteredAt)}`:""):(g.closedAt?fmtDate(g.closedAt):"");
   const row=(k,v,n,c)=>`<div class="pr"><span class="pk">${k}</span><span class="pv ${c||""}">${v}</span><span class="pn">${n||""}</span></div>`;
@@ -1948,7 +1951,7 @@ function trRow(t){
     <span class="trr">${open?`<span class="lp" data-live="${esc(id)}">${fmtP(g.last??E)}</span><span class="pnl ${g.r>=0?"pos":"neg"}" data-pnl="${esc(id)}" data-e="${E}" data-r="${R}" data-d="${bull?1:-1}">${rTx(g.r)}</span>`
       :`<span class="cr2 ${res>=0?"pos":"neg"}">${rTx(res)}</span><span class="tw">${$r(res)}</span>`}<span class="tw">${when}</span></span></summary>
     <div class="tb">
-      ${t.alerted?"":`<div class="rec gold"><b>⛔ Not alerted</b> · ${esc(t.why||"below the alert rules")}.</div>`}
+      ${t.sent?"":`<div class="rec gold"><b>Not sent to Telegram</b> · ${esc(notSentWhy(t))}.</div>`}
       ${row("Entry",fmtP(E),g.enteredAt?`filled ${fmtDate(g.enteredAt)}`:"planned")}
       ${row(stopNow!=null?"Stop now":"Stop",fmtP(stopNow??first),stopNow!=null?`trailing · started at ${fmtP(first)}`:`${pctTxt(first,E)} · risk ${(R/E*100).toFixed(1)}%`,"neg")}
       ${row("Target 1",fmtP(P.t1),`${pctTxt(P.t1,E)} · ${(Math.abs(P.t1-E)/R).toFixed(1)}R${g.t1?" · hit, half taken":""}`,"pos")}
@@ -1983,16 +1986,16 @@ function renderTrades(L){
   const filled=L.filter(t=>{const g=gOf(t);return g&&g.fill>0;});
   const open=filled.filter(t=>gOf(t).status==="open").sort((a,b)=>(gOf(b).enteredAt||0)-(gOf(a).enteredAt||0));
   const closed=filled.filter(t=>OUT_TXT[gOf(t).status]).sort((a,b)=>(gOf(b).closedAt||0)-(gOf(a).closedAt||0));
-  const oa=open.filter(t=>t.alerted),on=open.filter(t=>!t.alerted),ca=closed.filter(t=>t.alerted),cn=closed.filter(t=>!t.alerted);
+  const oa=open.filter(t=>t.sent),on=open.filter(t=>!t.sent),ca=closed.filter(t=>t.sent),cn=closed.filter(t=>!t.sent);
   const grp=(title,note,a)=>a.length?`<div class="grp"><div class="gh">${title} <span>${a.length}</span></div>${note?`<div class="gn">${note}</div>`:""}</div>${a.map(trRow).join("")}`:"";
   const sum=a=>{if(!a.length)return "";const tot=a.reduce((x,t)=>x+gOf(t).r,0),won=a.filter(t=>gOf(t).r>0).length,st=a.filter(t=>gOf(t).status==="stopped").length;
     const usd=a.reduce((x,t)=>x+usdT(t),0);return `<b>${a.length}</b> closed · <b>${won}</b> won · ${st} stopped · <b class="${tot>=0?"pos":"neg"}">${rTx(tot)}</b> (${usdTx(usd)})`;};
   const foot=`<div class="status" style="margin-top:10px">${esc(syncLine())} · Tap a trade to open it, tap again to close.</div>`;
-  morphRows($("openTab"),open.length?`<div class="csumry"><b>${open.length}</b> open · ${oa.length} alerted, ${on.length} not alerted · profit/loss is live</div>`+
-    grp("✅ Alerted","Sent to Telegram by the bot.",oa)+grp("⛔ Not alerted","Below the alert rules (each says why). Shown in case you took it.",on)+foot
+  morphRows($("openTab"),open.length?`<div class="csumry"><b>${open.length}</b> open · ${oa.length} sent to Telegram, ${on.length} not sent · profit/loss is live</div>`+
+    grp("📨 Sent to Telegram","The bot alerted these (4h).",oa)+grp("Not sent","App-only timeframes, or below the alert rules (each says why). Shown in case you took it.",on)+foot
     :`<div class="empty">No open trades right now. A setup moves here as soon as its entry fills.</div>${foot}`);
-  morphRows($("closed"),closed.length?`<div class="csumry">Alerted: ${sum(ca)||"none yet"}${cn.length?`<br>Not alerted: ${sum(cn)}`:""}<br><span class="mu2">$1,000 per trade · stop, Target 1 + trail, or Target 2</span></div>`+
-    grp("✅ Alerted","",ca)+grp("⛔ Not alerted","",cn)+foot
+  morphRows($("closed"),closed.length?`<div class="csumry">Sent to Telegram: ${sum(ca)||"none yet"}${cn.length?`<br>Not sent: ${sum(cn)}`:""}<br><span class="mu2">$1,000 per trade · stop, Target 1 + trail, or Target 2</span></div>`+
+    grp("📨 Sent to Telegram","",ca)+grp("Not sent","",cn)+foot
     :`<div class="empty">No closed trades yet. Trades land here when the stop or a target closes them.</div>${foot}`);
   const lab=(v,n)=>{const b=document.querySelector(`.vtabs [data-view="${v}"]`);if(b)b.innerHTML=`${b.dataset.label}${n?` <span>${n}</span>`:""}`;};
   lab("open",open.length);lab("closed",closed.length);
