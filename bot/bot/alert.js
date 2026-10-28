@@ -100,7 +100,7 @@ const whyNot = s => okS(s) ? null : (s.block || (/^Counter/.test(s.style || "") 
 // Setups that never filled are dropped after 7 days; filled trades are kept for good.
 function loadRec() { try { const r = JSON.parse(fs.readFileSync(REC, "utf8")); if (Array.isArray(r.list)) return r; } catch (e) {} return { list: [] }; }
 const trimRec = r => { const g = r.g || {}, p = r.plan || {};
-  return { key: r.key, sym: r.sym, tf: r.tf, dir: r.dir, sigTime: r.sigTime, seen: r.seen, alerted: !!r.alerted, why: r.why || null, rr1: p.rr1 ?? null, all: !!r.all, score: r.score ?? null,
+  return { key: r.key, sym: r.sym, tf: r.tf, dir: r.dir, sigTime: r.sigTime, seen: r.seen, alerted: !!r.alerted, sent: !!r.sent, why: r.why || null, rr1: p.rr1 ?? null, all: !!r.all, score: r.score ?? null,
     entry: p.entry, stop: p.stop, t1: p.t1, status: g.status || "pending", r: g.r ?? 0, fill: g.fill ?? 0, t1hit: !!g.t1, enteredAt: g.enteredAt || null, closedAt: g.closedAt || null,
     entryP: g.entryP ?? null, stopA: g.stopA ?? null, stopNow: g.stopNow ?? null, last: g.last ?? null }; };
 async function gh(method, url, body) {
@@ -111,7 +111,7 @@ async function gh(method, url, body) {
 async function publishRec(rec, now) {
   if (!GH_TOKEN) return null;
   const list = rec.list.filter(r => r.g && (r.g.fill > 0 || r.g.status === "pending")).map(trimRec);
-  const sig = JSON.stringify(list.map(t => [t.key, t.status, t.t1hit, t.alerted])), full = JSON.stringify(list);
+  const sig = JSON.stringify(list.map(t => [t.key, t.status, t.t1hit, t.alerted, t.sent])), full = JSON.stringify(list);
   if (sig === rec.pubSig && (full === rec.pubFull || now - (rec.pubAt || 0) < 30 * 60e3)) return null;
   const body = JSON.stringify({ updated: now, note: "Crypto Grabber trade record, written by the alert bot", trades: list });
   const cur = await gh("GET", `${GH_PATH}?ref=main`);
@@ -292,6 +292,9 @@ function daily(list, grades, setups, now, date) {
       for (const s of out.setups) { if (!s.plan || !s.sigTime) continue; let r = rec.list.find(x => x.key === s.key);
         if (!r) rec.list.push(r = { key: s.key, sym: s.sym, tf: s.tf, dir: s.dir, sigTime: s.sigTime, seen: nowT, alerted: okS(s), why: whyNot(s), all: !!s.all, score: s.score, plan: s.plan });
         else if (okS(s) && !r.alerted) { r.alerted = true; r.why = null; } }
+      // trades the bot already alerted (its scorecard journal) count as sent
+      for (const t of J.list) { const r = rec.list.find(x => x.key === t.key); if (r) r.sent = true;
+        else if (t.plan) rec.list.push({ key: t.key, sym: t.sym, tf: t.tf, dir: t.dir, sigTime: t.sigTime, seen: t.at, alerted: true, sent: true, why: null, all: !!t.all, score: t.score, plan: t.plan }); }
       const todo = rec.list.filter(r => !r.done).slice(-80);
       if (todo.length) { const g = await page.evaluate(([l, n]) => window.cgGrade(l, n), [todo, SIZE]);
         for (const x of g) { const r = rec.list.find(y => y.key === x.key); if (!r || x.err) continue; r.g = x;
@@ -300,9 +303,6 @@ function daily(list, grades, setups, now, date) {
     if (weekDue || dayDue) { try { grades = await page.evaluate(([l, n]) => window.cgGrade(l, n), [J.list, SIZE]); } catch (e) { console.error("scorecard failed:", e.message); } }
   } finally { await browser.close(); srv.close(); }
 
-  rec.list = rec.list.filter(r => !(r.done && !(r.g && r.g.fill > 0) && nowT - r.seen > 7 * 864e5));
-  try { const pub = await publishRec(rec, nowT); if (pub) console.log("Trade record published to GitHub."); } catch (e) { console.error("trade record publish failed:", e.message); }
-  try { fs.writeFileSync(REC, JSON.stringify(rec)); } catch (e) { console.error("could not save the trade record:", e.message); }
   console.log(`${out.status} · ${out.setups.length} setup(s)`);
   if (out.market) console.log(`Market: BTC ${out.market.btc} · Alts ${out.market.alts} · ${out.market.mkt} · ${out.market.lead}`);
   const now = +process.env.MOCK_NOW || Date.now(), sent = [];   // MOCK_NOW is only used by tests
@@ -326,7 +326,8 @@ function daily(list, grades, setups, now, date) {
   if (grades && weekDue) { if (await send(scorecard(J.list, grades, now))) { state.__week = { date: ny.date, seen: now }; sent.push("weekly scorecard"); } }
   if (grades && dayDue) { if (await send(daily(J.list, grades, out.setups, now, repDate))) { if (!DAILY) state.__day = { date: repDate, seen: now }; sent.push("daily scoreboard"); } }
   // every alerted trade goes into the journal with its fixed plan, so the scorecard can grade it later
-  const jot = s => { if (s.plan && !J.list.some(x => x.key === s.key)) J.list.push({ key: s.key, sym: s.sym, tf: s.tf, dir: s.dir, all: !!s.all, score: s.score, sigTime: s.sigTime, at: now, plan: s.plan }); };
+  const jot = s => { const rr = rec.list.find(x => x.key === s.key); if (rr) rr.sent = true;   // the trade record knows what reached Telegram
+    if (s.plan && !J.list.some(x => x.key === s.key)) J.list.push({ key: s.key, sym: s.sym, tf: s.tf, dir: s.dir, all: !!s.all, score: s.score, sigTime: s.sigTime, at: now, plan: s.plan }); };
   const ok = s => (!ALLOW_COUNTER && /^Counter/.test(s.style || "")) ? false : MIN === "any" ? true : s.all ? true : MIN === "take" ? s.score >= 70 && s.actionable : MIN === "risk" ? s.tier === "risk" : false;
   // risk caps: count the alerted trades still open, and today's stop-outs (New York day)
   const openN = () => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && v.enter > 0 && !v.done).length;
@@ -361,6 +362,10 @@ function daily(list, grades, setups, now, date) {
   // forget anything older than 10 days
   J.list = J.list.filter(t => now - t.at <= 35 * 864e5); J.seen = now;
   for (const k of Object.keys(state)) if (now - (state[k].seen || 0) > 10 * 864e5) delete state[k];
+  // the trade record goes last, so it knows which trades this run sent to Telegram
+  rec.list = rec.list.filter(r => !(r.done && !(r.g && r.g.fill > 0) && nowT - r.seen > 7 * 864e5));
+  try { const pub = await publishRec(rec, nowT); if (pub) console.log("Trade record published to GitHub."); } catch (e) { console.error("trade record publish failed:", e.message); }
+  try { fs.writeFileSync(REC, JSON.stringify(rec)); } catch (e) { console.error("could not save the trade record:", e.message); }
   fs.writeFileSync(STATE, JSON.stringify(state));
   console.log(sent.length ? `Sent: ${sent.join(", ")}` : "No new alerts.");
 })().catch(e => { console.error(e); try { fs.existsSync(STATE) || fs.writeFileSync(STATE, "{}"); } catch (_) {} process.exit(1); });
