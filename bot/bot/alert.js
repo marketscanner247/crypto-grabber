@@ -37,7 +37,7 @@ const BRIEF = String(process.env.BRIEF || "").toLowerCase() === "true";
 const SCORECARD = String(process.env.SCORECARD || "").toLowerCase() === "true";
 const DAILY = String(process.env.DAILY || "").toLowerCase() === "true";   // send today's scoreboard now (otherwise just after midnight, for the day that ended)
 const SIZE = 1000, FEE = 0.001;
-const RISK = +process.env.RISK_USD || 10;              // $ lost if the stop is hit: sets the position size shown in alerts
+const POS = +process.env.POSITION_USD || 1000;        // every trade is a fixed $1,000 position (half size $500)
 const MAX_OPEN = +process.env.MAX_OPEN || 3;
 // Alts move with BTC: several alt longs (or shorts) at once are one big BTC bet. At most this many open the same way.
 const MAX_SAME_DIR = +process.env.MAX_SAME_DIR || 2;
@@ -146,8 +146,8 @@ function plan(s) {
 }
 function sizeLine(s) {
   const p = Math.abs(s.stopNowPct ?? s.stopPct); if (!p) return "";
-  const why = [risky(s) && "high risk", s.btcHalf && "BTC below its 4h EMA 50"].filter(Boolean), risk = why.length ? RISK / 2 : RISK, pos = risk / (p / 100);
-  return `\nSize: risk $${risk} → $${pos >= 1000 ? Math.round(pos).toLocaleString("en-US") : pos.toFixed(0)} position${why.length ? ` (half size: ${why.join(", ")})` : ""}${s.confirm && !s.entryNow ? " (estimate, final at the CHoCH)" : ""}`;
+  const why = [risky(s) && "high risk", s.btcHalf && "BTC below its 4h EMA 50"].filter(Boolean), pos = why.length ? POS / 2 : POS;
+  return `\nSize: $${pos.toLocaleString("en-US")} position${why.length ? ` (half size: ${why.join(", ")})` : ""} · lose about $${(pos * p / 100).toFixed(0)} at the stop${s.confirm && !s.entryNow ? " (estimate, final at the CHoCH)" : ""}`;
 }
 const ctxLines = s => s.notes && s.notes.length ? `\n${s.notes.map(esc).join("\n")}` : "";
 function links(s) {
@@ -158,11 +158,11 @@ function msgReady(s) {
 }
 // Lower timeframe confirmed: tell the trader to place the limit order at the retest level now.
 function msgConfirm(s) {
-  const up = s.dir === "long", w = up ? "BUY" : "SELL", p = Math.abs(s.retStopPct || 0), pos = p ? RISK / (p / 100) : null;
+  const up = s.dir === "long", w = up ? "BUY" : "SELL", p = Math.abs(s.retStopPct || 0), pos = p ? POS : null;
   return `🔔 <b>${risky(s) ? "⚠️ " : ""}CONFIRMED · PLACE LIMIT ${w} · ${esc(s.sym)} ${esc(s.tf)}</b>${lvlLine(s)}\n` +
     `The ${esc(s.confirm)} broke structure ${up ? "up" : "down"} (CHoCH). Don't chase it: wait for the retest.\n\n` +
     `Limit ${w.toLowerCase()}: <b>${esc(s.retLvl)}</b> (retest of ${esc(s.retSrc)})\nStop: <b>${esc(s.retStop)}</b>${p ? ` (${p.toFixed(1)}%)` : ""}\n` +
-    `Target 1: ${esc(s.t1)} · Target 2: ${esc(s.t2)}\nPrice now: ${esc(s.live)}${pos ? `\nSize: risk $${RISK} → $${pos >= 1000 ? Math.round(pos).toLocaleString("en-US") : pos.toFixed(0)} position` : ""}` +
+    `Target 1: ${esc(s.t1)} · Target 2: ${esc(s.t2)}\nPrice now: ${esc(s.live)}${pos ? `\nSize: $${pos.toLocaleString("en-US")} position · lose about $${(pos * p / 100).toFixed(0)} at the stop` : ""}` +
     `${ctxLines(s)}\n\nCancel the order if it hasn't filled within about 12 ${esc(s.confirm)} candles, or if price runs to Target 1 first.\n${links(s)}`;
 }
 function msgEnter(s) {
