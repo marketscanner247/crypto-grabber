@@ -288,6 +288,7 @@ details.trow .tl{display:grid;gap:5px;min-width:0}.trow .ts{font:800 16px var(--
 .trow .tt{display:flex;flex-wrap:wrap;gap:5px}.trow .trr{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex:none;text-align:right}
 .trow .tw{font-size:11.5px;color:var(--muted)}.trow .cr2{font:700 14px var(--mono)}.trow .cr2.pos{color:var(--bull)}.trow .cr2.neg{color:var(--bear)}
 .trow .tb{padding:0 12px 12px;border-top:1px solid var(--line)}.trow .tb .pr:first-of-type{margin-top:8px}
+.trow .trtags{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 8px}.trow .tb .sigw{margin-top:4px}
 .hist{margin:8px 2px 4px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}.hist .hl{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
 .hist .chip small{color:var(--muted);font-size:10.5px;margin-left:4px}
 .vtabs{display:flex;gap:6px;margin:4px 2px 12px}.vtabs button{flex:1;padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--muted);font:700 13.5px var(--display);cursor:pointer}
@@ -1553,6 +1554,7 @@ function invChecks(h){
   }
   return items.length?items:null;
 }
+const entOf=(oo,lv)=>oo&&oo.entryP!=null?oo.entryP:oo&&oo.trig>=0&&oo.fill>0&&oo.avg?oo.avg:lv.entry;
 const isClosed=o=>!!o&&o.status!=="pending"&&o.status!=="open";
 const trackPill=h=>{const i=trackInfo(h);if(!i)return "";const o=h.track,r=isClosed(o)&&o.trig>=0?" "+rTxt(o.r):"";
   return `<span class="pill ${i[1]==="gold"?"flat":i[1]}">${i[0]}${r}</span>`;};
@@ -1560,8 +1562,8 @@ const stPill=h=>h.track&&!h.out?`<span data-tp="${esc(sigKey(h))}">${trackPill(h
 const outPill=h=>h.out?`<span class="pill ${outCls(h.out)}">${OUT[h.out.status]}${h.out.trig>=0?" "+rTxt(h.out.r):""}</span>`:"";
 // For someone not in the trade yet: is it still worth entering?
 const lateTxt=pr=>pr>=1?"Price has reached Target 1. If you're in, take half and move the stop to entry. Too late to enter.":
-  pr>=0.5?`Too late to enter now: price is ${Math.round(pr*100)}% of the way to Target 1. Only manage it if you're already in.`:
-  `Late: price is ${Math.round(pr*100)}% of the way to Target 1, so entering now cuts the reward.`;
+  pr>=0.5?`Not in yet? Too late to enter: price is ${Math.round(pr*100)}% of the way to Target 1. If you're in, just manage it.`:
+  `Not in yet? Price is already ${Math.round(pr*100)}% of the way to Target 1, so entering now cuts the reward. If you're in, nothing to do.`;
 const sigKey=h=>[h.id,h.tf,h.type,h.time].join("|");
 // TradingView's free embeddable chart: the coin on the signal's timeframe, with RSI (where divergences show).
 const TV_INT={"1m":"1","3m":"3","5m":"5","15m":"15","30m":"30","1h":"60","2h":"120","4h":"240","6h":"360","8h":"480","12h":"720","1d":"D","3d":"3D","1w":"W","1M":"M"};
@@ -1657,14 +1659,16 @@ function signalHTML(h){
         if(lv.method==="ob"&&lv.split){const w=bull?"Buy":"Sell";
           return row(`${w} half at`,fmtP(lv.e1),`${lv.e1src} · ${pctTxt(lv.e1,L)} from ${isLive?"live":"price then"}`,"","",isLive?` data-dist="${h.id}" data-entry="${lv.e1}"`:"")+row(`${w} half at`,fmtP(lv.e2),`order block middle · average ${fmtP(lv.entry)}`);}
         return row(elab,fmtP(lv.entry),`${pctTxt(lv.entry,L)} from ${isLive?"live":"price then"}`,"","",isLive?` data-dist="${h.id}" data-entry="${lv.entry}"`:"");})()}
-      ${(()=>{const oo=h.out||h.track,sa=oo&&oo.stopA,E=oo&&oo.entryP!=null?oo.entryP:lv.entry,sp=sa??lv.stop,rk=Math.abs(E-sp)/E*100,sw=lv.method==="sweep"&&sa==null&&!lv.confirm;
+      ${(()=>{const oo=h.out||h.track,sa=oo&&oo.stopA,E=entOf(oo,lv),sp=sa??lv.stop,rk=Math.abs(E-sp)/E*100,sw=lv.method==="sweep"&&sa==null&&!lv.confirm;
         if(lv.confirm&&sa==null&&oo&&oo.retStop!=null)return row("Stop",fmtP(oo.retStop),`${pctTxt(oo.retStop,oo.retLvl)} · risk ${(Math.abs(oo.retLvl-oo.retStop)/oo.retLvl*100).toFixed(1)}% · past the ${lv.confirm} ${bull?"low":"high"}`,"neg");
         if(lv.confirm&&sa==null)return row("Stop (est.)",fmtP(sp),`set at the CHoCH: just past the lowest ${lv.confirm} ${bull?"low":"high"} in the zone`,"neg");
         if(trailing)return row("Stop now",fmtP(tkx.stopNowLvl),`trailing under each new ${h.tf} swing ${bull?"low":"high"} · started at ${fmtP(sp)}`,"neg");
         return row(sw?"Stop (at least)":"Stop",fmtP(sp),`${fromEntry(sp)} · risk ${rk.toFixed(1)}%${sw?` · moves just past the sweep ${bull?"low":"high"} if it goes further`:""}${lv.stopMode==="close"?` · on close, hard ${fmtP(sp-(bull?1:-1)*0.5*Math.abs(E-sp))}`:""}`,"neg");})()}
-      ${(()=>{const oo=h.out||h.track,E=oo&&oo.entryP!=null?oo.entryP:lv.entry,sp=(oo&&oo.stopA)??lv.stop,dp=Math.abs(E-sp)/E,hr=!h.out&&tierOf(h)==="risk",half=btcHalf||hr,pos=half?POS/2:POS,loss=pos*dp;
+      ${(()=>{const oo=h.out||h.track,E=entOf(oo,lv),sp=(oo&&oo.stopA)??lv.stop,dp=Math.abs(E-sp)/E,hr=!h.out&&tierOf(h)==="risk",half=btcHalf||hr,pos=half?POS/2:POS,loss=pos*dp;
+        if(oo&&oo.trig>=0&&oo.fill>0&&oo.fill<1&&!isClosed(oo)){const inn=pos*oo.fill,dpF=Math.abs(lv.entry-sp)/lv.entry;
+          return row("Size",`$${pos.toLocaleString()}`,`${half?"half size · ":""}$${inn.toLocaleString()} in so far (first half) · lose about $${(inn*dp).toFixed(0)} at the stop now, about $${(pos*dpF).toFixed(0)} if the second half fills`);}
         return row("Size",`$${pos.toLocaleString()}`,`${half?`half size (${[hr&&"high risk",btcHalf&&"BTC weak"].filter(Boolean).join(", ")}) · `:""}lose about $${loss.toFixed(0)} at the ${(dp*100).toFixed(1)}% stop${lv.confirm&&!(oo&&oo.stopA!=null)?" · estimate until the CHoCH sets the stop":""}`);})()}
-      ${(()=>{const oo=h.out||h.track,real=oo&&oo.stopA!=null;return row("Target 1",fmtP(lv.t1),`${pctTxt(lv.t1,real&&oo.entryP!=null?oo.entryP:lv.entry)} · ${real?"":lv.confirm?"about ":""}${(real&&oo.rr1!=null?oo.rr1:lv.rr1).toFixed(1)}R · ${esc(lv.t1src)}`,"pos");})()}
+      ${(()=>{const oo=h.out||h.track,real=oo&&oo.stopA!=null,fil=oo&&oo.trig>=0&&oo.fill>0,E=entOf(oo,lv),sp=(oo&&oo.stopA)??lv.stop;return row("Target 1",fmtP(lv.t1),`${pctTxt(lv.t1,fil||real?E:lv.entry)} · ${real||fil?"":lv.confirm?"about ":""}${(real&&oo.rr1!=null?oo.rr1:fil?Math.abs(lv.t1-E)/Math.abs(E-sp):lv.rr1).toFixed(1)}R · ${esc(lv.t1src)}`,"pos");})()}
       </div>
       ${inTrade?`<div class="late"${late?"":" hidden"}${isLive?` data-late="${h.id}" data-entry="${E0}" data-t1="${lv.t1}"`:""}>${late?lateTxt(prog):""}</div>`:""}
       ${inv&&inv.some(i=>!i.ok)?`<div class="inv"><b>Warning</b>${inv.filter(i=>!i.ok).map(i=>`<div class="no"><b>✗</b><span>${esc(i.txt)}</span></div>`).join("")}</div>`:""}
@@ -1919,21 +1923,44 @@ async function srvLoad(){
     if(r.ok){SREC=await r.json();SREC_AT=Date.now();SREC_ERR=false;try{localStorage.setItem("cgrab_srec",JSON.stringify(SREC));}catch(e){}}else SREC_ERR=r.status!==404?r.status:"none";}catch(e){SREC_ERR=true;}
   return SREC;
 }
-const fromSrv=x=>({key:x.key,sym:x.sym,tf:x.tf,dir:x.dir,sigTime:x.sigTime,seen:x.seen,alerted:x.alerted,sent:!!x.sent,dyor:!!x.dyor,why:x.why,rr1:x.rr1,all:x.all,src:"server",
+const fromSrv=x=>({key:x.key,sym:x.sym,tf:x.tf,dir:x.dir,sigTime:x.sigTime,seen:x.seen,alerted:x.alerted,sent:!!x.sent,dyor:!!x.dyor,srvSeen:x.seen,why:x.why,rr1:x.rr1,all:x.all,src:"server",
   plan:{entry:x.entry,stop:x.stop,t1:x.t1,rr1:x.rr1},
   g:{status:x.status,r:x.r,fill:x.fill,t1:x.t1hit,enteredAt:x.enteredAt,closedAt:x.closedAt,entryP:x.entryP,stopA:x.stopA,stopNow:x.stopNow,last:x.last}});
+// ⚡ Live events from the server's price watcher (entered / Target 1 / hard stop), published the moment they happen.
+// They show here before the candle closes; the trade record takes over once it has caught up.
+const LIVE_URL=DATA_URL.replace(/trades\.json$/,"live.json");let LIVE_EV=null,LIVE_AT=0;
+try{LIVE_EV=JSON.parse(localStorage.getItem("cgrab_live")||"null");}catch(e){}
+async function liveLoad(force){
+  if(!force&&LIVE_AT&&Date.now()-LIVE_AT<25e3)return LIVE_EV;
+  try{const r=await fetch(`${LIVE_URL}?t=${Math.floor(Date.now()/15e3)}`,{cache:"no-store"});if(r.ok){LIVE_EV=await r.json();LIVE_AT=Date.now();try{localStorage.setItem("cgrab_live",JSON.stringify(LIVE_EV));}catch(e){}}}catch(e){}
+  return LIVE_EV;
+}
+function applyLiveEv(m){
+  const evs=((LIVE_EV&&LIVE_EV.events)||[]).filter(e=>Date.now()-e.at<48*36e5).sort((a,b)=>a.at-b.at);
+  for(const e of evs){let t=m.get(e.key);const dir=e.dir==="long"?1:-1;
+    if(!t){if(e.ev!=="enter")continue;
+      t={key:e.key,sym:e.sym,tf:e.tf,dir:e.dir,sigTime:e.sigTime,seen:e.at,alerted:!!e.alerted,rr1:e.rr1,all:false,src:"live",plan:{entry:e.entry,stop:e.stop,t1:e.t1,rr1:e.rr1},g:{status:"pending",r:0,fill:0}};m.set(e.key,t);}
+    if(e.chat==="main")t.sent=true;else if(e.chat==="dyor")t.dyor=true;
+    const g=gOf(t)||{status:"pending"};if(OUT_TXT[g.status])continue;   // the record already has the result
+    if(e.ev==="enter"&&!(g.fill>0)){t.g={...g,status:"open",fill:e.split?0.5:1,enteredAt:e.at,entryP:e.p,r:0};t.res=null;t.lv="enter";}
+    else if(e.ev==="t1"&&g.status==="open"&&!g.t1){t.g={...g,t1:true};t.res=null;t.lv="t1";}
+    else if(e.ev==="done"&&g.status==="open"){const P=t.plan||{},E=g.entryP??P.entry,Rf=Math.abs((P.entry??E)-(P.stop??e.stop))||1;
+      t.res={...g,status:"stopped",r:(e.p-E)*dir/Rf*(g.fill||1),closedAt:e.at};t.lv="done";}}
+  return m;
+}
 // This device's saved trades plus the server record (the server's result wins for the same trade).
 async function allTrades(){
-  const [L,S]=await Promise.all([tjGrade(),srvLoad()]),m=new Map(L.map(t=>[t.key,t]));
+  const [L,S]=await Promise.all([tjGrade(),srvLoad(),liveLoad()]),m=new Map(L.map(t=>[t.key,t]));
   for(const x of (S&&S.trades)||[]){const t=fromSrv(x),o=m.get(t.key);
-    if(!o)m.set(t.key,t);else{const done=OUT_TXT[t.g.status];if(done||!o.g||!(gOf(o)&&gOf(o).fill>0))m.set(t.key,{...o,...t,res:done?t.g:o.res,g:t.g});}}
-  return [...m.values()];
+    if(!o)m.set(t.key,t);else{o.sent=o.sent||t.sent;o.dyor=o.dyor||t.dyor;o.srvSeen=t.srvSeen;const done=OUT_TXT[t.g.status];if(done||!o.g||!(gOf(o)&&gOf(o).fill>0))m.set(t.key,{...o,...t,res:done?t.g:o.res,g:t.g});}}
+  applyLiveEv(m);return [...m.values()];
 }
-const syncLine=()=>SREC?`Prices and R are live · trade status from the server, checked every 5 minutes (last change ${fmtDate(SREC.updated)})`:SREC_ERR==="none"||SREC_ERR===404?"Server record not set up yet: showing this device only.":SREC_ERR?"Couldn't reach the server record: showing this device only.":"";
+const syncLine=()=>SREC?`Prices and R are live · ⚡ entries, Target 1 and stops appear within a minute · full record checked every 5 minutes (last change ${fmtDate(SREC.updated)})`:SREC_ERR==="none"||SREC_ERR===404?"Server record not set up yet: showing this device only.":SREC_ERR?"Couldn't reach the server record: showing this device only.":"";
 const rTx=x=>`${x>=0?"+":""}${x.toFixed(2)}R`,usdTx=x=>`${x>=0?"+":"−"}$${Math.abs(x).toFixed(2)}`;
 // ---------- Open trades / Closed trades tabs ----------
 // "Sent" means the Telegram bot actually alerted it (from the server record). Everything else says why it wasn't sent.
-const notSentWhy=t=>!t.alerted?(t.why||"below the alert rules"):t.tf!=="4h"?`meets the rules, but the bot only watches 4h (this is a ${t.tf} setup)`
+const lateFill=t=>{const g=gOf(t);return !!(g&&g.enteredAt&&t.srvSeen&&t.srvSeen>=g.enteredAt+TF_MS(t.tf)-6e4);};
+const notSentWhy=t=>lateFill(t)?`it filled before the bot found it (the divergence confirms a few candles after the signal), so it wasn't chased${t.why?`. Also: ${t.why}`:""}`:!t.alerted?(t.why||"below the alert rules"):t.tf!=="4h"?`meets the rules, but the bot only watches 4h (this is a ${t.tf} setup)`
   :t.src!=="server"?"meets the rules; seen by this device, not in the bot's record":"meets the rules, but the bot didn't send it (it filled before the bot saw it, or a risk limit skipped it)";
 // Each trade is one row that expands in place (tap to open, tap again to close) with its plan, result and a chart.
 // The tabs keep what they show: switching tabs is instant, and updates (every scan, or when a tab is opened and the data
@@ -1943,19 +1970,22 @@ function trRow(t){
   const g=gOf(t),bull=t.dir==="long",P=t.plan||{},E=g.entryP??P.entry,first=g.stopA??P.stop,R=Math.abs(E-first),id=(src||BINANCE).id(t.sym),$r=r=>usdTx(usdOfR(r,E,R));
   const open=g.status==="open",lvl=(t.sent?`<span class="tag aplus">📨 Telegram</span>`:t.dyor?`<span class="tag gold">🔍 DYOR</span>`:"")+(t.alerted?lvlTag(t.rr1??P.rr1):""),res=open?null:g.r;
   const st=open?(g.t1?"🎯 T1 hit · trailing":`${bull?"🟢":"🔴"} In trade`):({t1_be:g.r>0?"💰 T1 + trail":"⚖️ At entry",t2:"🏆 Target 2",stopped:"🛑 Stop loss",timeout:"⏱ Time limit"}[g.status]||g.status);
-  const when=open?(g.enteredAt?`since ${fmtDate(g.enteredAt)}`:""):(g.closedAt?fmtDate(g.closedAt):"");
+  const when=(t.lv?"⚡ ":"")+(open?(g.enteredAt?`since ${fmtDate(g.enteredAt)}`:""):(g.closedAt?fmtDate(g.closedAt):""));
   const row=(k,v,n,c)=>`<div class="pr"><span class="pk">${k}</span><span class="pv ${c||""}">${v}</span><span class="pn">${n||""}</span></div>`;
   const stopNow=open&&g.t1&&g.stopNow!=null?g.stopNow:null;
+  const rich=(()=>{const h=HIT_BY.get(t.key);if(!h||!h.sc)return "";const hs=h.out||h.track;if(!hs||(open?hs.status!=="open":!isClosed(hs)))return "";try{if(!h.chk)h.chk=checklist(h);const sty=STRUCT[h.id]?styleOf(STRUCT[h.id]):null;
+        return `<div class="tags trtags"><span class="tag">${h.chk.all?"✓ All checks":`${h.chk.n}/${h.chk.total} checks`}</span>${tierOf(h)!=="other"?lvlTag(h.lv.rr1):""}${sty?`<span class="tag">${esc(tradeType(h,sty).label)}</span>`:""}<span class="tag">score ${h.sc.score}</span></div>${signalHTML(h)}`;}catch(e){return "";}})();
   return `<details class="trow ${open?"":(g.r>0?"won":"lost")}" data-key="${esc(t.key)}"><summary>
     <span class="tl"><span class="ts">${esc(t.sym)}<small>${t.tf} · ${bull?"Long":"Short"}</small></span><span class="tt">${lvl}<span class="tag">${esc(st)}</span></span></span>
     <span class="trr">${open?`<span class="lp" data-live="${esc(id)}">${fmtP(g.last??E)}</span><span class="pnl ${g.r>=0?"pos":"neg"}" data-pnl="${esc(id)}" data-e="${E}" data-r="${R}" data-d="${bull?1:-1}">${rTx(g.r)}</span>`
       :`<span class="cr2 ${res>=0?"pos":"neg"}">${rTx(res)}</span><span class="tw">${$r(res)}</span>`}<span class="tw">${when}</span></span></summary>
     <div class="tb">
-      ${t.sent?"":`<div class="rec gold"><b>${t.dyor?"🔍 Sent to the DYOR channel":"Not sent to Telegram"}</b> · ${esc(notSentWhy(t))}.</div>`}
+      ${t.sent||(rich&&!t.dyor&&!lateFill(t))?"":`<div class="rec gold"><b>${t.dyor?"🔍 Sent to the DYOR channel":"Not sent to Telegram"}</b> · ${esc(notSentWhy(t))}.</div>`}
+      ${rich||`
       ${row("Entry",fmtP(E),g.enteredAt?`filled ${fmtDate(g.enteredAt)}`:"planned")}
       ${row(stopNow!=null?"Stop now":"Stop",fmtP(stopNow??first),stopNow!=null?`trailing · started at ${fmtP(first)}`:`${pctTxt(first,E)} · risk ${(R/E*100).toFixed(1)}%`,"neg")}
       ${row("Target 1",fmtP(P.t1),`${pctTxt(P.t1,E)} · ${(Math.abs(P.t1-E)/R).toFixed(1)}R${g.t1?" · hit, half taken":""}`,"pos")}
-      ${row(open?"Now":"Result",open?`<span data-pnl="${esc(id)}" data-e="${E}" data-r="${R}" data-d="${bull?1:-1}">${rTx(g.r)}</span>`:rTx(g.r),open?"live, on the full position":`${$r(g.r)} on $1,000${g.closedAt?` · closed ${fmtDate(g.closedAt)}`:""}`,open?"":(g.r>=0?"pos":"neg"))}
+      ${row(open?"Now":"Result",open?`<span data-pnl="${esc(id)}" data-e="${E}" data-r="${R}" data-d="${bull?1:-1}">${rTx(g.r)}</span>`:rTx(g.r),open?"live, on the full position":`${$r(g.r)} on $1,000${g.closedAt?` · closed ${fmtDate(g.closedAt)}`:""}`,open?"":(g.r>=0?"pos":"neg"))}`}
       <div class="tchart"></div><div class="tlegend"></div>
       <div class="tvsw"><button class="linkbtn" data-check="${esc(t.sym)}">Full coin check →</button><span class="mu2">${t.src==="server"?"From the server record":"Saved on this device"}</span></div>
     </div></details>`;
@@ -1984,21 +2014,24 @@ function renderTrades(L){
   TR_BY=new Map(L.map(t=>[t.key,t]));
   const usdT=t=>{const g=gOf(t),P=t.plan||{},E=g.entryP??P.entry,R=Math.abs(E-(g.stopA??P.stop));return usdOfR(g.r,E,R)||0;};
   const filled=L.filter(t=>{const g=gOf(t);return g&&g.fill>0;});
-  const open=filled.filter(t=>gOf(t).status==="open").sort((a,b)=>(gOf(b).enteredAt||0)-(gOf(a).enteredAt||0));
+  // Target 1 hit: half is banked and the rest trails, so these sit in Closed (own group) rather than Open trades
+  const live=filled.filter(t=>gOf(t).status==="open").sort((a,b)=>(gOf(b).enteredAt||0)-(gOf(a).enteredAt||0));
+  const run=live.filter(t=>gOf(t).t1),open=live.filter(t=>!gOf(t).t1);
   const closed=filled.filter(t=>OUT_TXT[gOf(t).status]).sort((a,b)=>(gOf(b).closedAt||0)-(gOf(a).closedAt||0));
-  const oa=open.filter(t=>t.sent),on=open.filter(t=>!t.sent),ca=closed.filter(t=>t.sent),cn=closed.filter(t=>!t.sent);
+  const oa=open.filter(t=>t.sent),od=open.filter(t=>!t.sent&&t.dyor),on=open.filter(t=>!t.sent&&!t.dyor),ca=closed.filter(t=>t.sent),cd=closed.filter(t=>!t.sent&&t.dyor),cn=closed.filter(t=>!t.sent&&!t.dyor);
   const grp=(title,note,a)=>a.length?`<div class="grp"><div class="gh">${title} <span>${a.length}</span></div>${note?`<div class="gn">${note}</div>`:""}</div>${a.map(trRow).join("")}`:"";
   const sum=a=>{if(!a.length)return "";const tot=a.reduce((x,t)=>x+gOf(t).r,0),won=a.filter(t=>gOf(t).r>0).length,st=a.filter(t=>gOf(t).status==="stopped").length;
     const usd=a.reduce((x,t)=>x+usdT(t),0);return `<b>${a.length}</b> closed · <b>${won}</b> won · ${st} stopped · <b class="${tot>=0?"pos":"neg"}">${rTx(tot)}</b> (${usdTx(usd)})`;};
   const foot=`<div class="status" style="margin-top:10px">${esc(syncLine())} · Tap a trade to open it, tap again to close.</div>`;
-  morphRows($("openTab"),open.length?`<div class="csumry"><b>${open.length}</b> open · ${oa.length} sent to Telegram, ${on.length} not sent · profit/loss is live</div>`+
-    grp("📨 Sent to Telegram","The bot alerted these (4h).",oa)+grp("Not sent","App-only timeframes, or below the alert rules (each says why). Shown in case you took it.",on)+foot
+  morphRows($("openTab"),open.length?`<div class="csumry"><b>${open.length}</b> open · ${oa.length} main channel · ${od.length} DYOR · ${on.length} not sent · profit/loss is live</div>`+
+    grp("📨 Main channel","The bot alerted these (4h, meet the rules).",oa)+grp("🔍 DYOR channel","Sent to the DYOR channel: other timeframes, or below the rules.",od)+grp("Not sent","Found too late, or a limit skipped them (each says why). Shown in case you took it.",on)+foot
     :`<div class="empty">No open trades right now. A setup moves here as soon as its entry fills.</div>${foot}`);
-  morphRows($("closed"),closed.length?`<div class="csumry">Sent to Telegram: ${sum(ca)||"none yet"}${cn.length?`<br>Not sent: ${sum(cn)}`:""}<br><span class="mu2">$1,000 per trade · stop, Target 1 + trail, or Target 2</span></div>`+
-    grp("📨 Sent to Telegram","",ca)+grp("Not sent","",cn)+foot
+  morphRows($("closed"),closed.length||run.length?`<div class="csumry">${run.length?`<b>${run.length}</b> hit Target 1, rest still trailing · profit/loss is live<br>`:""}Main channel: ${sum(ca)||"none yet"}${cd.length?`<br>DYOR: ${sum(cd)}`:""}${cn.length?`<br>Not sent: ${sum(cn)}`:""}<br><span class="mu2">$1,000 per trade · stop, Target 1 + trail, or Target 2</span></div>`+
+    grp("🎯 Target 1 hit · rest trailing","Half taken at Target 1, stop at entry or trailing under each new swing. Moves to the results below when the rest closes.",run)+
+    grp("📨 Main channel","",ca)+grp("🔍 DYOR channel","",cd)+grp("Not sent","",cn)+foot
     :`<div class="empty">No closed trades yet. Trades land here when the stop or a target closes them.</div>${foot}`);
   const lab=(v,n)=>{const b=document.querySelector(`.vtabs [data-view="${v}"]`);if(b)b.innerHTML=`${b.dataset.label}${n?` <span>${n}</span>`:""}`;};
-  lab("open",open.length);lab("closed",closed.length);
+  lab("open",open.length);lab("closed",closed.length+run.length);
   TR_AT=Date.now();pollLive();
 }
 // refresh in the background; first paint comes from what's already stored
@@ -2006,7 +2039,9 @@ async function refreshTrades(){if(TR_BUSY)return TR_BUSY;
   TR_BUSY=(async()=>{try{renderTrades(await allTrades());}catch(e){}})();try{await TR_BUSY;}finally{TR_BUSY=null;}}
 function paintStored(){try{const L=tjLoad();if(!SREC){const c=JSON.parse(localStorage.getItem("cgrab_srec")||"null");if(c)SREC=c;}
   const m=new Map(L.map(t=>[t.key,t]));for(const x of (SREC&&SREC.trades)||[]){const t=fromSrv(x);if(!m.has(t.key)||OUT_TXT[t.g.status])m.set(t.key,{...m.get(t.key),...t,res:OUT_TXT[t.g.status]?t.g:null});}
-  renderTrades([...m.values()]);}catch(e){}}
+  applyLiveEv(m);renderTrades([...m.values()]);}catch(e){}}
+// check for live events every 30 seconds; repaint the trade tabs only when something new arrived
+setInterval(async()=>{if(document.hidden)return;const u=LIVE_EV&&LIVE_EV.updated;await liveLoad(true);if(LIVE_EV&&LIVE_EV.updated!==u)refreshTrades();},30e3);
 const paintOpen=()=>refreshTrades();   // kept for older callers
 const showClosed=()=>refreshTrades();
 function setView(v){document.querySelectorAll(".vtabs [data-view]").forEach(b=>b.setAttribute("aria-selected",b.dataset.view===v));
@@ -2049,7 +2084,9 @@ async function autoLoad(){
 }
 // Draw the new list off-screen and swap it in at once, so the screen never goes blank. Cards that are open stay exactly
 // as they are (their chart and sections too); closed cards and the groups are replaced. Open groups stay open.
-function renderScan(hits,at){
+// every setup from the latest scan, by its key: the trade tabs show the full setup view for these
+let HIT_BY=new Map();
+function renderScan(hits,at){HIT_BY=new Map((hits||[]).filter(h=>h&&h.lv).map(h=>[sigKey(h),h]));
   const real=$("results"),box=document.createElement("div"),y=window.scrollY;
   const n=renderScanInto(box,hits,at);
   const keep=new Map();real.querySelectorAll("details.card[open]").forEach(c=>{if(c.dataset.k&&!c.dataset.stale)keep.set(c.dataset.k,c);});

@@ -35,6 +35,39 @@ async function send(html, chat) {
   return false;
 }
 
+// ---------- live events for the website ----------
+// Each alert is also written to data/live.json on GitHub, so the site shows it within about a minute instead of
+// waiting for the candle to close. Last 48 hours only; several events close together go out as one update.
+const GH_TOKEN = process.env.CG_GITHUB_TOKEN || "", GH_REPO = process.env.CG_GITHUB_REPO || "marketscanner247/crypto-grabber", LIVE = path.join(__dirname, "live.json");
+let liveEv = []; try { liveEv = JSON.parse(fs.readFileSync(LIVE, "utf8")).events || []; } catch (e) {}
+let pubT = null, pubBusy = false;
+async function gh(method, body) {
+  const r = await fetch(`https://api.github.com/repos/${GH_REPO}/contents/data/live.json${method === "GET" ? "?ref=main" : ""}`, { method,
+    headers: { authorization: `Bearer ${GH_TOKEN}`, accept: "application/vnd.github+json", "user-agent": "crypto-grabber-watch", "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  return { ok: r.ok, status: r.status, j: await r.json().catch(() => ({})) };
+}
+async function publishLive() {
+  pubT = null; if (!GH_TOKEN) return; if (pubBusy) { pubT = setTimeout(publishLive, 3000); return; }
+  pubBusy = true;
+  try {
+    for (let i = 0; i < 3; i++) {
+      const cur = await gh("GET"), body = JSON.stringify({ updated: Date.now(), note: "Crypto Grabber live events, written by the live watcher", events: liveEv });
+      const put = await gh("PUT", { message: "live: alert", content: Buffer.from(body).toString("base64"), sha: cur.ok ? cur.j.sha : undefined, branch: "main" });
+      if (put.ok) { log("live events published"); break; }
+      log("live publish failed:", put.status, put.j && put.j.message); await new Promise(r => setTimeout(r, 3000));
+    }
+  } catch (e) { log("live publish failed:", e.message); }
+  pubBusy = false;
+}
+function addLive(x, ev, p) {
+  const now = Date.now();
+  liveEv = liveEv.filter(e => now - e.at < 48 * 36e5);
+  liveEv.push({ key: x.key.replace(/^dyor:/, ""), ev, p, at: now, sym: x.sym, tf: x.tf, dir: x.dir, chat: x.chat, sigTime: x.sigTime, alerted: x.chat !== "dyor",
+    entry: x.entry, stop: x.stop, hard: x.hard, t1: x.t1, rr1: x.rr1, split: !!x.split });
+  try { fs.writeFileSync(LIVE, JSON.stringify({ events: liveEv })); } catch (e) {}
+  if (!pubT) pubT = setTimeout(publishLive, 2000);
+}
+
 // ---------- what to watch ----------
 function load() {
   try {
@@ -75,7 +108,7 @@ async function fire(x, ev, html, val) {
   if (w[ev] || busy.has(k + ev)) return; busy.add(k + ev);
   const ok = await send(html, x.chat === "dyor" ? DYOR_CHAT : CHAT);
   busy.delete(k + ev);
-  if (ok) { mark(x, ev, val ?? Date.now()); log("sent", ev, x.sym, x.tf, x.chat); }
+  if (ok) { mark(x, ev, val ?? Date.now()); log("sent", ev, x.sym, x.tf, x.chat); if (val == null && ev !== "atstop" && ev !== "atstop2") addLive(x, ev, ev === "enter" ? x.e1 : ev === "t1" ? x.t1 : x.hard); }
 }
 const reach = (x, p, lvl) => x.dir === "long" ? p >= lvl : p <= lvl;   // moved to a level in the trade's favour
 const back = (x, p, lvl) => x.dir === "long" ? p <= lvl : p >= lvl;    // moved to a level against the trade
@@ -88,7 +121,7 @@ function capHit(x) {
   const dir = (caps[x.dir] || 0) + mine.filter(y => y.dir === x.dir && wst[y.key].enter > 0 && !wst[y.key].done).length;
   const stops = (caps.stops || 0) + list.filter(y => y.chat !== "dyor" && wst[y.key] && wst[y.key].done).length;
   if (stops >= caps.maxStops) return `${caps.maxStops} stop-outs today: no new entries until tomorrow (New York time).`;
-  if (open >= caps.maxOpen) return `${caps.maxOpen} alerted trades are already open (limit ${caps.maxOpen}).`;
+  if (open >= caps.maxOpen) return `${caps.maxOpen} alerted trades are already open (limit ${caps.maxOpen})${caps.list && caps.list.length ? `: ${esc(caps.list.join(", "))}` : ""}.`;
   if (dir >= caps.maxDir) return `Already ${dir} ${x.dir}s open. Alts move together with BTC, so another ${x.dir} doubles the same bet (limit ${caps.maxDir}).`;
   return null;
 }

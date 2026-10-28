@@ -356,7 +356,17 @@ function daily(list, grades, setups, now, date) {
     if (w.done && !st.done) { st.done = w.done; st.res = "stopped"; }
     st.seen = st.seen || now;
   }
+  // Close what the trade record (graded on real candles) shows as finished. A trade whose setup drops out of the scan
+  // before it ends is never marked done in the loop below, and would otherwise count as "open" against the limits.
+  const FIN = ["t2", "t1_be", "stopped", "timeout", "no_trigger"];
+  for (const [k, v] of Object.entries(state)) {
+    if (k.startsWith("__") || !(v.enter > 0) || v.done) continue;
+    const r = rec.list.find(x => x.key === (k.startsWith("dyor:") ? k.slice(5) : k));
+    if (r && r.g && FIN.includes(r.g.status)) { v.done = r.g.closedAt || now; v.res = r.g.status; }
+    else if (!r && now - v.enter > 14 * 864e5) { v.done = now; v.res = "timeout"; }
+  }
   // risk caps: count the alerted trades still open, and today's stop-outs (New York day)
+  const openList = () => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && !k.startsWith("dyor:") && v.enter > 0 && !v.done).map(([k]) => { const [id, tf] = k.split("|"); return `${id.replace(/USDT$/, "")} ${tf}`; });
   const openN = () => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && !k.startsWith("dyor:") && v.enter > 0 && !v.done).length;
   const openDir = d => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && !k.startsWith("dyor:") && v.enter > 0 && !v.done && v.dir === d).length;
   const stopsToday = () => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && !k.startsWith("dyor:") && v.res === "stopped" && v.done && nyNow(v.done).date === ny.date).length;
@@ -367,12 +377,14 @@ function daily(list, grades, setups, now, date) {
     if (process.env.BOT_DEBUG) console.log(`  · ${s.sym} ${s.tf} ${s.dir} ${s.status} (${s.stateTxt}) checks ${s.checks} score ${s.score} method ${s.method}`);
     if (!ok(s) && !st.ready && !st.enter) continue;
     const recent = s.filledAt && now - s.filledAt <= Math.max(2 * s.tfMs, 45 * 60e3);
-    if (s.status === "open" && !s.t1hit && !st.enter && (ok(s) || st.ready)) {
+    // a trade skipped by the limits gets a second chance while it's still near its entry, once the limits allow it
+    if (s.status === "open" && !s.t1hit && (!st.enter || st.enter === -2) && (ok(s) || st.ready)) {
       if (recent && (s.prog == null || s.prog < 0.5)) {
         const capOpen = openN() >= MAX_OPEN, capDay = stopsToday() >= MAX_DAILY_STOPS, capDir = openDir(s.dir) >= MAX_SAME_DIR;
         if (capOpen || capDay || capDir) {
-          if (await send(`⛔ <b>SKIPPED · ${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b>\n${capDay ? `${MAX_DAILY_STOPS} stop-outs today: no new entries until tomorrow (New York time).` : capOpen ? `${MAX_OPEN} alerted trades are already open (limit ${MAX_OPEN}).` : `Already ${openDir(s.dir)} ${s.dir}s open. Alts move together with BTC, so another ${s.dir} doubles the same bet (limit ${MAX_SAME_DIR}).`}`)) { st.enter = -2; sent.push(`skipped ${s.sym} ${s.tf}`); }
-        } else if (await send(msgEnter(s))) { st.enter = now; st.dir = s.dir; jot(s); sent.push(`enter ${s.sym} ${s.tf}`); }
+          if (st.enter === -2) {}   // already told; wait quietly
+          else if (await send(`⛔ <b>SKIPPED · ${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b>\n${capDay ? `${MAX_DAILY_STOPS} stop-outs today: no new entries until tomorrow (New York time).` : capOpen ? `${MAX_OPEN} alerted trades are already open (limit ${MAX_OPEN}): ${esc(openList().join(", "))}.` : `Already ${openDir(s.dir)} ${s.dir}s open. Alts move together with BTC, so another ${s.dir} doubles the same bet (limit ${MAX_SAME_DIR}).`}`)) { st.enter = -2; sent.push(`skipped ${s.sym} ${s.tf}`); }
+        } else if (await send(msgEnter(s) + (st.enter === -2 ? "\n(Skipped earlier by the open-trade limit; a place has freed up and it's still near the entry.)" : ""))) { st.enter = now; st.dir = s.dir; jot(s); sent.push(`enter ${s.sym} ${s.tf}`); }
       }
       else st.enter = st.enter || -1;   // too late to chase; remember so it is not sent later
     } else if (s.status === "pending" && s.chochDone && !st.conf && ok(s)) {
@@ -414,7 +426,7 @@ function daily(list, grades, setups, now, date) {
       const w = s.wl; if (!w || !s.plan) continue;
       const main = ok(s), dyor = !main && DYOR_CHAT && DYOR_TFS.includes(s.tf); if (!main && !dyor) continue;
       const key = main ? s.key : "dyor:" + s.key, st = state[key] || {};
-      const base = { key, sym: s.sym, tf: s.tf, dir: s.dir, id: s.key.split("|")[0], perp: /\.P$/.test(s.chart || ""), chat: main ? "main" : "dyor", trail: !!s.trail, link: links(s) };
+      const base = { key, sym: s.sym, tf: s.tf, dir: s.dir, id: s.key.split("|")[0], perp: /\.P$/.test(s.chart || ""), chat: main ? "main" : "dyor", trail: !!s.trail, link: links(s), sigTime: s.sigTime, rr1: s.rr1 };
       if (s.status === "pending" && !st.enter && !w.atClose && s.method !== "Sweep & reclaim" && (!s.confirm || (s.chochDone && w.ret != null))) {
         const e1 = s.confirm ? w.ret : w.e1, stop = s.confirm ? (w.retStop ?? w.stop) : w.stop;
         if (!isFinite(e1) || !isFinite(stop) || !isFinite(w.t1)) continue;
@@ -424,7 +436,7 @@ function daily(list, grades, setups, now, date) {
         items.push({ ...base, state: "open", entry: w.entry, stop: w.stop, hard: hardOf(w.entry, w.stop), t1: w.t1, t1hit: !!st.t1 || s.t1hit, trailLvl: w.trail });
       }
     }
-    const caps = { open: openN(), long: openDir("long"), short: openDir("short"), stops: stopsToday(), maxOpen: MAX_OPEN, maxDir: MAX_SAME_DIR, maxStops: MAX_DAILY_STOPS };
+    const caps = { list: openList(), open: openN(), long: openDir("long"), short: openDir("short"), stops: stopsToday(), maxOpen: MAX_OPEN, maxDir: MAX_SAME_DIR, maxStops: MAX_DAILY_STOPS };
     fs.writeFileSync(WATCH + ".tmp", JSON.stringify({ at: now, caps, items })); fs.renameSync(WATCH + ".tmp", WATCH);
     console.log(`Live watcher list: ${items.filter(x => x.state === "wait").length} waiting for entry, ${items.filter(x => x.state === "open").length} open`);
   } catch (e) { console.error("could not write the live watcher list:", e.message); }
