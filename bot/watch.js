@@ -90,9 +90,10 @@ function connect(kind, ids) {
   if (cur && cur.ws) try { cur.ws.close(); } catch (e) {}
   if (!ids.length) { delete socks[kind]; return; }
   const base = kind === "perp" ? "wss://fstream.binance.com/stream?streams=" : "wss://data-stream.binance.vision/stream?streams=";
-  const ws = new WS(base + ids.map(i => i.toLowerCase() + "@miniTicker").join("/"));
+  // every trade (not a once-a-second snapshot), so a quick wick to a target or stop is never missed
+  const ws = new WS(base + ids.map(i => i.toLowerCase() + "@aggTrade").join("/"));
   socks[kind] = { ws, key, at: Date.now() };
-  ws.onmessage = ev => { try { const d = JSON.parse(ev.data).data; if (d && d.s) onPrice(d.s, +d.c); } catch (e) {} };
+  ws.onmessage = ev => { try { const d = JSON.parse(ev.data).data; if (d && d.s) { socks[kind] && (socks[kind].last = Date.now()); onPrice(d.s, +(d.p ?? d.c)); } } catch (e) {} };
   ws.onclose = () => { if (socks[kind] && socks[kind].ws === ws) socks[kind].ws = null; };
   ws.onerror = () => {};
 }
@@ -161,6 +162,7 @@ setInterval(() => {
   try { if (fs.statSync(SELF).mtimeMs !== selfM) { log("watch.js updated, restarting"); process.exit(0); } } catch (e) {}
   if (load()) resubscribe();
   // reconnect a dropped stream
+  for (const k of Object.keys(socks)) if (socks[k].ws && Date.now() - (socks[k].last || socks[k].at) > 120e3) { log(`${k} stream quiet for 2 minutes, reconnecting`); try { socks[k].ws.close(); } catch (e) {} socks[k].ws = null; }
   for (const k of Object.keys(socks)) if (!socks[k].ws) { const ids = socks[k].key.split(",").filter(Boolean); delete socks[k]; connect(k, ids); }
 }, 15e3);
 log("live watcher started");

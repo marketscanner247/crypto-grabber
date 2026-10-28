@@ -1931,8 +1931,8 @@ const fromSrv=x=>({key:x.key,sym:x.sym,tf:x.tf,dir:x.dir,sigTime:x.sigTime,seen:
 const LIVE_URL=DATA_URL.replace(/trades\.json$/,"live.json");let LIVE_EV=null,LIVE_AT=0;
 try{LIVE_EV=JSON.parse(localStorage.getItem("cgrab_live")||"null");}catch(e){}
 async function liveLoad(force){
-  if(!force&&LIVE_AT&&Date.now()-LIVE_AT<25e3)return LIVE_EV;
-  try{const r=await fetch(`${LIVE_URL}?t=${Math.floor(Date.now()/15e3)}`,{cache:"no-store"});if(r.ok){LIVE_EV=await r.json();LIVE_AT=Date.now();try{localStorage.setItem("cgrab_live",JSON.stringify(LIVE_EV));}catch(e){}}}catch(e){}
+  if(!force&&LIVE_AT&&Date.now()-LIVE_AT<12e3)return LIVE_EV;
+  try{const r=await fetch(`${LIVE_URL}?t=${Math.floor(Date.now()/10e3)}`,{cache:"no-store"});if(r.ok){LIVE_EV=await r.json();LIVE_AT=Date.now();try{localStorage.setItem("cgrab_live",JSON.stringify(LIVE_EV));}catch(e){}}}catch(e){}
   return LIVE_EV;
 }
 function applyLiveEv(m){
@@ -2043,7 +2043,7 @@ function paintStored(){try{const L=tjLoad();if(!SREC){const c=JSON.parse(localSt
   const m=new Map(L.map(t=>[t.key,t]));for(const x of (SREC&&SREC.trades)||[]){const t=fromSrv(x);if(!m.has(t.key)||OUT_TXT[t.g.status])m.set(t.key,{...m.get(t.key),...t,res:OUT_TXT[t.g.status]?t.g:null});}
   applyLiveEv(m);renderTrades([...m.values()]);}catch(e){}}
 // check for live events every 30 seconds; repaint the trade tabs only when something new arrived
-setInterval(async()=>{if(document.hidden)return;const u=LIVE_EV&&LIVE_EV.updated;await liveLoad(true);if(LIVE_EV&&LIVE_EV.updated!==u)refreshTrades();},30e3);
+setInterval(async()=>{if(document.hidden)return;const u=LIVE_EV&&LIVE_EV.updated;await liveLoad(true);if(LIVE_EV&&LIVE_EV.updated!==u)refreshTrades();},15e3);
 const paintOpen=()=>refreshTrades();   // kept for older callers
 const showClosed=()=>refreshTrades();
 function setView(v){document.querySelectorAll(".vtabs [data-view]").forEach(b=>b.setAttribute("aria-selected",b.dataset.view===v));
