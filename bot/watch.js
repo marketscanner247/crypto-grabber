@@ -8,6 +8,8 @@
 // Everything it sends is written to bot/watch-state.json, so the 5-minute check never sends the same alert again.
 // Runs as the crypto-grabber-watch service (installed by: cg update). It restarts itself when watch.js changes on disk.
 const fs = require("fs"), path = require("path");
+// price stream: Node 22+ has WebSocket built in; older Node uses the "ws" package (installed with the bot)
+let WS = globalThis.WebSocket; if (!WS) try { WS = require("ws"); } catch (e) {}
 const WATCH = path.join(__dirname, "watch.json"), WSTATE = path.join(__dirname, "watch-state.json"), SELF = __filename;
 const TOKEN = process.env.TELEGRAM_TOKEN || "", CHAT = process.env.TELEGRAM_CHAT_ID || "", DYOR_CHAT = process.env.TELEGRAM_DYOR_CHAT_ID || "";
 const esc = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -55,7 +57,7 @@ function connect(kind, ids) {
   if (cur && cur.ws) try { cur.ws.close(); } catch (e) {}
   if (!ids.length) { delete socks[kind]; return; }
   const base = kind === "perp" ? "wss://fstream.binance.com/stream?streams=" : "wss://data-stream.binance.vision/stream?streams=";
-  const ws = new WebSocket(base + ids.map(i => i.toLowerCase() + "@miniTicker").join("/"));
+  const ws = new WS(base + ids.map(i => i.toLowerCase() + "@miniTicker").join("/"));
   socks[kind] = { ws, key, at: Date.now() };
   ws.onmessage = ev => { try { const d = JSON.parse(ev.data).data; if (d && d.s) onPrice(d.s, +d.c); } catch (e) {} };
   ws.onclose = () => { if (socks[kind] && socks[kind].ws === ws) socks[kind].ws = null; };
@@ -119,7 +121,8 @@ function onPrice(id, p) {
 }
 
 // ---------- main loop ----------
-if (typeof WebSocket === "undefined") { log("This Node.js has no WebSocket (needs Node 22+). Live watcher off."); setInterval(() => {}, 1e9); return; }
+if (!WS) { console.log("No WebSocket available: run  cg update  to install it. Live watcher waiting."); setInterval(() => { try { if (fs.statSync(SELF).mtimeMs !== selfM) process.exit(0); } catch (e) {} }, 15e3); }
+else {
 load(); resubscribe();
 setInterval(() => {
   try { if (fs.statSync(SELF).mtimeMs !== selfM) { log("watch.js updated, restarting"); process.exit(0); } } catch (e) {}
@@ -128,3 +131,4 @@ setInterval(() => {
   for (const k of Object.keys(socks)) if (!socks[k].ws) { const ids = socks[k].key.split(",").filter(Boolean); delete socks[k]; connect(k, ids); }
 }, 15e3);
 log("live watcher started");
+}

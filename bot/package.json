@@ -2,6 +2,11 @@
   "name": "crypto-grabber-alerts",
   "private": true,
   "description": "Runs the Crypto Grabber scan on a schedule and sends Telegram alerts",
-  "scripts": { "alert": "node alert.js" },
-  "dependencies": { "playwright": "1.48.2" }
+  "scripts": {
+    "alert": "node alert.js"
+  },
+  "dependencies": {
+    "playwright": "1.48.2",
+    "ws": "^8.18.0"
+  }
 }
