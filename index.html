@@ -1050,12 +1050,45 @@ function track(h){
   for(const m of METHODS)if(h.plans[m])h.tracks[m]=simulate(h.plans[m],bull,h.after,BT.fee,h.ltf);
   h.track=h.tracks[h.rec.m]||null;
 }
+// ---------- flags and Power of Three ----------
+// Flag: a strong move with the trend (the pole, 3+ ATR within 15 candles), then a slower drift against it (the flag)
+// that retraces 20–62% of the pole without breaking its start. In a downtrend a bounce usually ends as a bear flag;
+// in an uptrend a dip usually ends as a bull flag. bull = the trade is a long (bull flag).
+function flagOf(d,bull){
+  const L=d.close.length-1,H=d.high,Lo=d.low,C=d.close;if(L<45)return null;
+  let pe=-1;for(let i=L-25;i<=L-3;i++)if(pe<0||(bull?H[i]>H[pe]:Lo[i]<Lo[pe]))pe=i;
+  let ps=-1;for(let i=Math.max(0,pe-15);i<pe;i++)if(ps<0||(bull?Lo[i]<Lo[ps]:H[i]>H[ps]))ps=i;
+  if(ps<0)return null;
+  const top=bull?H[pe]:H[ps],bot=bull?Lo[ps]:Lo[pe],pole=top-bot,a=d.atr[pe];
+  if(!a||pole<3*a)return null;
+  let fl=Infinity,fh=-Infinity;for(let i=pe+1;i<=L;i++){fl=Math.min(fl,Lo[i]);fh=Math.max(fh,H[i]);}
+  const n=L-pe,retr=bull?(top-fl)/pole:(fh-bot)/pole;
+  if(n<3||retr<0.2||retr>0.62)return null;
+  let sx=0,sy=0,sxy=0,sxx=0;for(let i=pe+1;i<=L;i++){const x=i-pe;sx+=x;sy+=C[i];sxy+=x*C[i];sxx+=x*x;}
+  const slope=(n*sxy-sx*sy)/(n*sxx-sx*sx);
+  if(bull?slope>=0:slope<=0)return null;   // the flag drifts against the trend
+  return {kind:bull?"bull":"bear",pole,retr,n,top:fh,bot:fl,poleTop:top,poleBot:bot};
+}
+// Power of Three (accumulation, manipulation, distribution) on the daily candle (UTC day): a long is PO3-aligned when
+// price has already dipped below today's open (the manipulation, a stop hunt) and closed back above it; a short mirrors it.
+// Only for setups on 4h or lower.
+function po3Of(d,bull,tf){
+  if(!tf||TF_MIN[tf]>240)return null;
+  const L=d.close.length-1,ds=Math.floor(d.time[L]/864e5)*864e5;let i0=L;while(i0>0&&d.time[i0-1]>=ds)i0--;
+  if(i0<1||d.time[i0]<ds)return null;
+  const O=d.close[i0-1],a=d.atr[L]||0;let lo=Infinity,hi=-Infinity;for(let i=i0;i<=L;i++){lo=Math.min(lo,d.low[i]);hi=Math.max(hi,d.high[i]);}
+  const c=d.close[L];
+  if(bull&&lo<O-0.25*a&&c>O)return {open:O,swept:lo};
+  if(!bull&&hi>O+0.25*a&&c<O)return {open:O,swept:hi};
+  return null;
+}
 function buildHit(d,f,x,c,tf,sr,vp){
   const L=d.close.length-1,plans={},st=structure(d),loc=legLoc(d,st,x,dirOf(x.type)==="bull");for(const m of METHODS)plans[m]=levels(d,x,sr,vp,m,tf);
   const lv=plans.ob||plans.sweep||null;
   const out={...x,lv,plans,rec:{m:lv?lv.method:"ob",why:""},tm:lv?timing(lv,x):null,sym:c.base,id:c.id,tf,close:d.close[L],rsiNow:d.rsi[L],vx:f.vx,
     longP:S.periods[S.periods.length-1],e200:d.maOk[S.periods[S.periods.length-1]]?(d.close[L]/d.ma[S.periods[S.periods.length-1]][L]-1)*100:null,macdUp:d.hist[L]>d.hist[L-1],aboveList:f.aboveList,
     filtersMet:true,sr,vp,st,loc};
+  out.flag=flagOf(d,dirOf(x.type)==="bull");out.po3=po3Of(d,dirOf(x.type)==="bull",tf);
   pickPlan(out);return out;
 }
 
@@ -1692,7 +1725,7 @@ function makeCard(o){
   const t=o.top;
   const lp=o.lv&&o.lv.live,lvx=o.lv&&{...o.lv,id:o.asOf?null:o.id},sty=o.struct&&Object.keys(o.struct).length?styleOf(o.struct):null,ck=t?(t.chk||(t.chk=checklist(t))):null;
   let h=`<summary class="csum"><div class="cl"><div class="sym">${esc(o.sym)}${t?`<small>${t.tf}</small>`:""}</div>
-    <div class="sub">${t?`<span class="pill ${dirOf(t.type)}">${LABEL[t.type]}</span>${outPill(t)}<span data-tp="${esc(sigKey(t))}">${trackPill(t)}</span>`:`<span class="pill flat">No setup right now</span>`}<span data-ckt>${ckTag(ck,t&&sigKey(t))}</span>${t&&t.lv&&!o.asOf?(tierOf(t)==="other"?(ruleBlock(t)||btcBlock(t)?`<span class="tag gold" title="${esc(ruleBlock(t)||btcBlock(t))}">⛔ Not alerted</span>`:""):lvlTag(t.lv.rr1)):""}${t&&sty?typeTag(tradeType(t,sty)):sty?trendTag(sty):""}${t&&t.conflict?`<span class="tag gold">Mixed</span>`:""}${t&&t.ctx&&t.ctx.agree.length?`<span class="tag gold">Confluence ×${t.ctx.agree.length+1}</span>`:""}${(o.others||[]).map(h=>`<span class="tag ${dirOf(h.type)}">${h.tf} ${dirOf(h.type)==="bull"?"Long":"Short"}</span>`).join("")}</div></div><div class="cr">${lp&&!o.asOf?`<span class="lp" data-live="${o.id}">${fmtP(lp)}</span>`:""}${(()=>{const k=t&&t.track,lv=t&&t.lv;
+    <div class="sub">${t?`<span class="pill ${dirOf(t.type)}">${LABEL[t.type]}</span>${outPill(t)}<span data-tp="${esc(sigKey(t))}">${trackPill(t)}</span>`:`<span class="pill flat">No setup right now</span>`}<span data-ckt>${ckTag(ck,t&&sigKey(t))}</span>${t&&t.flag?`<span class="tag" title="Pole ${fmtP(t.flag.poleBot)}–${fmtP(t.flag.poleTop)}, flag pulled back ${Math.round(t.flag.retr*100)}%">🚩 ${t.flag.kind==="bear"?"Bear":"Bull"} flag</span>`:""}${t&&t.po3?`<span class="tag" title="Price swept today's open (${fmtP(t.po3.open)}) and reclaimed it: manipulation done">PO3</span>`:""}${t&&t.lv&&!o.asOf?(tierOf(t)==="other"?(ruleBlock(t)||btcBlock(t)?`<span class="tag gold" title="${esc(ruleBlock(t)||btcBlock(t))}">⛔ Not alerted</span>`:""):lvlTag(t.lv.rr1)):""}${t&&sty?typeTag(tradeType(t,sty)):sty?trendTag(sty):""}${t&&t.conflict?`<span class="tag gold">Mixed</span>`:""}${t&&t.ctx&&t.ctx.agree.length?`<span class="tag gold">Confluence ×${t.ctx.agree.length+1}</span>`:""}${(o.others||[]).map(h=>`<span class="tag ${dirOf(h.type)}">${h.tf} ${dirOf(h.type)==="bull"?"Long":"Short"}</span>`).join("")}</div></div><div class="cr">${lp&&!o.asOf?`<span class="lp" data-live="${o.id}">${fmtP(lp)}</span>`:""}${(()=>{const k=t&&t.track,lv=t&&t.lv;
       if(o.asOf||!k||k.trig<0||isClosed(k)||!lv)return "";const E=k.entryP??k.avg??lv.entry,R=Math.abs(E-(k.stopA??lv.stop));
       return `<span class="pnl" data-pnl="${o.id}" data-e="${E}" data-r="${R}" data-d="${dirOf(t.type)==="bull"?1:-1}"></span>`;})()}${t?chip(t.sc):""}</div></summary><div class="cbody">`;
   if(t)h+=signalHTML(t);
@@ -2802,7 +2835,11 @@ window.cgBacktest=async(o={})=>{
     {name:"A old rules (before tonight)",...Z,am:{}},
     {name:"M8 Most profit",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true}},
     {name:"M9 DEFAULT Balanced: M8 + Target 1 at least 1.2R",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true,minRR:1.2}},
-    {name:"M10 Safest: M8 + Target 1 at least 1.5R",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true,minRR:1.5}}])||[
+    {name:"M10 Safest: M8 + Target 1 at least 1.5R",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true,minRR:1.5}},
+    {name:"F1 M9 + only setups with a flag",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true,minRR:1.2},keep:h=>!!h.flag},
+    {name:"F2 M9, flagged setups enter on the flag break instead",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true,minRR:1.2},flagBreak:true},
+    {name:"Q1 M9 + only PO3-aligned setups",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true,minRR:1.2},keep:h=>!!h.po3},
+    {name:"Q2 M9 + flag or PO3",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true,minRR:1.2},keep:h=>!!(h.flag||h.po3)}])||[
     {name:"A zone entry: limit at the order block, wider stop on candle close (default)",buf:0.5,min:1.0,mode:"close",confirm:false},
     {name:"B lower-timeframe CHoCH entry",...B,cf:{...N}},
     {name:"C + wait for the retest (full size)",...B,cf:{...N,retest:true}},
@@ -2846,6 +2883,12 @@ window.cgBacktest=async(o={})=>{
       for(const tf of tfs){const x=d[tf];if(!x||x.k.length<300)continue;const id=x.s.id(b);
         hits.push(...historyHits(x.k,{id,base:b},tf,from,now,pitFor(b,id)));}}
     if(CONFIRM){if(o.progress)console.log(`loaded lower-timeframe candles for ${hits.length} signals…`);await resimLtf(hits);}
+    // flag-break entry: a stop order just past the flag's edge, stop beyond the other edge, same targets
+    if(v.flagBreak)for(const h of hits){const f=h.flag,lv=h.lv;if(!f||!lv||!h.fw)continue;const bull=dirOf(h.type)==="bull",a=lv.atr;
+      const entry=bull?f.top+0.1*a:f.bot-0.1*a,stop=bull?f.bot-0.25*a:f.top+0.25*a,R=Math.abs(entry-stop);if(!(R>0))continue;
+      if((bull?lv.t1-entry:entry-lv.t1)<R)continue;   // the break must still leave Target 1 at 1:1 or better
+      const fb={...lv,method:"breakout",entry,stop,e1:entry,e2:entry,split:false,atClose:false,rr1:Math.abs(lv.t1-entry)/R,rr2:Math.abs(lv.t2-entry)/R,riskPct:R/entry*100};
+      h.out=simulate(fb,bull,h.fw,BT.fee);}
     const st=a=>{const f=a.filter(h=>h.out&&h.out.trig>=0),cl=f.filter(h=>["t2","t1_be","stopped","timeout"].includes(h.out.status));
       const sum=cl.reduce((s,h)=>s+h.out.r,0);
       return {signals:a.length,filled:f.length,closed:cl.length,wins:cl.filter(h=>h.out.r>0).length,stopped:cl.filter(h=>h.out.status==="stopped").length,
@@ -2863,6 +2906,7 @@ window.cgBacktest=async(o={})=>{
         add("score 80+",h=>sc(h)>=80);add("score 65–79",h=>sc(h)>=65&&sc(h)<80);add("score under 65",h=>sc(h)<65);
         add("Target 1 under 1.5R",h=>P(h).rr1<1.5);add("Target 1 1.5–2.5R",h=>P(h).rr1>=1.5&&P(h).rr1<2.5);add("Target 1 2.5R+",h=>P(h).rr1>=2.5);
         add("stop under 1.5 ATR",h=>P(h).ratr<1.5);add("stop 1.5–2.5 ATR",h=>P(h).ratr>=1.5&&P(h).ratr<2.5);add("stop 2.5 ATR+",h=>P(h).ratr>=2.5);
+        add("flag: yes",h=>!!h.flag);add("flag: no",h=>!h.flag);add("PO3 aligned: yes",h=>!!h.po3);add("PO3 aligned: no",h=>!h.po3);
         add("longs",h=>dirOf(h.type)==="bull");add("shorts",h=>dirOf(h.type)==="bear");
         add("longs, first half",h=>dirOf(h.type)==="bull"&&h.at<mid);add("longs, second half",h=>dirOf(h.type)==="bull"&&h.at>=mid);
         add("shorts, first half",h=>dirOf(h.type)==="bear"&&h.at<mid);add("shorts, second half",h=>dirOf(h.type)==="bear"&&h.at>=mid);
@@ -2958,6 +3002,12 @@ window.cgBrief=async(sym="BTC")=>{
   L.push(`<b>Trend</b> · ${esc(sty.label)}`);
   L.push(["1w","3d","1d","4h","1h"].filter(tf=>map[tf]).map(tf=>`${tf} ${STR_TXT(map[tf]).toLowerCase()}`).join(" · "));
   L.push("");
+  if(midOpen){const td=r15.filter(r=>r.date===today),lo=Math.min(...td.map(r=>r.l)),hi=Math.max(...td.map(r=>r.h)),a=D["1h"]?D["1h"].atr[D["1h"].atr.length-1]:0,m=0.25*a;
+    const po3=lo<midOpen-m&&px>midOpen?`dipped below the midnight open (${P(midOpen)}, low ${P(lo)}) and reclaimed it: the manipulation looks done, so the distribution leg is more likely <b>up</b>`
+      :hi>midOpen+m&&px<midOpen?`pushed above the midnight open (${P(midOpen)}, high ${P(hi)}) and fell back below it: the manipulation looks done, so the distribution leg is more likely <b>down</b>`
+      :lo<midOpen-m&&hi>midOpen+m?`swept both sides of the midnight open (${P(midOpen)}): no clear PO3 read yet`
+      :`no fake move past the midnight open (${P(midOpen)}) yet: wait for the manipulation before trusting a direction`;
+    L.push(`<b>PO3:</b> ${po3}`);L.push("");}
   L.push(`<b>Key levels</b>${midOpen?` · midnight open ${P(midOpen)}`:""}`);
   for(const x of [...lvls.filter(x=>x.hi&&x.p>px).sort((a,b)=>a.p-b.p).slice(0,4).reverse()])L.push(`▲ ${x.name} ${P(x.p)} (${pc((x.p/px-1)*100)})${stTxt(x.state)}`);
   L.push(`● Price ${P(px)}`);
