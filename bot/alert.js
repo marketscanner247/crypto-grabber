@@ -369,7 +369,8 @@ function daily(list, grades, setups, now, date) {
   const openList = () => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && !k.startsWith("dyor:") && v.enter > 0 && !v.done).map(([k]) => { const [id, tf] = k.split("|"); return `${id.replace(/USDT$/, "")} ${tf}`; });
   const openN = () => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && !k.startsWith("dyor:") && v.enter > 0 && !v.done).length;
   const openDir = d => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && !k.startsWith("dyor:") && v.enter > 0 && !v.done && v.dir === d).length;
-  const stopsToday = () => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && !k.startsWith("dyor:") && v.res === "stopped" && v.done && nyNow(v.done).date === ny.date).length;
+  const stopsToday = () => Object.entries(state).filter(([k, v]) => !k.startsWith("__") && !k.startsWith("dyor:") && v.enter > 0 && v.res === "stopped" && v.done && nyNow(v.done).date === ny.date).length;
+  const told = st => st.enter > 0 || (!!st.ready && st.enter !== -2 && !!st.wOpen);   // wOpen: picked up as filled after its Setup ready alert
   for (const s of out.setups) {
     const st = state[s.key] || {};
     if (wEntered.has(s.key)) { jot(s); sent.push(`enter ${s.sym} ${s.tf} (live)`); }
@@ -391,11 +392,11 @@ function daily(list, grades, setups, now, date) {
       if (await send(msgConfirm(s))) { st.conf = now; st.ready = st.ready || now; jot(s); sent.push(`confirmed ${s.sym} ${s.tf}`); }
     } else if (s.status === "pending" && !st.ready && ok(s) && s.near) {
       if (await send(msgReady(s))) { st.ready = now; jot(s); sent.push(`ready ${s.sym} ${s.tf}`); }
-    } else if (st.enter > 0 && !st.t1 && s.t1hit && s.status === "open") {
+    } else if (told(st) && !st.t1 && s.t1hit && s.status === "open") {
       if (await send(`🎯 <b>TARGET 1 HIT · ${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b> (${esc(s.t1)})\nTake half off and move the stop to entry (${esc(s.entry)}). ${s.trail ? `Let the rest run: you'll get a message each time the stop moves up under a new ${esc(s.tf)} swing ${s.dir === "long" ? "low" : "high"}.` : `Target 2: ${esc(s.t2)}.`}\n${links(s)}`)) { st.t1 = now; st.trailAt = s.trailStop; sent.push(`t1 ${s.sym} ${s.tf}`); }
-    } else if (st.enter > 0 && st.t1 && s.trail && s.status === "open" && s.trailStop && s.trailStop !== st.trailAt) {
+    } else if (told(st) && st.t1 && s.trail && s.status === "open" && s.trailStop && s.trailStop !== st.trailAt) {
       if (await send(`🔒 <b>STOP MOVED · ${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b> → ${esc(s.trailStop)}\nNew ${esc(s.tf)} swing ${s.dir === "long" ? "low" : "high"} confirmed. The stop on the remaining half trails behind it (exit on a ${esc(s.tf)} close past it).\n${links(s)}`)) { st.trailAt = s.trailStop; sent.push(`trail ${s.sym} ${s.tf}`); }
-    } else if (st.enter > 0 && !st.done && ["t2", "t1_be", "stopped", "timeout"].includes(s.status)) {
+    } else if (told(st) && !st.done && ["t2", "t1_be", "stopped", "timeout"].includes(s.status)) {
       if (await send(msgDone(s))) { st.done = now; st.res = s.status; sent.push(`done ${s.sym} ${s.tf}`); }
     }
     if (Object.keys(st).length) state[s.key] = { ...st, seen: now };
@@ -413,8 +414,8 @@ function daily(list, grades, setups, now, date) {
       const recent = s.filledAt && now - s.filledAt <= Math.max(2 * s.tfMs, 45 * 60e3);
       if (s.status === "pending" && s.near && !d.ready) { if (await send(`${line1(s, "🟡 <b>SETUP READY")}\n${lvls(s)}\nPrice now ${esc(s.live)}\n${links(s)}`, DYOR_CHAT)) { d.ready = now; nD++; mark(); } }
       else if (s.status === "open" && !d.enter && recent && (s.prog == null || s.prog < 0.5)) { if (await send(`${line1(s, `${s.dir === "long" ? "🟢" : "🔴"} <b>ENTERED ${s.dir.toUpperCase()}`)}\n${lvls(s)}${sizeLine({ ...s, all: false })}\n${links(s)}`, DYOR_CHAT)) { d.enter = now; nD++; mark(); } }
-      else if (d.enter > 0 && !d.t1 && s.t1hit && s.status === "open") { if (await send(`🔍 🎯 <b>TARGET 1 HIT · ${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b> · DYOR\nTake half, move the stop to entry, trail the rest.`, DYOR_CHAT)) d.t1 = now; }
-      else if (d.enter > 0 && !d.done && ["t2", "t1_be", "stopped", "timeout"].includes(s.status)) { if (await send(`🔍 ${doneHead(s)} · <b>${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b> · DYOR`, DYOR_CHAT)) d.done = now; }
+      else if ((d.enter > 0 || (d.ready && d.wOpen)) && !d.t1 && s.t1hit && s.status === "open") { if (await send(`🔍 🎯 <b>TARGET 1 HIT · ${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b> · DYOR\nTake half, move the stop to entry, trail the rest.`, DYOR_CHAT)) d.t1 = now; }
+      else if ((d.enter > 0 || (d.ready && d.wOpen)) && !d.done && ["t2", "t1_be", "stopped", "timeout"].includes(s.status) && s.r != null) { if (await send(`🔍 ${doneHead(s)} · <b>${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b> · DYOR`, DYOR_CHAT)) d.done = now; }
       if (Object.keys(d).length) state[k] = { ...d, seen: now };
     }
     if (nD) sent.push(`${nD} DYOR`);
@@ -432,7 +433,8 @@ function daily(list, grades, setups, now, date) {
         if (!isFinite(e1) || !isFinite(stop) || !isFinite(w.t1)) continue;
         items.push({ ...base, state: "wait", e1, e2: s.split && !s.confirm ? w.e2 : null, split: !!s.split && !s.confirm, entry: e1, stop, hard: hardOf(e1, stop), t1: w.t1,
           msg: main ? msgEnter(s) : `🔍 ${s.dir === "long" ? "🟢" : "🔴"} <b>ENTERED ${s.dir.toUpperCase()} · ${esc(s.sym)} ${esc(s.tf)} ${s.dir}</b> · DYOR\nEntry ${esc(s.e1 || s.entry)} · Stop ${esc(s.stop)} · Target 1 ${esc(s.t1)}${s.rr1 != null ? ` (${s.rr1.toFixed(1)}R)` : ""}\nPrice now: ${esc(s.live)}${sizeLine({ ...s, all: false })}\n${links(s)}` });
-      } else if (st.enter > 0 && !st.done && ["open", "pending"].includes(s.status)) {
+      } else if (!st.done && st.enter !== -2 && ((st.enter > 0 && ["open", "pending"].includes(s.status)) || (st.ready && s.status === "open"))) {
+        if (!(st.enter > 0) && !st.wOpen) state[key] = { ...st, wOpen: now, seen: now };
         items.push({ ...base, state: "open", entry: w.entry, stop: w.stop, hard: hardOf(w.entry, w.stop), t1: w.t1, t1hit: !!st.t1 || s.t1hit, trailLvl: w.trail });
       }
     }

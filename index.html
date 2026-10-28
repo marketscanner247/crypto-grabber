@@ -2012,23 +2012,25 @@ function morphRows(box,html){
 let TR_BY=new Map(),TR_AT=0,TR_BUSY=null;
 function renderTrades(L){
   TR_BY=new Map(L.map(t=>[t.key,t]));
-  const usdT=t=>{const g=gOf(t),P=t.plan||{},E=g.entryP??P.entry,R=Math.abs(E-(g.stopA??P.stop));return usdOfR(g.r,E,R)||0;};
+  const lockR=t=>{const g=gOf(t),P=t.plan||{},E=g.entryP??P.entry,Rf=Math.abs((P.entry??E)-(g.stopA??P.stop))||1;return 0.5*(g.fill||1)*Math.abs(P.t1-E)/Rf;};
+  const rOf=t=>gOf(t).status==="open"?lockR(t):gOf(t).r;
+  const usdT=t=>{const g=gOf(t),P=t.plan||{},E=g.entryP??P.entry,R=Math.abs(E-(g.stopA??P.stop));return usdOfR(rOf(t),E,R)||0;};
   const filled=L.filter(t=>{const g=gOf(t);return g&&g.fill>0;});
   // Target 1 hit: half is banked and the rest trails, so these sit in Closed (own group) rather than Open trades
   const live=filled.filter(t=>gOf(t).status==="open").sort((a,b)=>(gOf(b).enteredAt||0)-(gOf(a).enteredAt||0));
   const run=live.filter(t=>gOf(t).t1),open=live.filter(t=>!gOf(t).t1);
   const closed=filled.filter(t=>OUT_TXT[gOf(t).status]).sort((a,b)=>(gOf(b).closedAt||0)-(gOf(a).closedAt||0));
-  const oa=open.filter(t=>t.sent),od=open.filter(t=>!t.sent&&t.dyor),on=open.filter(t=>!t.sent&&!t.dyor),ca=closed.filter(t=>t.sent),cd=closed.filter(t=>!t.sent&&t.dyor),cn=closed.filter(t=>!t.sent&&!t.dyor);
+  const oa=open.filter(t=>t.sent),od=open.filter(t=>!t.sent&&t.dyor),on=open.filter(t=>!t.sent&&!t.dyor),CR=[...closed,...run],ca=CR.filter(t=>t.sent),cd=CR.filter(t=>!t.sent&&t.dyor),cn=CR.filter(t=>!t.sent&&!t.dyor);
   const grp=(title,note,a)=>a.length?`<div class="grp"><div class="gh">${title} <span>${a.length}</span></div>${note?`<div class="gn">${note}</div>`:""}</div>${a.map(trRow).join("")}`:"";
-  const sum=a=>{if(!a.length)return "";const tot=a.reduce((x,t)=>x+gOf(t).r,0),won=a.filter(t=>gOf(t).r>0).length,st=a.filter(t=>gOf(t).status==="stopped").length;
-    const usd=a.reduce((x,t)=>x+usdT(t),0);return `<b>${a.length}</b> closed · <b>${won}</b> won · ${st} stopped · <b class="${tot>=0?"pos":"neg"}">${rTx(tot)}</b> (${usdTx(usd)})`;};
+  const sum=a=>{if(!a.length)return "";const tot=a.reduce((x,t)=>x+rOf(t),0),won=a.filter(t=>rOf(t)>0).length,st=a.filter(t=>gOf(t).status==="stopped").length,tr=a.filter(t=>gOf(t).status==="open").length;
+    const usd=a.reduce((x,t)=>x+usdT(t),0);return `<b>${a.length}</b> closed · <b>${won}</b> won · ${st} stopped · <b class="${tot>=0?"pos":"neg"}">${rTx(tot)}</b> (${usdTx(usd)})${tr?` <span class="mu2">· incl. ${tr} trailing at their locked-in half</span>`:""}`;};
   const foot=`<div class="status" style="margin-top:10px">${esc(syncLine())} · Tap a trade to open it, tap again to close.</div>`;
   morphRows($("openTab"),open.length?`<div class="csumry"><b>${open.length}</b> open · ${oa.length} main channel · ${od.length} DYOR · ${on.length} not sent · profit/loss is live</div>`+
     grp("📨 Main channel","The bot alerted these (4h, meet the rules).",oa)+grp("🔍 DYOR channel","Sent to the DYOR channel: other timeframes, or below the rules.",od)+grp("Not sent","Found too late, or a limit skipped them (each says why). Shown in case you took it.",on)+foot
     :`<div class="empty">No open trades right now. A setup moves here as soon as its entry fills.</div>${foot}`);
-  morphRows($("closed"),closed.length||run.length?`<div class="csumry">${run.length?`<b>${run.length}</b> hit Target 1, rest still trailing · profit/loss is live<br>`:""}Main channel: ${sum(ca)||"none yet"}${cd.length?`<br>DYOR: ${sum(cd)}`:""}${cn.length?`<br>Not sent: ${sum(cn)}`:""}<br><span class="mu2">$1,000 per trade · stop, Target 1 + trail, or Target 2</span></div>`+
+  morphRows($("closed"),closed.length||run.length?`<div class="csumry">${run.length?`<b>${run.length}</b> hit Target 1, rest still trailing: counted below at the locked-in half (Target 1 on half, entry on the rest)<br>`:""}Main channel: ${sum(ca)||"none yet"}${cd.length?`<br>DYOR: ${sum(cd)}`:""}${cn.length?`<br>Not sent: ${sum(cn)}`:""}<br><span class="mu2">$1,000 per trade · stop, Target 1 + trail, or Target 2</span></div>`+
     grp("🎯 Target 1 hit · rest trailing","Half taken at Target 1, stop at entry or trailing under each new swing. Moves to the results below when the rest closes.",run)+
-    grp("📨 Main channel","",ca)+grp("🔍 DYOR channel","",cd)+grp("Not sent","",cn)+foot
+    grp("📨 Main channel","",ca.filter(t=>!run.includes(t)))+grp("🔍 DYOR channel","",cd.filter(t=>!run.includes(t)))+grp("Not sent","",cn.filter(t=>!run.includes(t)))+foot
     :`<div class="empty">No closed trades yet. Trades land here when the stop or a target closes them.</div>${foot}`);
   const lab=(v,n)=>{const b=document.querySelector(`.vtabs [data-view="${v}"]`);if(b)b.innerHTML=`${b.dataset.label}${n?` <span>${n}</span>`:""}`;};
   lab("open",open.length);lab("closed",closed.length+run.length);
