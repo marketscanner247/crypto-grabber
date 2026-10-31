@@ -2299,7 +2299,7 @@ async function okxEnding(id,tf,endTs,count){
 // Closed candles between two dates, paging through the exchange's limits.
 async function binRange(id,tf,start,end){
   const out=[],cut=Math.min(end,Date.now());let cur=start;
-  for(let g=0;g<8&&cur<cut;g++){
+  for(let g=0;g<20&&cur<cut;g++){
     const r=await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${id}&interval=${tf}&startTime=${Math.floor(cur)}&endTime=${Math.floor(cut)}&limit=1000`);
     if(!r.ok)throw new Error(r.status);
     const a=await r.json();if(!a.length)break;
@@ -2627,11 +2627,11 @@ async function attachOutcomes(hs,s,id,tf,lastCt){
 // pit (optional): sets up the higher-timeframe trend, levels and EMAs as they were at the signal's close, so the
 // full live rules (trend check, no trades into levels, EMA location) can be tested without looking ahead.
 function historyHits(series,c,tf,from=-Infinity,to=Infinity,pit=null){
-  const D=analyse(toK(series)),n=series.length,out=[];
+  const D=analyse(toK(series)),n=series.length,out=[],warm=tf==="1w"?100:tf==="1M"?50:250;   // weekly: EMAs without enough history are skipped, as in the live scan
   const run=(piv,kind)=>{
     for(let j=1;j<piv.length;j++){
       const b=piv[j],t=b+CFG.R;                      // the signal exists once the pivot is confirmed
-      if(t<250||t>n-1||series[t].ct<from||series[t].ct>to)continue;
+      if(t<warm||t>n-1||series[t].ct<from||series[t].ct>to)continue;
       let x=null;
       for(let m=j-1;m>=0;m--){const a=piv[m],gap=b-a;
         if(gap<CFG.minGap)continue;if(gap>CFG.maxGap)break;
@@ -3014,7 +3014,19 @@ window.cgBacktest=async(o={})=>{
     {name:"X5 full position at Target 1 + CVD confirms",...M9,am:{...M9.am,mgmt:"t1all"},keep:cvdOk},
     {name:"X6 full position at Target 1 + premium/discount",...M9,am:{...M9.am,mgmt:"t1all"},keep:disc},
     {name:"X7 full position at Target 1 + CVD + premium/discount",...M9,am:{...M9.am,mgmt:"t1all"},keep:h=>cvdOk(h)&&disc(h)}];
-  const variants=o.variants||(o.set==="x"?XSET:o.set==="ltf"?null:[
+  // high-win candidates: tighter targets, CVD agreement, the entry types that won most often
+  const P1=h=>h.plans&&h.plans[h.rec.m]||h.lv||{},t1Near=h=>P1(h).rr1<1.5,fvgE=h=>!!P1(h).fvg,
+    noAltShortUp=h=>!(dirOf(h.type)==="bear"&&h.btc&&h.btc.up),T1A={...M9.am,mgmt:"t1all"};
+  const WSET=[
+    {name:"W0 DEFAULT Balanced (crypto only)",...M9},
+    {name:"W1 CVD confirms",...M9,keep:cvdOk},
+    {name:"W2 CVD + Target 1 under 1.5R, all out at Target 1",...M9,am:T1A,keep:h=>cvdOk(h)&&t1Near(h)},
+    {name:"W3 CVD + Target 1 under 1.5R, half + trail",...M9,keep:h=>cvdOk(h)&&t1Near(h)},
+    {name:"W4 CVD + fair value gap entry, all out at Target 1",...M9,am:T1A,keep:h=>cvdOk(h)&&fvgE(h)},
+    {name:"W5 no alt shorts while BTC is above its 4h EMA 50",...M9,keep:noAltShortUp},
+    {name:"W6 CVD + no alt shorts while BTC is above its 4h EMA 50",...M9,keep:h=>cvdOk(h)&&noAltShortUp(h)},
+    {name:"W7 W6, all out at Target 1",...M9,am:T1A,keep:h=>cvdOk(h)&&noAltShortUp(h)}];
+  const variants=o.variants||(o.set==="w"?WSET:o.set==="x"?XSET:o.set==="ltf"?null:[
     {name:"A old rules (before tonight)",...Z,am:{}},
     {name:"M8 Most profit",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true}},
     {name:"M9 DEFAULT Balanced: M8 + Target 1 at least 1.2R",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true,minRR:1.2}},
@@ -3039,7 +3051,7 @@ window.cgBacktest=async(o={})=>{
   const q=bases.slice();
   await Promise.all(Array.from({length:4},async()=>{while(q.length){const b=q.shift(),d={};
     for(const tf of [...new Set([...tfs,...CTX])]){const ms=TF_MS(tf);
-      try{const r=await rangeSeries(b,tf,from-(CTX.includes(tf)&&!tfs.includes(tf)?300:250)*ms,now);if(r&&r.k.length>=120)d[tf]={k:r.k,s:r.s,D:analyse(toK(r.k))};}catch(e){}}
+      try{const r=await rangeSeries(b,tf,from-(CTX.includes(tf)&&!tfs.includes(tf)?300:250)*ms,now);if(r&&r.k.length>=(tf==="1M"?60:tf==="1w"?100:120))d[tf]={k:r.k,s:r.s,D:analyse(toK(r.k))};}catch(e){}}
     data[b]=d;done++;if(o.progress)console.log(`loaded ${done}/${bases.length}`);}}));
   const B4=(()=>{const bb=Object.keys(data).find(b=>b==="BTC"),x=bb&&data[bb]["4h"];if(!x)return null;
     return {k:x.k,c:x.D.close,e50:ema(x.D.close,50)};})(),I4=(x,T)=>{const ms=TF_MS("4h");let lo=0,hi=x.k.length-1,r=-1;
@@ -3063,7 +3075,7 @@ window.cgBacktest=async(o={})=>{
   const saved={buf:STOP_BUF,min:STOP_MIN,mode:S.stopMode,fee:BT.fee,confirm:CONFIRM,cf:{...CF}},res=[];
   for(const v of variants){STOP_BUF=v.buf;STOP_MIN=v.min;S.stopMode=v.mode;CONFIRM=!!v.confirm;Object.assign(CF,v.cf||{});Object.assign(AM,AM0,{mgmt:"half",regAplus:false,btcGuard:"off",rotLongs:false,noBadLongs:false,noFormShorts:false,minRR:0},v.am||{});BT.fee=o.fee??0.15;const hits=[];
     for(const b of bases){const d=data[b];if(!d)continue;
-      for(const tf of tfs){const x=d[tf];if(!x||x.k.length<300)continue;const id=x.s.id(b);
+      for(const tf of tfs){const x=d[tf];if(!x||x.k.length<({"1w":120,"1M":60}[tf]||300))continue;const id=x.s.id(b);   // crypto has few weekly/monthly candles
         hits.push(...historyHits(x.k,{id,base:b},tf,from,now,pitFor(b,id)));}}
     if(CONFIRM){if(o.progress)console.log(`loaded lower-timeframe candles for ${hits.length} signals…`);await resimLtf(hits);}
     // flag-break entry: a stop order just past the flag's edge, stop beyond the other edge, same targets

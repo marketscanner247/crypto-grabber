@@ -3,7 +3,7 @@
 // for three stop settings, and the result goes to Telegram and the console.
 //   BT_DAYS (default 120), BT_TFS (default 1h,4h,1d), BT_TOP (default 50)
 //   BT_SET: "zone" (default: the current rules and earlier tweaks), "x" (new ideas X0–X7: full exit at Target 1, CVD,
-//           premium/discount, OTE) or "ltf" (the lower-timeframe entries B–I)
+//           premium/discount, OTE), "w" (high-win candidates W0–W7) or "ltf" (the lower-timeframe entries B–I)
 const http = require("http"), fs = require("fs"), path = require("path");
 const { chromium } = require("playwright");
 const ROOT = path.join(__dirname, "..");
@@ -70,9 +70,9 @@ const line = (lab, x) => `${lab}: ${x.closed} closed · win ${pc(x.winRate)} · 
       L.push(line("· all 5 checks", v.aplus));
       L.push("");
     }
-    const x0 = r.variants.find(v => /^X0/.test(v.name));
+    const x0 = r.variants.find(v => /^(X0|W0)/.test(v.name));
     if (x0 && x0.cuts) {
-      L.push(`<b>Inside X0 (default): order flow and location</b>`);
+      L.push(`<b>Inside ${x0.name.split(" ")[0]} (default): order flow and location</b>`);
       for (const [lab, x] of x0.cuts) if (/^(CVD|no CVD|in discount|in premium)/.test(lab) && x.closed) L.push(line(`· ${lab}`, x));
       L.push("", `<b>By timeframe (each X variant)</b>`);
       for (const v of r.variants) L.push(`${v.name.split(" ")[0]}: ` + Object.entries(v.byTf).map(([tf, x]) => `${tf} ${x.closed} · ${pc(x.winRate)} · ${rr(x.avgR)}`).join(" | "));
