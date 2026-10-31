@@ -161,7 +161,9 @@ function sizeLine(s) {
   const why = [risky(s) && "high risk", s.btcHalf && "BTC below its 4h EMA 50"].filter(Boolean), pos = why.length ? POS / 2 : POS;
   return `\nSize: $${pos.toLocaleString("en-US")} position${why.length ? ` (half size: ${why.join(", ")})` : ""} · lose about $${(pos * p / 100).toFixed(0)} at the stop${s.confirm && !s.entryNow ? " (estimate, final at the CHoCH)" : ""}`;
 }
-const ctxLines = s => s.notes && s.notes.length ? `\n${s.notes.map(esc).join("\n")}` : "";
+const kUsd = v => { const a = Math.abs(v); return `$${a >= 1e9 ? (a / 1e9).toFixed(1) + "B" : a >= 1e6 ? (a / 1e6).toFixed(1) + "M" : a >= 1e3 ? (a / 1e3).toFixed(0) + "K" : a.toFixed(0)}`; };
+const cvdLine = s => s.cvd ? `\nCVD ${s.cvd.ok ? "✓ confirms" : "✗ doesn't confirm"} the divergence (${esc(s.cvd.txt)}) · ${s.cvd.since >= 0 ? "net buying" : "net selling"} ${kUsd(s.cvd.since)} since` : "";
+const ctxLines = s => (s.notes && s.notes.length ? `\n${s.notes.map(esc).join("\n")}` : "") + cvdLine(s);
 function links(s) {
   return [SITE && `<a href="${esc(SITE)}">Crypto Grabber</a>`, s.chart && `<a href="${esc(s.chart)}">Chart</a>`].filter(Boolean).join(" · ");
 }

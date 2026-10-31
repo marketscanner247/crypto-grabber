@@ -363,6 +363,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
       </div>
     </div>
     <div class="row">
+      <div class="rowhead"><span class="lbl">Markets</span>
+        <div class="seg" role="group" aria-label="Markets"><button data-tradfi="0">Crypto only</button><button data-tradfi="1">+ Stocks &amp; gold</button></div></div>
+      <span class="status" style="margin:0">Tokenized stocks (NVDAB, INTCB, MUB…) and gold (PAXG, XAUT) follow the stock market, not crypto, so they're left out by default. Coins on your watchlist are always checked.</span>
+    </div>
+    <div class="row">
       <div class="rowhead"><span class="lbl">Trades</span>
         <div class="seg" role="group" aria-label="Trade filter"><button data-rmode="max">Most profit</button><button data-rmode="bal">Balanced</button><button data-rmode="safe">Safest</button></div></div>
       <span class="status" style="margin:0">2-year backtest, 4h. Most profit: +84R, worst drop −17R, first year −2R. Balanced (Target 1 pays 1.2R+): +76R, worst drop −10R, both years profitable. Safest (1.5R+): +60R, worst drop −6.5R, fewest trades.</span>
@@ -423,7 +428,7 @@ const TF_MIN={"1m":1,"3m":3,"5m":5,"15m":15,"30m":30,"1h":60,"2h":120,"4h":240,"
 const OKX_BAR={"1m":"1m","3m":"3m","5m":"5m","15m":"15m","30m":"30m","1h":"1H","2h":"2H","4h":"4H","6h":"6Hutc","12h":"12Hutc","1d":"1Dutc","3d":"3Dutc","1w":"1Wutc","1M":"1Mutc"};
 const STD_MA=[9,21,50,200];
 const TOP_N=50,VOL_MULT=1.5,VOL_LEN=20,MAX_FAV=10;
-let S={rmode:"bal",f3d:true,favs:["15m","1h","4h","1d","3d","1w"],tfs:["1h","4h","1d"],maType:"ema",slots:[...STD_MA],periods:[...STD_MA],off:[],theme:"auto",pal:"teal",entry:"close",stopMode:"close",fClose:true,risk:10,entryMode:"zone"};
+let S={rmode:"bal",tradfi:false,f3d:true,favs:["15m","1h","4h","1d","3d","1w"],tfs:["1h","4h","1d"],maType:"ema",slots:[...STD_MA],periods:[...STD_MA],off:[],theme:"auto",pal:"teal",entry:"close",stopMode:"close",fClose:true,risk:10,entryMode:"zone"};
 const okP=v=>{const n=Number(v);return v!==""&&v!=null&&Number.isInteger(n)&&n>=2&&n<=300?n:null;};
 const fromSlots=sl=>[...new Set(sl.filter(n=>n!=null))].sort((x,y)=>x-y);
 try{
@@ -438,6 +443,7 @@ try{
   if(["wick","close"].includes(o.stopMode)&&o.fClose)S.stopMode=o.stopMode;   // older saved "touch" settings move to candle close once
   if(["teal","blue","violet","amber","rose"].includes(o.pal))S.pal=o.pal;
   if(+o.risk>0)S.risk=+o.risk;
+  if(o.tradfi===true)S.tradfi=true;
   if(o.entryMode==="ltf"||o.entryMode==="zone")S.entryMode=o.entryMode;
   if(["max","bal","safe"].includes(o.rmode))S.rmode=o.rmode;else if(o.safe===true)S.rmode="safe";
   if(Array.isArray(o.off))S.off=o.off.filter(p=>S.periods.includes(p));
@@ -484,6 +490,8 @@ function applySlots(sl,msg){
   S.slots=sl;S.periods=fromSlots(sl);S.off=S.off.filter(p=>S.periods.includes(p));save();renderMa();if(msg)setStatus(msg);
 }
 const readSlots=()=>[0,1,2,3].map(i=>okP($("ma"+i).value));
+document.querySelectorAll("[data-tradfi]").forEach(b=>{b.setAttribute("aria-pressed",(b.dataset.tradfi==="1")===!!S.tradfi);
+  b.onclick=()=>{S.tradfi=b.dataset.tradfi==="1";save();document.querySelectorAll("[data-tradfi]").forEach(x=>x.setAttribute("aria-pressed",(x.dataset.tradfi==="1")===S.tradfi));setStatus("Saved. The next scan uses it.");};});
 document.querySelectorAll("[data-rmode]").forEach(b=>{b.setAttribute("aria-pressed",b.dataset.rmode===S.rmode);
   b.onclick=()=>{S.rmode=b.dataset.rmode;AM.minRR=RR_OF[S.rmode];save();document.querySelectorAll("[data-rmode]").forEach(x=>x.setAttribute("aria-pressed",x.dataset.rmode===S.rmode));setStatus("Saved. Scan or check a coin again to apply it.");};});
 document.querySelectorAll("[data-entrymode]").forEach(b=>{b.setAttribute("aria-pressed",b.dataset.entrymode===S.entryMode);
@@ -826,6 +834,9 @@ function checkInner(c,sc){
 function checkHTML(c,sc){return `<details class="sec x-check"><summary>Checks · ${c.n}/${c.total}</summary><div class="secbody chk">${checkInner(c,sc)}</div></details>`;}
 function analyse(k){
   const d={time:k.map(x=>x[0]),high:k.map(x=>+x[2]),low:k.map(x=>+x[3]),close:k.map(x=>+x[4]),vol:k.map(x=>+x[5])};
+  // CVD: each candle's delta = aggressive buys − aggressive sells = 2 × taker-buy volume − volume (Binance only)
+  const tb=k.map(x=>x.length>6&&x[6]!=null&&x[6]!==""?+x[6]:NaN);
+  if(k.length&&tb.every(Number.isFinite)){let c=0;d.cvd=tb.map((b,i)=>c+=2*b-d.vol[i]);}
   d.rsi=rsi(d.close); d.hist=macdHist(d.close); d.atr=atr(d);
   d.ma={};d.maOk={};
   for(const p of S.periods){
@@ -860,6 +871,14 @@ function srLevels(d){
   const close=d.close[L];
   return {res:cl.filter(c=>c.p>close).sort((x,y)=>x.p-y.p),sup:cl.filter(c=>c.p<close).sort((x,y)=>y.p-x.p)};
 }
+// CVD check on a divergence: RSI and price disagreed between the two pivots; does order flow agree with RSI?
+// e.g. bullish: price lower low but CVD higher low = aggressive sellers drying up.
+function cvdInfo(d,x){
+  if(!d.cvd||x.bi==null||x.gap==null)return null;const a=x.bi-x.gap,b=x.bi,n=d.cvd.length;if(a<0||b>=n)return null;
+  const dc=d.cvd[b]-d.cvd[a],dr=x.r2-x.r1,low=/bull/.test(x.type),pr=x.p2<x.p1?"lower":"higher",cv=dc>0?"higher":"lower";
+  return {ok:Math.sign(dc)===Math.sign(dr)&&dc!==0,dc,since:d.cvd[n-1]-d.cvd[b],txt:`price ${pr} ${low?"low":"high"}, CVD ${cv} ${low?"low":"high"}`};
+}
+const usdK=v=>{const a=Math.abs(v);return `$${a>=1e9?(a/1e9).toFixed(1)+"B":a>=1e6?(a/1e6).toFixed(1)+"M":a>=1e3?(a/1e3).toFixed(0)+"K":a.toFixed(0)}`;};
 function volumeProfile(d,N=200,B=40){
   const n=d.close.length,s=Math.max(0,n-N);
   let lo=Infinity,hi=-Infinity;
@@ -1036,6 +1055,8 @@ function buildSignal(d,x,c,tf){
   const L=d.close.length-1,t=Math.min(L,x.bi+CFG.R),v=t<L?viewAt(d,t):d;
   const f=filters(v),sr=srLevels(v),vp=volumeProfile(v);
   const h=buildHit(v,f,{...x,ago:t-x.bi},c,tf,sr,vp);
+  // CVD and the fixed-range profile use every candle up to now (the setup's view stops where the signal was confirmed)
+  h.cvd=cvdInfo(d,x);h.frvp=volumeProfile(d,d.close.length-(x.bi-x.gap),30);
   h.sigTime=d.time[t]+TF_MS(tf);h.after=[];
   for(let i=t+1;i<=L;i++)h.after.push({t:d.time[i],h:d.high[i],l:d.low[i],c:d.close[i]});
   return h;
@@ -1099,7 +1120,7 @@ function buildHit(d,f,x,c,tf,sr,vp){
   const lv=plans.ob||plans.sweep||null;
   const out={...x,lv,plans,rec:{m:lv?lv.method:"ob",why:""},tm:lv?timing(lv,x):null,sym:c.base,id:c.id,tf,close:d.close[L],rsiNow:d.rsi[L],vx:f.vx,
     longP:S.periods[S.periods.length-1],e200:d.maOk[S.periods[S.periods.length-1]]?(d.close[L]/d.ma[S.periods[S.periods.length-1]][L]-1)*100:null,macdUp:d.hist[L]>d.hist[L-1],aboveList:f.aboveList,
-    filtersMet:true,sr,vp,st,loc};
+    filtersMet:true,sr,vp,st,loc,cvd:cvdInfo(d,x),frvp:x.gap!=null&&x.bi!=null?volumeProfile(d,d.close.length-(x.bi-x.gap),30):null};
   out.flag=flagOf(d,dirOf(x.type)==="bull");out.po3=po3Of(d,dirOf(x.type)==="bull",tf);
   pickPlan(out);return out;
 }
@@ -1213,6 +1234,15 @@ function scoreAll(hits){
 // ---------- data sources ----------
 const STABLE=new Set(["USDT","USDC","BUSD","DAI","TUSD","FDUSD","USDP","USDD","PYUSD","EUR","USDE","USD1","RLUSD","EURC","XUSD","BFUSD"]);
 const LEV=/(UP|DOWN|BULL|BEAR)$/;
+// Not crypto: tokenized stocks and ETFs (Binance lists them as the ticker + "B": NVDAB, INTCB, MUB...) and gold tokens.
+// They follow the stock market (earnings gaps, market hours), so the crypto market read and these rules don't fit them.
+const STOCKS=new Set(("AAPL MSFT NVDA TSLA AMZN GOOGL GOOG META NFLX AMD INTC MU MSTR COIN HOOD CRCL PLTR SPY QQQ SOXL TQQQ SQQQ IWM DIA "+
+  "GLD SLV BABA ORCL AVGO TSM ASML ARM SMCI UBER SHOP PYPL JPM BAC GS V MA DIS NKE KO PEP WMT COST MCD LLY UNH JNJ PFE XOM CVX BA F GM "+
+  "RIVN LCID NIO SNOW CRM ADBE INTU NOW IBM CSCO QCOM TXN SNDK WDC STX SPCX KORU GME AMC MARA RIOT CLSK IBIT ETHA BITO GDX USO TLT SPXL "+
+  "UVXY VOO VTI ARKK CRWD PANW NET DDOG ABNB DASH RBLX SOFI AFRM UPST ALAB CRWV NBIS OKLO SMR IONQ RGTI QBTS APP TEM RDDT CIFR IREN WULF "+
+  "BMNR SBET GLXY BLSH FIG CEG VST NEE LMT RTX NOC GEV ANET DELL HPE MRVL LRCX AMAT KLAC ON MCHP ADI NXPI").split(" "));
+const GOLD=new Set(["PAXG","XAUT","XAU","KAU","PAXGOLD"]);
+const isTradFi=b=>GOLD.has(b)||(b.length>2&&b.endsWith("B")&&STOCKS.has(b.slice(0,-1)));
 // Binance spot first. If a pair is gone from spot, or spot only has old data from before a delisting (e.g. XMR,
 // removed from spot in 2024), use Binance USDT-M futures instead. Ids served from futures are remembered in PERP.
 const PERP=new Set();
@@ -1232,15 +1262,15 @@ const BINANCE={
     if(!r.ok)throw new Error("Binance "+r.status);
     return (await r.json()).filter(t=>t.symbol.endsWith("USDT")&&+t.count>0)
       .map(t=>({id:t.symbol,base:t.symbol.slice(0,-4),qv:+t.quoteVolume}))
-      .filter(t=>!STABLE.has(t.base)&&!LEV.test(t.base)).sort((a,b)=>b.qv-a.qv).slice(0,top);
+      .filter(t=>!STABLE.has(t.base)&&!LEV.test(t.base)&&(S.tradfi||!isTradFi(t.base))).sort((a,b)=>b.qv-a.qv).slice(0,top);
   },
   async candles(id,tf){
-    const rows=await binKlines(id,tf,"limit=400"),out=rows.slice(0,-1).map(x=>[x[0],x[1],x[2],x[3],x[4],x[7]]);
+    const rows=await binKlines(id,tf,"limit=400"),out=rows.slice(0,-1).map(x=>[x[0],x[1],x[2],x[3],x[4],x[7],x[10]]);
     if(rows.length){const f=rows[rows.length-1];out.live=+f[4];out.form={t:+f[0],o:+f[1],h:+f[2],l:+f[3],c:+f[4]};}
     return out;
   },
   async raw(id,tf,limit,at){
-    return (await binKlines(id,tf,`limit=${limit}${at?`&endTime=${Math.floor(at)}`:""}`,at)).map(x=>({t:x[0],h:+x[2],l:+x[3]}));
+    return (await binKlines(id,tf,`limit=${limit}${at?`&endTime=${Math.floor(at)}`:""}`,at)).map(x=>({t:x[0],h:+x[2],l:+x[3],v:+x[7]}));
   },
   tv:id=>`https://www.tradingview.com/chart/?symbol=BINANCE:${id}${PERP.has(id)?".P":""}`
 };
@@ -1251,7 +1281,7 @@ const OKX={
     if(!r.ok)throw new Error("OKX "+r.status);
     return (await r.json()).data.filter(t=>t.instId.endsWith("-USDT"))
       .map(t=>({id:t.instId,base:t.instId.split("-")[0],qv:+t.volCcy24h}))
-      .filter(t=>!STABLE.has(t.base)&&!LEV.test(t.base)).sort((a,b)=>b.qv-a.qv).slice(0,top);
+      .filter(t=>!STABLE.has(t.base)&&!LEV.test(t.base)&&(S.tradfi||!isTradFi(t.base))).sort((a,b)=>b.qv-a.qv).slice(0,top);
   },
   async candles(id,tf){
     const bar=OKX_BAR[tf];if(!bar)throw new Error("unsupported");
@@ -1264,10 +1294,10 @@ const OKX={
     return out;
   },
   async raw(id,tf,limit,at){
-    const r=await fetch(at?`https://www.okx.com/api/v5/market/history-candles?instId=${id}&bar=${OKX_BAR[tf]}&after=${Math.floor(at)+1}&limit=${limit}`
-      :`https://www.okx.com/api/v5/market/candles?instId=${id}&bar=${OKX_BAR[tf]}&limit=${limit}`);
+    const r=await fetch(at?`https://www.okx.com/api/v5/market/history-candles?instId=${id}&bar=${OKX_BAR[tf]}&after=${Math.floor(at)+1}&limit=${Math.min(limit,100)}`
+      :`https://www.okx.com/api/v5/market/candles?instId=${id}&bar=${OKX_BAR[tf]}&limit=${Math.min(limit,300)}`);
     if(!r.ok)throw new Error(r.status);
-    return (await r.json()).data.reverse().map(x=>({t:+x[0],h:+x[2],l:+x[3]}));
+    return (await r.json()).data.reverse().map(x=>({t:+x[0],h:+x[2],l:+x[3],v:+x[7]}));
   },
   tv:id=>`https://www.tradingview.com/chart/?symbol=OKX:${id.replace("-","")}`
 };
@@ -1277,13 +1307,28 @@ const liqURL=b=>`https://www.coinglass.com/pro/futures/LiquidationHeatMap?coin=$
 const KL_CACHE={};
 async function keyLevels(s,id,at){
   const key=s.name+id+(at||"");if(KL_CACHE[key])return KL_CACHE[key];
-  const [dy,wk,mo]=await Promise.all([s.raw(id,"1d",3,at),s.raw(id,"1w",3,at),s.raw(id,"1M",9,at)]);
+  const [dy,wk,mo,h1]=await Promise.all([s.raw(id,"1d",3,at),s.raw(id,"1w",3,at),s.raw(id,"1M",9,at),s.raw(id,"1h",720,at).catch(()=>[])]);
   const pd=dy[dy.length-2], pw=wk[wk.length-2], pm=mo[mo.length-2];
   const q=t=>{const d=new Date(t);return d.getUTCFullYear()*4+Math.floor(d.getUTCMonth()/3);};
   const nowQ=q(at||Date.now());
   const hl=a=>a.length?{h:Math.max(...a.map(x=>x.h)),l:Math.min(...a.map(x=>x.l))}:null;
   const out={pd,pw,pm,pq:hl(mo.filter(m=>q(m.t)===nowQ-1)),cq:hl(mo.filter(m=>q(m.t)===nowQ)),pqN:"Q"+((nowQ-1)%4+1),cqN:"Q"+(nowQ%4+1)};
-  KL_CACHE[key]=out;return out;
+  out.npoc=nakedPocs(h1);KL_CACHE[key]=out;return out;
+}
+// Naked POC: a finished day's point of control (most traded price) that no later candle has traded through yet.
+function nakedPocs(c){
+  if(!c||c.length<48||!c.every(x=>Number.isFinite(x.v)))return [];
+  const D=864e5,byDay=new Map();for(const x of c){const k=x.t-x.t%D;(byDay.get(k)||byDay.set(k,[]).get(k)).push(x);}
+  const days=[...byDay.keys()].sort((a,b)=>a-b).slice(0,-1),out=[];   // the last day is still forming
+  for(const day of days){const a=byDay.get(day);if(a.length<12)continue;
+    const lo=Math.min(...a.map(x=>x.l)),hi=Math.max(...a.map(x=>x.h)),B=40;if(!(hi>lo))continue;
+    const w=(hi-lo)/B,bins=new Array(B).fill(0);
+    for(const x of a){if(!(x.v>0))continue;if(x.h<=x.l){bins[Math.min(B-1,Math.floor((x.l-lo)/w))]+=x.v;continue;}
+      const b0=Math.max(0,Math.floor((x.l-lo)/w)),b1=Math.min(B-1,Math.floor((x.h-lo)/w));
+      for(let b=b0;b<=b1;b++){const bl=lo+b*w,ov=Math.min(x.h,bl+w)-Math.max(x.l,bl);if(ov>0)bins[b]+=x.v*ov/(x.h-x.l);}}
+    let pi=0;bins.forEach((v,i)=>{if(v>bins[pi])pi=i;});const poc=lo+(pi+0.5)*w;
+    if(!c.some(x=>x.t>=day+D&&x.l<=poc&&x.h>=poc))out.push({day,p:poc});}
+  return out;
 }
 function klHTML(k,close){
   const r=(lab,v)=>v==null?"":`<div class="lvl"><span>${lab}</span><span>${fmtP(v)} <span class="mu">${pctTxt(v,close)}</span></span></div>`;
@@ -1674,6 +1719,7 @@ function signalHTML(h){
       ${inv&&inv.some(i=>!i.ok)?`<div class="inv"><b>Warning</b>${inv.filter(i=>!i.ok).map(i=>`<div class="no"><b>✗</b><span>${esc(i.txt)}</span></div>`).join("")}</div>`:""}
       <details class="why"><summary>Why this trade · what cancels it</summary>
         ${!closed&&!(tkx&&tkx.trig>=0)?whyEntry+whyType:""}
+        ${h.cvd?`<div class="mu2">CVD ${h.cvd.ok?"✓ confirms":"✗ doesn't confirm"} the divergence (${esc(h.cvd.txt)}) · ${h.cvd.since>=0?"net buying":"net selling"} ${usdK(h.cvd.since)} since the signal</div>`:""}
         ${btc?`<div class="mu2">BTC ${btc.up?"above":"below"} its 4h EMA 50 · ${esc(h.sym||"coin")} ${btc.rs>=0?"beating":"lagging"} BTC by ${Math.abs(btc.rs).toFixed(1)}% over 5 days</div>`:""}
         ${inv?`<div class="inv">${inv.map(i=>`<div class="${i.ok?"ok":"no"}"><b>${i.ok?"✓":"✗"}</b><span>${esc(i.txt)}</span></div>`).join("")}</div>`:""}
         <div class="${closed?"dim":""}">${(()=>{const oo=h.out||h.track,real=oo&&oo.stopA!=null,E=real&&oo.entryP!=null?oo.entryP:lv.entry,R2=real?Math.abs(lv.t2-E)/(oo.Rp||Math.abs(E-oo.stopA)):lv.rr2;return row(lv.confirm?"Target 2":"Next level",fmtP(lv.t2),`${pctTxt(lv.t2,E)} · ${!real&&lv.confirm?"about ":""}${R2.toFixed(1)}R · ${esc(lv.t2src)}${lv.confirm?"":" · not a target: the second half trails under each new swing"}`,lv.confirm?"pos":"");})()}</div>
@@ -1689,6 +1735,9 @@ function ladderHTML(o,kl){
   o.sr.res.slice(0,2).forEach((c,i)=>items.push({k:`Resistance ${i+1}`,p:c.p,n:`${c.t}× tested`}));
   o.sr.sup.slice(0,2).forEach((c,i)=>items.push({k:`Support ${i+1}`,p:c.p,n:`${c.t}× tested`}));
   if(o.vp)items.push({k:"POC · most traded",p:o.vp.poc,n:`${o.vp.pocPct.toFixed(1)}% of volume`,hl:1},{k:"Value area high",p:o.vp.vah},{k:"Value area low",p:o.vp.val});
+  if(o.frvp&&o.frvpOn)items.push({k:"FRVP POC",p:o.frvp.poc,n:`fixed range from the first divergence pivot (${o.frvp.bars} candles)`,hl:1},{k:"FRVP value area high",p:o.frvp.vah},{k:"FRVP value area low",p:o.frvp.val});
+  if(kl&&kl.npoc){const up=kl.npoc.filter(x=>x.p>L).sort((a,b)=>a.p-b.p).slice(0,2),dn=kl.npoc.filter(x=>x.p<L).sort((a,b)=>b.p-a.p).slice(0,2);
+    for(const x of [...up,...dn])items.push({k:`nPOC ${new Date(x.day).toLocaleDateString([],{month:"short",day:"numeric",timeZone:"UTC"})}`,p:x.p,n:"naked: price hasn't been back since"});}
   if(kl){const add=(k,v)=>{if(v!=null)items.push({k,p:v});};
     add("Prev day high",kl.pd&&kl.pd.h);add("Prev day low",kl.pd&&kl.pd.l);
     add("Prev week high",kl.pw&&kl.pw.h);add("Prev week low",kl.pw&&kl.pw.l);add("Prev month high",kl.pm&&kl.pm.h);add("Prev month low",kl.pm&&kl.pm.l);
@@ -1751,7 +1800,7 @@ function makeCard(o){
   if(!o.asOf)h+=`<details class="sec tvsec"><summary>Chart${t&&t.lv?" · entry, stop and target":""}</summary><div class="secbody"><div class="tvbox"></div></div></details>`;
   if(o.lv)h+=`<details class="sec lvsec x-levels"><summary>Key levels${o.asOf?" at that time":""}</summary><div class="secbody">
     <div class="chips lvtf" role="group" aria-label="Key levels timeframe">${lvTfs.map(tf=>`<button class="chip" data-lvtf="${tf}" aria-pressed="${tf===o.lv.tf}">${tf}</button>`).join("")}</div>
-    <div class="lvbox">${ladderHTML(lvx,null)}</div></div></details>`;
+    <div class="lvbox">${ladderHTML({...lvx,frvpOn:true},null)}</div></div></details>`;
   if(!o.asOf)h+=`<details class="sec liq x-liq"><summary>Liquidity map</summary><div class="secbody"><span class="status">Loading…</span></div></details>`;
   if(!o.asOf)h+=`<details class="sec flow x-flow"><summary>Spot vs leverage</summary><div class="secbody"><span class="status">Loading…</span></div></details>`;
   if(o.rows)h+=`<details class="sec x-tfs"><summary>${o.check?"All timeframes":"Other timeframes"} (${o.rowsN})</summary><div class="secbody">${o.rows}</div></details>`;
@@ -1771,7 +1820,7 @@ function makeCard(o){
   if(lvs){
     // Support, resistance and volume are recalculated for whichever timeframe is picked; weekly/monthly/quarterly stay the same.
     const box=lvs.querySelector(".lvbox"),st={tf:o.lv.tf,kl:null,cache:{[o.lv.tf]:{sr:o.lv.sr,vp:o.lv.vp}}};
-    const paint=()=>{const c=st.cache[st.tf];box.innerHTML=ladderHTML({...lvx,tf:st.tf,sr:c.sr,vp:c.vp},st.kl);
+    const paint=()=>{const c=st.cache[st.tf];box.innerHTML=ladderHTML({...lvx,tf:st.tf,sr:c.sr,vp:c.vp,frvpOn:st.tf===o.lv.tf},st.kl);
       if(st.klErr){const k=box.querySelector(".kls");if(k){k.textContent="Couldn't load weekly and monthly levels. Close and reopen to retry.";k.classList.add("err");}}};
     lvs.addEventListener("toggle",async()=>{
       if(!lvs.open||lvs.dataset.ok)return;lvs.dataset.ok="1";
@@ -1902,7 +1951,7 @@ const OUT_TXT={t2:"Target hit",t1_be:"Target 1, then trailed out",stopped:"Stopp
 let TJ_BUSY=null;
 async function tjGrade(){
   if(TJ_BUSY)return TJ_BUSY;
-  TJ_BUSY=(async()=>{const L=tjLoad(),todo=L.filter(t=>!t.res);
+  TJ_BUSY=(async()=>{const L=tjLoad(),srv=new Set(((SREC&&SREC.trades)||[]).map(x=>x.key)),todo=L.filter(t=>!t.res&&!srv.has(t.key));
     if(todo.length){let g=[];try{g=await window.cgGrade(todo,1000);}catch(e){}
       const by=new Map(g.map(x=>[x.key,x]));
       for(const t of todo){const x=by.get(t.key);if(!x||x.err)continue;t.g=x;
@@ -1950,7 +1999,7 @@ function applyLiveEv(m){
 }
 // This device's saved trades plus the server record (the server's result wins for the same trade).
 async function allTrades(){
-  const [L,S]=await Promise.all([tjGrade(),srvLoad(),liveLoad()]),m=new Map(L.map(t=>[t.key,t]));
+  const [S]=await Promise.all([srvLoad(),liveLoad()]),L=await tjGrade(),m=new Map(L.map(t=>[t.key,t]));
   for(const x of (S&&S.trades)||[]){const t=fromSrv(x),o=m.get(t.key);
     if(!o)m.set(t.key,t);else{o.sent=o.sent||t.sent;o.dyor=o.dyor||t.dyor;o.srvSeen=t.srvSeen;const done=OUT_TXT[t.g.status];if(done||!o.g||!(gOf(o)&&gOf(o).fill>0))m.set(t.key,{...o,...t,res:done?t.g:o.res,g:t.g});}}
   applyLiveEv(m);return [...m.values()];
@@ -2078,7 +2127,8 @@ async function autoLoad(){
   if(snapShow())pollLive();
   paintStored();refreshTrades();
   try{const v=sessionStorage.getItem("cgrab_view");if(v&&v!=="setups")setView(v);}catch(e){}
-  const t0=Date.now();while((!REG||regBusy)&&Date.now()-t0<15000)await new Promise(r=>setTimeout(r,300));
+  if(REG)paintRegime();
+  const t0=Date.now();while(!REG&&Date.now()-t0<15000)await new Promise(r=>setTimeout(r,300));
   let mine=[];try{mine=JSON.parse(localStorage.getItem("cgrab_mine")||"[]");}catch(e){}
   if(mine.length)await scan({auto:true,first:true,only:mine});
   await scan({auto:true,first:!mine.length});
@@ -2117,7 +2167,7 @@ function renderScanInto(box,hits,at){
     const rows=others.map(h=>tfRow(h.tf,`<span class="pill ${dirOf(h.type)}">${SHORT[h.type]}</span>${stPill(h)}`,h.sc,signalHTML(h))).join("");
     const conf=arr.some(o=>o!==top&&o.tf!==top.tf&&dirOf(o.type)===dirOf(top.type));
     return makeCard({sym:top.sym,id:top.id,s:src,top,conf,others,rows,rowsN:others.length,asOf:at,struct:STRUCT[top.id],
-      lv:{tf:top.tf,sr:top.sr,vp:top.vp,live:top.live||top.close}});
+      lv:{tf:top.tf,sr:top.sr,vp:top.vp,frvp:top.frvp,live:top.live||top.close}});
   };
   LAST_SCAN=coins;if(!at&&MODE==="live")tjSave(coins);
   // Grouped by what to do: in a trade, ready (price within about 1 ATR of the entry), waiting. Alerted setups only;
@@ -2207,7 +2257,7 @@ async function checkCoin(){
         :`${base} ${missedLast.tf} setup cancelled: ${goneWhy(missedLast)} before the entry, so there was no trade.`):"";
     if(txt){const n=document.createElement("div");n.className="rec gold";n.textContent=txt;box.appendChild(n);}}
   box.appendChild(makeCard({sym:base,id:c.id,s:used,top,conf,check:true,open:true,asOf:at,struct:STRUCT[c.id],others:all.filter(h=>h!==top),rows:rowsHTML,rowsN:prep.length,
-    lv:lvFrom&&{tf:lvFrom.tf,sr:lvFrom.sr,vp:lvFrom.vp,live:lvFrom.live}}));
+    lv:lvFrom&&{tf:lvFrom.tf,sr:lvFrom.sr,vp:lvFrom.vp,frvp:top&&top.tf===lvFrom.tf?top.frvp:null,live:lvFrom.live}}));
   setStatus(`${base}${bt?` as of ${fmtDate(at)}`:""}: ${all.length} divergence(s) on ${tfs.join(", ")} · ${used.name}`);
   if(!bt&&top){wlAdd(base);tjSave([{top}]);}
   lock(false);
@@ -2290,6 +2340,9 @@ function simulateOB(lv,bull,fwd,fee){
   const o={trig:-1,t1:-1,t2:-1,stop:-1,fill:0},dir=bull?1:-1,win=CFG.trigger,nC=fwd.reduce((n,c)=>n+(c.live?0:1),0);
   // c.live = the candle still forming: its price can touch levels, but it has no close yet
   const reach=(c,p)=>bull?c.h>=p:c.l<=p,back=(c,p)=>bull?c.l<=p:c.h>=p,closedPast=(c,p)=>!c.live&&(bull?c.c<p:c.c>p);
+// On the candle the entry fills, its high/low may have come BEFORE the fill: a target counts there only if the
+  // close (the live price while it is forming) is at or past it, which proves price got there after the fill.
+  const rch=(c,p,i)=>i===o.trig&&!o.atClose?(bull?c.c>=p:c.c<=p):reach(c,p);
   const Rf=Math.abs(lv.entry-lv.stop);let f=0,avg=0,i0=0;
   const add=(p,q)=>{avg=(avg*f+p*q)/(f+q);f+=q;};
   if(lv.atClose){add(lv.e1,lv.split?0.5:1);o.trig=0;o.atClose=true;}
@@ -2307,13 +2360,13 @@ function simulateOB(lv,bull,fwd,fee){
     if(lv.stopMode==="close"){if(back(c,hard(stopLvl)))px=hard(stopLvl);else if(closedPast(c,stopLvl))px=c.c;}
     else if(back(c,stopLvl)){px=stopLvl;o.wick=!closedPast(c,stopLvl);}
     if(px!=null){real+=rem*(px-avg)*dir;rem=0;o.stop=i;break;}
-    if(o.t1<0&&AM.mgmt==="t1all"&&reach(c,lv.t1)){real+=rem*(lv.t1-avg)*dir;rem=0;o.t1=i;o.t2=i;o.t1all=true;break;}
-    if(AM.be1R&&o.t1<0&&reach(c,avg+dir*Rf))stopLvl=avg;
-    if(o.t1<0&&reach(c,lv.t1)){const q=rem/2;real+=q*(lv.t1-avg)*dir;rem-=q;o.t1=i;stopLvl=avg;}
+    if(o.t1<0&&AM.mgmt==="t1all"&&rch(c,lv.t1,i)){real+=rem*(lv.t1-avg)*dir;rem=0;o.t1=i;o.t2=i;o.t1all=true;break;}
+    if(AM.be1R&&o.t1<0&&rch(c,avg+dir*Rf,i))stopLvl=avg;
+    if(o.t1<0&&rch(c,lv.t1,i)){const q=rem/2;real+=q*(lv.t1-avg)*dir;rem-=q;o.t1=i;stopLvl=avg;}
     if(AM.mgmt==="trail"){
       if(o.t1>=0&&i-2>o.t1&&i>=4&&!c.live){const k=i-2,x=j=>bull?fwd[j].l:fwd[j].h,lower=(a,b)=>bull?a<b:a>b;
         if([k-2,k-1,k+1,k+2].every(j=>lower(x(k),x(j)))&&lower(stopLvl,x(k)))stopLvl=x(k);}
-    }else if(o.t1>=0&&reach(c,lv.t2)){real+=rem*(lv.t2-avg)*dir;rem=0;o.t2=i;break;}
+    }else if(o.t1>=0&&rch(c,lv.t2,i)){real+=rem*(lv.t2-avg)*dir;rem=0;o.t2=i;break;}
     if(AM.tStop&&o.t1<0&&!c.live&&i-o.trig>=AM.tStop){real+=rem*(c.c-avg)*dir;rem=0;o.stop=i;o.timeStop=true;break;}
   }
   const last=fwd[Math.max(0,end-1)],mtm=rem>0&&last?rem*(last.c-avg)*dir:0;
@@ -2446,6 +2499,9 @@ function simulate(lv,bull,fwd,fee,ltf){
   if(lv.method==="ob")return simulateOB(lv,bull,fwd,fee);
   let R=Math.abs(lv.entry-lv.stop);const dir=bull?1:-1,o={trig:-1,t1:-1,t2:-1,stop:-1},nC=fwd.reduce((n,c)=>n+(c.live?0:1),0);
   const reach=(c,p)=>bull?c.h>=p:c.l<=p, back=(c,p)=>bull?c.l<=p:c.h>=p, closedPast=(c,p)=>!c.live&&(bull?c.c<p:c.c>p);
+// On the candle the entry fills, its high/low may have come BEFORE the fill: a target counts there only if the
+  // close (the live price while it is forming) is at or past it, which proves price got there after the fill.
+  const rch=(c,p,i)=>i===o.trig&&!o.atClose?(bull?c.c>=p:c.c<=p):reach(c,p);
   const win=lv.method==="sweep"?CFG.sweepWin:CFG.trigger;
   let start;
   if(lv.method==="close"||(lv.method==="ob"&&lv.atClose)){o.trig=0;o.atClose=true;start=0;
@@ -2483,10 +2539,10 @@ function simulate(lv,bull,fwd,fee,ltf){
       if(back(c,hardOf(stopLvl))){o.stop=i;exitP=hardOf(stopLvl);break;}
       if(closedPast(c,stopLvl)){o.stop=i;exitP=c.c;break;}
     }else if(back(c,stopLvl)){o.stop=i;exitP=stopLvl;o.wick=!closedPast(c,stopLvl);break;}
-    if(o.t1<0&&reach(c,lv.t1)){o.t1=i;stopLvl=lv.entry;if(AM.mgmt==="t1all"){o.t2=i;o.t1all=true;break;}}
+    if(o.t1<0&&rch(c,lv.t1,i)){o.t1=i;stopLvl=lv.entry;if(AM.mgmt==="t1all"){o.t2=i;o.t1all=true;break;}}
     if(AM.mgmt==="trail"&&o.t1>=0&&i-2>o.t1&&i>=4&&!c.live){const k=i-2,x=j=>bull?fwd[j].l:fwd[j].h,lower=(a,b)=>bull?a<b:a>b;
         if([k-2,k-1,k+1,k+2].every(j=>lower(x(k),x(j)))&&lower(stopLvl,x(k)))stopLvl=x(k);}
-    else if(AM.mgmt!=="trail"&&o.t1>=0&&reach(c,lv.t2)){o.t2=i;break;}
+    else if(AM.mgmt!=="trail"&&o.t1>=0&&rch(c,lv.t2,i)){o.t2=i;break;}
   }
   o.trail=AM.mgmt==="trail";o.stopNowLvl=stopLvl;
   const last=fwd[Math.max(0,end-1)],mtm=last?(last.c-lv.entry)*dir/R:0,exitR=exitP==null?0:(exitP-lv.entry)*dir/R;
@@ -2520,7 +2576,7 @@ function btCard(h,open){
     <div class="sub"><span class="pill ${dirOf(h.type)}">${SHORT[h.type]}</span><span class="pill ${outCls(o)}">${OUT[o.status]}${o.trig>=0?" "+rTxt(o.r):""}</span></div></div>${chip(h.sc)}</summary><div class="cbody"></div>`;
   const fill=()=>{if(el.dataset.ok)return;el.dataset.ok="1";
     el.querySelector(".cbody").innerHTML=signalHTML(h)+
-      `<details class="sec x-levels"><summary>Key levels at that time · ${h.tf}</summary><div class="secbody">${ladderHTML({tf:h.tf,sr:h.sr,vp:h.vp,live:h.close},{})}</div></details>`;};
+      `<details class="sec x-levels"><summary>Key levels at that time · ${h.tf}</summary><div class="secbody">${ladderHTML({tf:h.tf,sr:h.sr,vp:h.vp,frvp:h.frvp,frvpOn:true,live:h.close},{})}</div></details>`;};
   el.addEventListener("toggle",()=>{if(el.open)fill();});
   if(open){fill();el.open=true;}
   return el;
@@ -2720,6 +2776,8 @@ function buildIndex(list){
   return {time:cut[0].map(x=>x.t),high:avg(x=>x.h),low:avg(x=>x.l),close:avg(x=>x.c)};
 }
 let REG=null,regBusy=false,regAt=0;
+// last market read (up to 15 minutes old) so the tiles and the first scan don't wait for a fresh one
+try{const c=JSON.parse(localStorage.getItem("cgrab_reg")||"null");if(c&&c.REG&&Date.now()-c.t<15*60e3&&(typeof MODE==="undefined"||MODE==="live")){REG=c.REG;regAt=c.t;}}catch(e){}
 async function loadRegime(at){
   if(regBusy)return;regBusy=true;
   document.querySelectorAll(".rt .rst").forEach(e=>{e.textContent="…";e.className="rst";});
@@ -2757,8 +2815,9 @@ async function loadRegime(at){
     try{const k=await ending(s,s.id("ETH").replace("USDT","BTC"),"1d",end,150);if(k.length>=60){const d=toD(k);R.eth={st:structure(d),ch30:pct(d.close,30)};}}catch(e){}
     // BTC dominance now (CoinGecko) and an estimate of 7 and 30 days ago from the top 250 market caps
     if(!at){try{
-      const [g,m]=await Promise.all([fetch("https://api.coingecko.com/api/v3/global").then(r=>r.json()),
-        fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&price_change_percentage=7d,30d").then(r=>r.json()).catch(()=>null)]);
+      const to=()=>AbortSignal.timeout?{signal:AbortSignal.timeout(6000)}:{};
+      const [g,m]=await Promise.all([fetch("https://api.coingecko.com/api/v3/global",to()).then(r=>r.json()),
+        fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&price_change_percentage=7d,30d",to()).then(r=>r.json()).catch(()=>null)]);
       alts.btcd=g.data.market_cap_percentage.btc;R.ethd=g.data.market_cap_percentage.eth;
       const b=Array.isArray(m)&&m.find(c=>c.id==="bitcoin");
       if(b&&b.market_cap){
@@ -2802,9 +2861,11 @@ async function loadRegime(at){
       if(tf==="4h"){const e=ema(dd.close,50),c=dd.close[dd.close.length-1];btc4={up:c>e[e.length-1],e50:e[e.length-1]};}}}catch(e){}}));
     btc.btc4=btc4;
     mkt.style=styleOf(btcMap);mkt.btcMap=btcMap;
-    if(!at){try{btc.liq=await liqMap("BTC");}catch(e){}}
     REG={btc,alts,mkt,at:end,last:btcD.close[btcD.close.length-1],nAlts:altKeys.length};regAt=Date.now();
     paintRegime();
+    if(!at){try{localStorage.setItem("cgrab_reg",JSON.stringify({t:Date.now(),REG}));}catch(e){}
+      // the BTC liquidation map is slow (open interest history): fetch it after the tiles are up
+      try{btc.liq=await liqMap("BTC");paintRegime();}catch(e){}}
   }catch(e){document.querySelectorAll(".rt .rst").forEach(x=>{x.textContent="n/a";x.className="rst";});REG=null;}
   regBusy=false;
 }
@@ -2901,7 +2962,7 @@ window.cgBot=async(o={})=>{
         live:f(live),entry:lv&&f(lv.entry),stop:lv&&f(lv.stop),t1:lv&&f(lv.t1),t2:lv&&f(lv.t2),
         stopPct:lv&&pc(lv.stop),t1Pct:lv&&pc(lv.t1),t2Pct:lv&&pc(lv.t2),rr1:lv&&lv.rr1,rr2:lv&&lv.rr2,chart:src.tv(h.id),
         stopNow:tk&&tk.stopA!=null?f(tk.stopA):null,stopNowPct:tk&&tk.stopA!=null?pc(tk.stopA):null,rr1Now:tk&&tk.stopA!=null?tk.rr1:null,
-        notes:[...(h.sc.notes||[]),...(h.sc.plus||[]).map(p=>"✓ "+p.txt),...(h.sc.pen||[]).filter(p=>/funding|BTC is turning|Leverage-led|cross/.test(p.txt)).map(p=>"✗ "+p.txt)],
+        cvd:h.cvd?{ok:h.cvd.ok,txt:h.cvd.txt,since:h.cvd.since}:null,notes:[...(h.sc.notes||[]),...(h.sc.plus||[]).map(p=>"✓ "+p.txt),...(h.sc.pen||[]).filter(p=>/funding|BTC is turning|Leverage-led|cross/.test(p.txt)).map(p=>"✗ "+p.txt)],
         confirm:lv?lv.confirm||null:null,early:!!tk&&!!tk.early,chochDone:!!tk&&!!tk.choch&&tk.status==="pending",splitLimit:tk&&tk.split&&tk.fill<1&&tk.e2Lvl!=null?f(tk.e2Lvl):null,strongIn:!!tk&&!!tk.strong,retLvl:tk&&tk.retLvl!=null?f(tk.retLvl):null,retSrc:tk&&tk.retSrc||"",retStop:tk&&tk.retStop!=null?f(tk.retStop):null,retStopPct:tk&&tk.retStop!=null&&tk.retLvl?((tk.retStop/tk.retLvl-1)*100):null,poi:lv&&lv.poi!=null?f(lv.poi):null,entryNow:tk&&tk.entryP!=null?f(tk.entryP):null,chochLvl:tk&&tk.chochLvl!=null?f(tk.chochLvl):null,touched:!!tk&&tk.touched>=0,
         wl:lv?{e1:lv.e1??lv.entry,e2:lv.e2??null,entry:lv.entry,stop:tk&&tk.stopA!=null?tk.stopA:lv.stop,t1:lv.t1,atClose:!!lv.atClose,ret:tk&&tk.retLvl!=null?tk.retLvl:null,retStop:tk&&tk.retStop!=null?tk.retStop:null,trail:tk&&tk.trail&&tk.t1>=0&&tk.stopNowLvl!=null?tk.stopNowLvl:null}:null,
         plan:lv?{confirm:lv.confirm,poi:lv.poi,deepLvl:lv.deepLvl,win:lv.win,tf:lv.tf,emaOk:lv.emaOk,volMin:lv.volMin,maxSweeps:lv.maxSweeps,earlyExit:lv.earlyExit,retest:lv.retest,splitE:lv.splitE,strong:lv.strong,fvgEdge:lv.fvgEdge,hlBos:lv.hlBos,sweeps0:lv.sweeps0,method:lv.method,pivot:lv.pivot,atClose:lv.atClose,e1:lv.e1,e2:lv.e2,split:lv.split,stopMode:lv.stopMode,entry:lv.entry,stop:lv.stop,t1:lv.t1,t2:lv.t2,rr1:lv.rr1,rr2:lv.rr2,riskPct:lv.riskPct,atr:lv.atr}:null};})};
@@ -2909,8 +2970,13 @@ window.cgBot=async(o={})=>{
 // ---------- weekly scorecard ----------
 // Re-plays each alerted trade from its signal candle with the same engine as the app (entry halves, half off at
 // Target 1 with the stop to the average entry, rest to Target 2), on a $1,000 position. Prices only, before fees.
+const GRADE_K=new Map();   // candles for grading, kept 60 seconds
 window.cgGrade=async(list,size=1000)=>{
-  const s=src||BINANCE,cache={},out=[];
+  const s=src||BINANCE,cache={},out=[],now=Date.now();
+  const need=[...new Set(list.map(t=>{try{return s.id(t.sym)+"|"+t.tf;}catch(e){return null;}}).filter(Boolean))],q=need.slice();
+  await Promise.all(Array.from({length:6},async()=>{while(q.length){const ck=q.shift(),[id,tf]=ck.split("|"),c=GRADE_K.get(ck);
+    if(c&&now-c.t<60e3){cache[ck]=c.k;continue;}
+    try{cache[ck]=await s.candles(id,tf);GRADE_K.set(ck,{t:Date.now(),k:cache[ck]});}catch(e){}}}));
   for(const t of list){
     try{const id=s.id(t.sym),ck=id+"|"+t.tf;
       if(!cache[ck])cache[ck]=await s.candles(id,t.tf);
