@@ -2282,7 +2282,7 @@ const cleanBase=v=>v.trim().toUpperCase().replace(/[^A-Z0-9]/g,"").replace(/(USD
 // closed candles whose close time is at or before endTs, oldest first
 async function binEnding(id,tf,endTs,count){
   const cut=Math.min(endTs,Date.now());
-  return (await binKlines(id,tf,`endTime=${Math.floor(endTs)}&limit=${Math.min(1000,count)}`,cut)).filter(x=>x[6]<=cut).map(x=>({t:x[0],ct:x[6],o:+x[1],h:+x[2],l:+x[3],c:+x[4],v:+x[7]}));
+  return (await binKlines(id,tf,`endTime=${Math.floor(endTs)}&limit=${Math.min(1000,count)}`,cut)).filter(x=>x[6]<=cut).map(x=>({t:x[0],ct:x[6],o:+x[1],h:+x[2],l:+x[3],c:+x[4],v:+x[7],tb:+x[10]}));
 }
 async function okxEnding(id,tf,endTs,count){
   const bar=OKX_BAR[tf];if(!bar)throw new Error("unsupported");
@@ -2303,7 +2303,7 @@ async function binRange(id,tf,start,end){
     const r=await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${id}&interval=${tf}&startTime=${Math.floor(cur)}&endTime=${Math.floor(cut)}&limit=1000`);
     if(!r.ok)throw new Error(r.status);
     const a=await r.json();if(!a.length)break;
-    for(const x of a)if(x[6]<=cut)out.push({t:x[0],ct:x[6],o:+x[1],h:+x[2],l:+x[3],c:+x[4],v:+x[7]});
+    for(const x of a)if(x[6]<=cut)out.push({t:x[0],ct:x[6],o:+x[1],h:+x[2],l:+x[3],c:+x[4],v:+x[7],tb:+x[10]});
     cur=a[a.length-1][0]+1;if(a.length<1000)break;
   }
   return out;
@@ -2323,11 +2323,12 @@ async function btSeries(base,tf,end,count){
   }
   return null;
 }
-const toK=a=>a.map(x=>[x.t,x.o,x.h,x.l,x.c,x.v]);
+const toK=a=>a.map(x=>[x.t,x.o,x.h,x.l,x.c,x.v,x.tb]);
 function viewAt(D,t){
   const v={ma:{},maOk:{}};
   for(const k of ["time","high","low","close","vol","rsi","hist","atr"])v[k]=D[k].slice(0,t+1);
   for(const p of S.periods){v.ma[p]=D.ma[p].slice(0,t+1);v.maOk[p]=t+1>=(S.maType==="ema"?p+30:p);}
+  if(D.cvd)v.cvd=D.cvd.slice(0,t+1);
   return v;
 }
 
@@ -3003,7 +3004,17 @@ window.cgBacktest=async(o={})=>{
   const isL=h=>dirOf(h.type)==="bull",rr1=h=>(h.plans&&h.plans[h.rec.m]||h.lv||{}).rr1,
     badL=h=>isL(h)&&/^(Counter-trend long|Swing long forming)/.test(h.styleK||""),
     weakAltL=h=>isL(h)&&!isBtc(h.id)&&!(h.rot&&h.rot.on)&&h.tier!=="aplus";
-  const variants=o.variants||(o.set==="ltf"?null:[
+  const M9={...Z,am:{...N0A,noBadLongs:true,noFormShorts:true,minRR:1.2}},disc=h=>!!h.loc&&h.loc.ret>=0.5,cvdOk=h=>!!h.cvd&&h.cvd.ok;
+  const XSET=[
+    {name:"X0 DEFAULT Balanced (crypto only)",...M9},
+    {name:"X1 + full position at Target 1 (no trailing half)",...M9,am:{...M9.am,mgmt:"t1all"}},
+    {name:"X2 + only when CVD confirms the divergence",...M9,keep:cvdOk},
+    {name:"X3 + premium/discount: longs in discount, shorts in premium",...M9,keep:disc},
+    {name:"X4 + OTE zone only (62–79% retrace)",...M9,keep:h=>!!h.loc&&h.loc.ret>=0.62&&h.loc.ret<=0.79},
+    {name:"X5 full position at Target 1 + CVD confirms",...M9,am:{...M9.am,mgmt:"t1all"},keep:cvdOk},
+    {name:"X6 full position at Target 1 + premium/discount",...M9,am:{...M9.am,mgmt:"t1all"},keep:disc},
+    {name:"X7 full position at Target 1 + CVD + premium/discount",...M9,am:{...M9.am,mgmt:"t1all"},keep:h=>cvdOk(h)&&disc(h)}];
+  const variants=o.variants||(o.set==="x"?XSET:o.set==="ltf"?null:[
     {name:"A old rules (before tonight)",...Z,am:{}},
     {name:"M8 Most profit",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true}},
     {name:"M9 DEFAULT Balanced: M8 + Target 1 at least 1.2R",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true,minRR:1.2}},
@@ -3093,6 +3104,8 @@ window.cgBacktest=async(o={})=>{
         add("regular divergence",h=>/^regular/.test(h.type));add("hidden divergence",h=>/^hidden/.test(h.type));
         add("filled at the signal close",h=>h.out&&h.out.atClose);add("filled by the limit",h=>h.out&&h.out.trig>=0&&!h.out.atClose);
         add("entry from a fair value gap",h=>!!P(h).fvg);add("entry from the block top",h=>!P(h).fvg);
+        add("CVD confirms",h=>!!h.cvd&&h.cvd.ok);add("CVD doesn't confirm",h=>!!h.cvd&&!h.cvd.ok);add("no CVD data",h=>!h.cvd);
+        add("in discount (longs) / premium (shorts)",h=>!!h.loc&&h.loc.ret>=0.5);add("in premium (longs) / discount (shorts)",h=>!!h.loc&&h.loc.ret<0.5);
         return c;})()});}
   STOP_BUF=saved.buf;STOP_MIN=saved.min;S.stopMode=saved.mode;BT.fee=saved.fee;CONFIRM=saved.confirm;Object.assign(CF,saved.cf);Object.assign(AM,AM0);
   return {days,tfs,coins:Object.keys(data).filter(b=>Object.keys(data[b]).length).length,fee:o.fee??0.15,variants:res};
