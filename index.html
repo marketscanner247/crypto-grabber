@@ -947,7 +947,7 @@ const RETEST_MAX=12;
 // minRR by the Trades setting: Most profit 0 (M8), Balanced 1.2 (M9, default: profitable in both years, worst drop −10R),
 // Safest 1.5 (M10).
 const RR_OF={max:0,bal:1.2,safe:1.5};
-const AM={entry:"split",mgmt:"trail",be1R:false,noFvg:false,tStop:0,regAplus:true,btcGuard:"off",rotLongs:true,noBadLongs:true,noFormShorts:true,minRR:RR_OF[S.rmode]??1.2};
+const AM={entry:"split",mgmt:"trail",be1R:false,noFvg:false,tStop:0,regAplus:true,btcGuard:"off",rotLongs:true,noBadLongs:true,noFormShorts:true,needCvd:true,minRR:RR_OF[S.rmode]??1.2};
 const styleLab=h=>h.styleK!==undefined?h.styleK:(STRUCT[h.id]&&Object.keys(STRUCT[h.id]).length?tradeType(h,styleOf(STRUCT[h.id])).label:"");
 // Why a setup isn't alerted under the current rules (null = it can be)
 function ruleBlock(h){
@@ -955,6 +955,8 @@ function ruleBlock(h){
   if(AM.noFormShorts&&dirOf(h.type)==="bear"&&/^Swing short forming/.test(styleLab(h)||""))return "Swing short forming: the 4h hasn't turned down yet, and these shorts lost money over 2 years";
   if(AM.regAplus&&/^regular/.test(h.type)&&h.chk&&!h.chk.all&&!(AM.rotLongs&&dirOf(h.type)==="bull"&&rotOnFor(h)))
     return `Regular divergence with ${h.chk.n}/${h.chk.total} checks: only hidden divergence, or regular with all 5 checks, is alerted (regular without them lost money over 2 years)`;
+  // order flow must agree with the divergence (backtests: +0.67R and +0.64R per trade with it, +0.12R and +0.13R without)
+  if(AM.needCvd&&h.cvd&&!h.cvd.ok)return `CVD doesn't confirm the divergence (${h.cvd.txt}): these earned a fraction of the confirmed ones in backtests`;
   const lv=h.lv;if(AM.minRR&&lv&&lv.rr1<AM.minRR)return `Target 1 pays ${lv.rr1.toFixed(1)}R, under ${AM.minRR}R (${AM.minRR>=1.5?"Safest":"Balanced"} setting)`;
   return null;
 }
@@ -3026,7 +3028,19 @@ window.cgBacktest=async(o={})=>{
     {name:"W5 no alt shorts while BTC is above its 4h EMA 50",...M9,keep:noAltShortUp},
     {name:"W6 CVD + no alt shorts while BTC is above its 4h EMA 50",...M9,keep:h=>cvdOk(h)&&noAltShortUp(h)},
     {name:"W7 W6, all out at Target 1",...M9,am:T1A,keep:h=>cvdOk(h)&&noAltShortUp(h)}];
-  const variants=o.variants||(o.set==="w"?WSET:o.set==="x"?XSET:o.set==="ltf"?null:[
+  // Y: the live default since Oct 31 (Balanced + CVD) and ideas from research on top of it
+  const Y0={...M9,am:{...M9.am,needCvd:true}},ysym=h=>h.sym||String(h.id||"").replace(/-?USDT$/,""),
+    momOk=h=>{const r=momRank(ysym(h),h.at);return r==null||(dirOf(h.type)==="bull"?r>=1/3:r<2/3);},
+    ethOk=h=>dirOf(h.type)!=="bull"||isBtc(h.id)||ethBtcUp(h.at)!==false,
+    usOk=h=>{const t=h.out&&(h.out.tt||h.at);if(!t)return true;const u=new Date(t).getUTCHours();return u>=13;};
+  const YSET=[
+    {name:"Y0 NEW DEFAULT: Balanced + CVD confirms",...Y0},
+    {name:"Y1 + 3-week momentum: no longs on the weakest third, no shorts on the strongest third",...Y0,keep:momOk},
+    {name:"Y2 + alt longs only while ETH is beating BTC",...Y0,keep:ethOk},
+    {name:"Y3 + fills from 13:00 UTC on only (US session and later)",...Y0,keep:usOk},
+    {name:"Y4 + momentum + ETH/BTC",...Y0,keep:h=>momOk(h)&&ethOk(h)},
+    {name:"Y5 old default without CVD, for comparison",...M9}];
+  const variants=o.variants||(o.set==="y"?YSET:o.set==="w"?WSET:o.set==="x"?XSET:o.set==="ltf"?null:[
     {name:"A old rules (before tonight)",...Z,am:{}},
     {name:"M8 Most profit",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true}},
     {name:"M9 DEFAULT Balanced: M8 + Target 1 at least 1.2R",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true,minRR:1.2}},
@@ -3068,12 +3082,20 @@ window.cgBacktest=async(o={})=>{
       days.push({T,range,dom:rel7>0,pace,on:range&&rel7>0&&pace});}
     return days;})();
   const rotAt=T=>{if(!ROT)return null;let lo=0,hi=ROT.length-1,r=null;while(lo<=hi){const m=(lo+hi)>>1;if(ROT[m].T<=T){r=ROT[m];lo=m+1;}else hi=m-1;}return r;};
+  // cross-coin context for the report: 3-week momentum rank (Liu, Tsyvinski & Wu), ETH/BTC trend, size by volume rank
+  const DAY=864e5,D1={};for(const b of Object.keys(data)){const x=data[b]["1d"];if(x)D1[b]={t:x.k.map(k=>k.t),c:x.D.close};}
+  const dIdx=(b,T)=>{const x=D1[b];if(!x)return -1;let lo=0,hi=x.t.length-1,r=-1;while(lo<=hi){const m=(lo+hi)>>1;if(x.t[m]+DAY<=T){r=m;lo=m+1;}else hi=m-1;}return r;};
+  const ret21=(b,T)=>{const i=dIdx(b,T);return i>=21?D1[b].c[i]/D1[b].c[i-21]-1:null;},RK={};
+  const momRank=(b,T)=>{const k=Math.floor(T/DAY);if(!RK[k]){const v={};for(const c of Object.keys(D1)){const r=ret21(c,T);if(r!=null)v[c]=r;}RK[k]=v;}
+    const v=RK[k],me=v[b];if(me==null)return null;const all=Object.values(v);return all.filter(x=>x<me).length/Math.max(1,all.length-1);};
+  const ethBtcUp=T=>{const e=ret21("ETH",T),b=ret21("BTC",T);return e==null||b==null?null:e>b;};
+  const volRank=b=>bases.indexOf(b);
   const pitFor=(b,id)=>(h,T)=>{h.btc=btcAt(b,T);h.rot=b==="BTC"?null:rotAt(T);const m={},d=data[b];HTFL[id]={};
     for(const tf of CTX){const x=d[tf];if(!x)continue;const ms=TF_MS(tf);let i=x.k.length-1;while(i>=0&&x.k[i].t+ms>T)i--;
       if(i<60)continue;const v=viewAt(x.D,i);m[tf]=structure(v);noteHTF(id,tf,v);}
     STRUCT[id]=m;};
   const saved={buf:STOP_BUF,min:STOP_MIN,mode:S.stopMode,fee:BT.fee,confirm:CONFIRM,cf:{...CF}},res=[];
-  for(const v of variants){STOP_BUF=v.buf;STOP_MIN=v.min;S.stopMode=v.mode;CONFIRM=!!v.confirm;Object.assign(CF,v.cf||{});Object.assign(AM,AM0,{mgmt:"half",regAplus:false,btcGuard:"off",rotLongs:false,noBadLongs:false,noFormShorts:false,minRR:0},v.am||{});BT.fee=o.fee??0.15;const hits=[];
+  for(const v of variants){STOP_BUF=v.buf;STOP_MIN=v.min;S.stopMode=v.mode;CONFIRM=!!v.confirm;Object.assign(CF,v.cf||{});Object.assign(AM,AM0,{mgmt:"half",regAplus:false,btcGuard:"off",rotLongs:false,noBadLongs:false,noFormShorts:false,needCvd:false,minRR:0},v.am||{});BT.fee=o.fee??0.15;const hits=[];
     for(const b of bases){const d=data[b];if(!d)continue;
       for(const tf of tfs){const x=d[tf];if(!x||x.k.length<({"1w":120,"1M":60}[tf]||300))continue;const id=x.s.id(b);   // crypto has few weekly/monthly candles
         hits.push(...historyHits(x.k,{id,base:b},tf,from,now,pitFor(b,id)));}}
@@ -3117,8 +3139,21 @@ window.cgBacktest=async(o={})=>{
         add("filled at the signal close",h=>h.out&&h.out.atClose);add("filled by the limit",h=>h.out&&h.out.trig>=0&&!h.out.atClose);
         add("entry from a fair value gap",h=>!!P(h).fvg);add("entry from the block top",h=>!P(h).fvg);
         add("CVD confirms",h=>!!h.cvd&&h.cvd.ok);add("CVD doesn't confirm",h=>!!h.cvd&&!h.cvd.ok);add("no CVD data",h=>!h.cvd);
+        const sym=h=>h.sym||String(h.id||"").replace(/-?USDT$/,""),fillT=h=>h.out&&(h.out.tt||h.at),uh=h=>new Date(fillT(h)).getUTCHours(),ud=h=>new Date(fillT(h)).getUTCDay();
+        add("filled 00–08 UTC (Asia)",h=>uh(h)<8);add("filled 08–13 UTC (Europe)",h=>uh(h)>=8&&uh(h)<13);add("filled 13–21 UTC (US)",h=>uh(h)>=13&&uh(h)<21);add("filled 21–24 UTC (late US)",h=>uh(h)>=21);
+        ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].forEach((d,i)=>add(`filled on ${d}`,h=>ud(h)===i));
+        const mr=h=>momRank(sym(h),h.at),LG=h=>dirOf(h.type)==="bull";
+        add("longs, coin in the top third by 3-week return",h=>LG(h)&&mr(h)!=null&&mr(h)>=2/3);add("longs, middle third",h=>LG(h)&&mr(h)!=null&&mr(h)>=1/3&&mr(h)<2/3);add("longs, bottom third",h=>LG(h)&&mr(h)!=null&&mr(h)<1/3);
+        add("shorts, coin in the bottom third by 3-week return",h=>!LG(h)&&mr(h)!=null&&mr(h)<1/3);add("shorts, middle third",h=>!LG(h)&&mr(h)!=null&&mr(h)>=1/3&&mr(h)<2/3);add("shorts, top third",h=>!LG(h)&&mr(h)!=null&&mr(h)>=2/3);
+        add("alt longs, ETH beating BTC (3 weeks)",h=>LG(h)&&!isBtc(h.id)&&ethBtcUp(h.at)===true);add("alt longs, ETH lagging BTC",h=>LG(h)&&!isBtc(h.id)&&ethBtcUp(h.at)===false);
+        add("alt shorts, ETH beating BTC (3 weeks)",h=>!LG(h)&&!isBtc(h.id)&&ethBtcUp(h.at)===true);add("alt shorts, ETH lagging BTC",h=>!LG(h)&&!isBtc(h.id)&&ethBtcUp(h.at)===false);
+        add("coins ranked 1–15 by volume",h=>volRank(sym(h))>=0&&volRank(sym(h))<15);add("coins ranked 16–30",h=>volRank(sym(h))>=15&&volRank(sym(h))<30);add("coins ranked 31+",h=>volRank(sym(h))>=30);
         add("in discount (longs) / premium (shorts)",h=>!!h.loc&&h.loc.ret>=0.5);add("in premium (longs) / discount (shorts)",h=>!!h.loc&&h.loc.ret<0.5);
-        return c;})()});}
+        return c;})(),
+      coins:(()=>{const by={},cl=alerted.filter(h=>h.out&&h.out.trig>=0&&["t2","t1_be","stopped","timeout"].includes(h.out.status));
+        for(const h of cl){const k=h.sym||String(h.id||"").replace(/-?USDT$/,"");(by[k]=by[k]||{n:0,r:0});by[k].n++;by[k].r+=h.out.r;}
+        const a=Object.entries(by).sort((x,y)=>y[1].r-x[1].r),tot=cl.reduce((x,h)=>x+h.out.r,0);
+        return {n:a.length,total:tot,top:a.slice(0,5),worst:a.slice(-3).reverse(),withoutTop3:tot-a.slice(0,3).reduce((x,[,v])=>x+v.r,0)};})()});}
   STOP_BUF=saved.buf;STOP_MIN=saved.min;S.stopMode=saved.mode;BT.fee=saved.fee;CONFIRM=saved.confirm;Object.assign(CF,saved.cf);Object.assign(AM,AM0);
   return {days,tfs,coins:Object.keys(data).filter(b=>Object.keys(data[b]).length).length,fee:o.fee??0.15,variants:res};
 };
