@@ -66,12 +66,17 @@ const line = (lab, x) => `${lab}: ${x.closed} closed · win ${pc(x.winRate)} · 
       L.push(`<b>${v.name}</b>${v === r.variants[0] ? "" : ` (${d >= 0 ? "+" : ""}${d.toFixed(1)}R vs ${r.variants[0].name.split(" ")[0]})`}`);
       L.push(line("All alerted", v.alerted) + (v.alerted.maxDD != null ? ` · worst drop −${v.alerted.maxDD.toFixed(1)}R` : ""));
       if (v.half1) L.push(`· first ${hl} ${v.half1.totalR >= 0 ? "+" : ""}${v.half1.totalR.toFixed(1)}R (${v.half1.closed}) · last ${hl} ${v.half2.totalR >= 0 ? "+" : ""}${v.half2.totalR.toFixed(1)}R (${v.half2.closed})`);
+      if (v.hlUsed) L.push(`· higher-low entries taken: ${v.hlUsed}`);
       L.push(line("· with the trend", v.withTrend));
       L.push(line("· all 5 checks", v.aplus));
       L.push("");
     }
     const x0 = r.variants.find(v => /^(X0|W0|Y0)/.test(v.name));
     if (x0 && x0.cuts) {
+      const m = x0.missInfo;
+      if (m && m.alerted) L.push(`<b>Setups whose zone never filled (${x0.name.split(" ")[0]})</b>`,
+        `${m.notFilled} of ${m.alerted} alerted setups (${Math.round(m.notFilled / m.alerted * 100)}%) · ${m.missed} ran to Target 1 without the entry`,
+        `In the 20 candles after the signal, price ran on average ${m.avgRun.toFixed(1)}R past the planned entry · ${m.past1R} of them 1R or more`, "");
       L.push(`<b>Inside ${x0.name.split(" ")[0]} (default): order flow and location</b>`);
       for (const [lab, x] of x0.cuts) if (/^(CVD|no CVD|in discount|in premium)/.test(lab) && x.closed) L.push(line(`· ${lab}`, x));
       L.push("", `<b>By timeframe (each X variant)</b>`);

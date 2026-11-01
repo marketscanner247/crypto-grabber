@@ -3039,7 +3039,9 @@ window.cgBacktest=async(o={})=>{
     {name:"Y2 + alt longs only while ETH is beating BTC",...Y0,keep:ethOk},
     {name:"Y3 + fills from 13:00 UTC on only (US session and later)",...Y0,keep:usOk},
     {name:"Y4 + momentum + ETH/BTC",...Y0,keep:h=>momOk(h)&&ethOk(h)},
-    {name:"Y5 old default without CVD, for comparison",...M9}];
+    {name:"Y5 old default without CVD, for comparison",...M9},
+    {name:"Y6 + higher-low entry when the zone doesn't fill (the trendline move)",...Y0,hlEntry:true},
+    {name:"Y7 old default + higher-low entry",...M9,hlEntry:true}];
   const variants=o.variants||(o.set==="y"?YSET:o.set==="w"?WSET:o.set==="x"?XSET:o.set==="ltf"?null:[
     {name:"A old rules (before tonight)",...Z,am:{}},
     {name:"M8 Most profit",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true}},
@@ -3101,6 +3103,23 @@ window.cgBacktest=async(o={})=>{
         hits.push(...historyHits(x.k,{id,base:b},tf,from,now,pitFor(b,id)));}}
     if(CONFIRM){if(o.progress)console.log(`loaded lower-timeframe candles for ${hits.length} signals…`);await resimLtf(hits);}
     // flag-break entry: a stop order just past the flag's edge, stop beyond the other edge, same targets
+    // Setups whose zone never filled: how often, and how far price ran past the planned entry (in R) within 20 candles
+    const alerted0=hits.filter(h=>(h.tier==="aplus"||h.tier==="risk")&&(!v.keep||v.keep(h)));
+    const missInfo=(()=>{const nf=alerted0.filter(h=>h.out&&h.out.trig<0&&h.lv&&h.fw),runs=nf.map(h=>{const lv=h.lv,b=dirOf(h.type)==="bull",R=Math.abs(lv.entry-lv.stop)||1,f=h.fw.slice(0,20);
+        return f.length?Math.max(...f.map(c=>b?(c.h-lv.entry)/R:(lv.entry-c.l)/R)):0;});
+      return {alerted:alerted0.length,notFilled:nf.length,missed:nf.filter(h=>h.out.missed).length,avgRun:runs.length?runs.reduce((a,b)=>a+b,0)/runs.length:0,past1R:runs.filter(r=>r>=1).length};})();
+    // Higher-low entry for zones that never fill: price holds above the zone (below it for shorts) and makes a swing low
+    // (2 candles each side) within 15 candles; buy the break of that swing's 5-candle high, stop under the swing low.
+    if(v.hlEntry)for(const h of alerted0){const lv=h.lv,fw=h.fw;if(!lv||!fw||!h.out||h.out.trig>=0)continue;
+      const bull=dirOf(h.type)==="bull",a=lv.atr||Math.abs(lv.entry-lv.stop),zEdge=bull?Math.max(lv.e1,lv.e2,lv.entry):Math.min(lv.e1,lv.e2,lv.entry);let done=false;
+      for(let k=2;k<Math.min(15,fw.length-2)&&!done;k++){const c=fw[k],x=j=>bull?fw[j].l:fw[j].h,lower=(p,q)=>bull?p<q:p>q;
+        if(fw.slice(0,k+3).some(z=>bull?z.l<=zEdge:z.h>=zEdge))break;   // touched the zone: the normal entry applies
+        if(![k-2,k-1,k+1,k+2].every(j=>lower(x(k),x(j))))continue;
+        const sw=x(k),ext=bull?Math.max(...fw.slice(k-2,k+3).map(z=>z.h)):Math.min(...fw.slice(k-2,k+3).map(z=>z.l));
+        const entry=ext+(bull?1:-1)*0.1*a,stop=sw-(bull?1:-1)*0.25*a,R=Math.abs(entry-stop);
+        if(!(R>0)||(bull?lv.t1-entry:entry-lv.t1)<R)break;   // Target 1 must still pay 1:1 or better
+        const hl={...lv,method:"breakout",entry,stop,e1:entry,e2:entry,split:false,atClose:false,rr1:Math.abs(lv.t1-entry)/R,rr2:Math.abs(lv.t2-entry)/R,riskPct:R/entry*100};
+        const o=simulate(hl,bull,fw.slice(k+3),BT.fee);if(o.trig>=0&&o.trig<5){h.out=o;h.hlUsed=true;}done=true;}}
     if(v.flagBreak)for(const h of hits){const f=h.flag,lv=h.lv;if(!f||!lv||!h.fw)continue;const bull=dirOf(h.type)==="bull",a=lv.atr;
       const entry=bull?f.top+0.1*a:f.bot-0.1*a,stop=bull?f.bot-0.25*a:f.top+0.25*a,R=Math.abs(entry-stop);if(!(R>0))continue;
       if((bull?lv.t1-entry:entry-lv.t1)<R)continue;   // the break must still leave Target 1 at 1:1 or better
@@ -3112,7 +3131,7 @@ window.cgBacktest=async(o={})=>{
         early:cl.filter(h=>h.out.early).length,maxDD:(()=>{const ct=h=>h.out.st||h.out.t2t||h.out.t1t||h.out.tt||h.at;let c=0,pk=0,dd=0;
           for(const h of cl.slice().sort((a,b)=>ct(a)-ct(b))){c+=h.out.r;pk=Math.max(pk,c);dd=Math.max(dd,pk-c);}return dd;})(),winRate:cl.length?cl.filter(h=>h.out.r>0).length/cl.length:null,avgR:cl.length?sum/cl.length:null,totalR:sum};};
     const alerted=hits.filter(h=>(h.tier==="aplus"||h.tier==="risk")&&(!v.keep||v.keep(h))),mid=from+(now-from)/2;
-    res.push({name:v.name,all:st(hits),alerted:st(alerted),half1:st(alerted.filter(h=>h.at<mid)),half2:st(alerted.filter(h=>h.at>=mid)),aplus:st(hits.filter(h=>h.tier==="aplus")),risk:st(hits.filter(h=>h.tier==="risk")),
+    res.push({name:v.name,missInfo,hlUsed:alerted.filter(h=>h.hlUsed).length,all:st(hits),alerted:st(alerted),half1:st(alerted.filter(h=>h.at<mid)),half2:st(alerted.filter(h=>h.at>=mid)),aplus:st(hits.filter(h=>h.tier==="aplus")),risk:st(hits.filter(h=>h.tier==="risk")),
       byTf:Object.fromEntries(tfs.map(tf=>[tf,st(alerted.filter(h=>h.tf===tf))])),
       counter:st(alerted.filter(h=>/Counter/.test(h.styleK||""))),withTrend:st(alerted.filter(h=>/^Swing (long|short)$/.test(h.styleK||""))),
       byTfTrend:Object.fromEntries(tfs.map(tf=>{const x=ByTT(alerted,tf);return [tf,{with:st(x.w),counter:st(x.c)}];})),
