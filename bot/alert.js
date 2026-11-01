@@ -158,7 +158,7 @@ function plan(s) {
 }
 function sizeLine(s) {
   const p = Math.abs(s.stopNowPct ?? s.stopPct); if (!p) return "";
-  const why = [risky(s) && "high risk", s.btcHalf && "BTC below its 4h EMA 50"].filter(Boolean), pos = why.length ? POS / 2 : POS;
+  const why = [risky(s) && "high risk"].filter(Boolean), pos = why.length ? POS / 2 : POS;   // BTC weak no longer halves alt longs (backtests: they did well)
   return `\nSize: $${pos.toLocaleString("en-US")} position${why.length ? ` (half size: ${why.join(", ")})` : ""} · lose about $${(pos * p / 100).toFixed(0)} at the stop${s.confirm && !s.entryNow ? " (estimate, final at the CHoCH)" : ""}`;
 }
 const kUsd = v => { const a = Math.abs(v); return `$${a >= 1e9 ? (a / 1e9).toFixed(1) + "B" : a >= 1e6 ? (a / 1e6).toFixed(1) + "M" : a >= 1e3 ? (a / 1e3).toFixed(0) + "K" : a.toFixed(0)}`; };

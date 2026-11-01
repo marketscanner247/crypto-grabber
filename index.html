@@ -1198,7 +1198,7 @@ function scoreHit(h,conf){
         pen.push({pts:5,txt:`BTC is turning ${D>0?"down":"up"} (${b1&&b1.last&&b1.last.dir===-D&&b1.ago<=6?`1h ${b1.last.kind} ${b1.ago} candles ago`:`4h ${b4.last.kind} ${b4.ago} candles ago`})`});}
     {const r=btcRel(h);if(r)notes.push(`BTC ${r.up?"above":"below"} its 4h EMA 50 · ${h.sym||"coin"} ${r.rs>=0?"beating":"lagging"} BTC by ${Math.abs(r.rs).toFixed(1)}% over 5 days`);
       const bl=btcBlock(h);if(bl)notes.push(`⛔ Not alerted: ${bl}`);
-      else if(r&&D>0&&!r.up)notes.push("⚠️ BTC is below its 4h EMA 50: use half size on this alt long (alts fall harder if BTC dumps)");}
+      else if(r&&D>0&&!r.up)notes.push("⚠️ BTC is below its 4h EMA 50: alts fall harder if BTC dumps (backtests: these alt longs still did well, so full size)");}
     const cx2=CTX[h.id];
     if(cx2&&cx2.fu&&cx2.fu.funding!=null){const fp=cx2.fu.funding*100,crowd=D>0?fp>=0.03:fp<=-0.03,fuel=D>0?fp<=-0.01:fp>=0.03;
       notes.push(`Funding ${fp>=0?"+":""}${fp.toFixed(3)}% (${fp>0?"longs paying, more longs open":fp<0?"shorts paying, more shorts open":"neutral"})`);
@@ -1693,7 +1693,7 @@ function signalHTML(h){
       ${!closed&&lv.wide?`<div class="rec gold"><b>⚠️ Skip: stop too wide</b> · The pivot was a spike, so the stop sits ${lv.riskPct.toFixed(0)}% away (${lv.ratr.toFixed(1)} ATR; normal is 1–2). Targets that far out aren't realistic.</div>`:""}
       ${!closed&&h.chk&&tierOf(h)==="risk"?`<div class="rec gold"><b>⚠️ Enter at your own risk</b> · ${h.chk.n}/${h.chk.total} checks met${(()=>{const m=h.chk.items.filter(i=>!i.ok).map(i=>i.txt).slice(0,3);return m.length?`. Missing: ${esc(m.join("; "))}`:"";})()}. Half size: the Size below is already halved.</div>`:""}
       ${!closed&&(ruleBlock(h)||btcBlock(h))?`<div class="rec gold"><b>⛔ Not alerted</b> · ${esc(ruleBlock(h)||btcBlock(h))}.${tkx&&tkx.trig>=0?" If you took it anyway, manage it with the plan below.":""}</div>`:""}
-      ${btcHalf&&tierOf(h)!=="other"?`<div class="rec gold"><b>⚠️ Half size</b> · BTC is below its 4h EMA 50. Alts fall harder when BTC dumps.</div>`:""}
+      ${btcHalf&&tierOf(h)!=="other"?`<div class="rec gold"><b>⚠️ BTC is below its 4h EMA 50</b> · Alts fall harder if BTC dumps. Full size: in every backtest these alt longs still did well, but it's your call.</div>`:""}
       ${closed?`<div class="donebn ${ti[1]==="gold"?"flat":ti[1]}"><b>${ti[0]}${h.track.trig>=0?" · "+rTxt(h.track.r):""}</b><span>${esc(ti[2])}</span></div>`:ti?`<div class="act ${ti[1]}"><b>${ti[0]}</b><span>${ti[2]}</span></div>`:""}
       <div class="${closed?"dim":""}">
       ${isLive?"":row("Price then",fmtP(L),"")}
@@ -1715,10 +1715,10 @@ function signalHTML(h){
         if(lv.confirm&&sa==null)return row("Stop (est.)",fmtP(sp),`set at the CHoCH: just past the lowest ${lv.confirm} ${bull?"low":"high"} in the zone`,"neg");
         if(trailing)return row("Stop now",fmtP(tkx.stopNowLvl),`trailing under each new ${h.tf} swing ${bull?"low":"high"} · started at ${fmtP(sp)}`,"neg");
         return row(sw?"Stop (at least)":"Stop",fmtP(sp),`${fromEntry(sp)} · risk ${rk.toFixed(1)}%${sw?` · moves just past the sweep ${bull?"low":"high"} if it goes further`:""}${lv.stopMode==="close"?` · on close, hard ${fmtP(sp-(bull?1:-1)*0.5*Math.abs(E-sp))}`:""}`,"neg");})()}
-      ${(()=>{const oo=h.out||h.track,E=entOf(oo,lv),sp=(oo&&oo.stopA)??lv.stop,dp=Math.abs(E-sp)/E,hr=!h.out&&tierOf(h)==="risk",half=btcHalf||hr,pos=half?POS/2:POS,loss=pos*dp;
+      ${(()=>{const oo=h.out||h.track,E=entOf(oo,lv),sp=(oo&&oo.stopA)??lv.stop,dp=Math.abs(E-sp)/E,hr=!h.out&&tierOf(h)==="risk",half=hr,pos=half?POS/2:POS,loss=pos*dp;
         if(oo&&oo.trig>=0&&oo.fill>0&&oo.fill<1&&!isClosed(oo)){const inn=pos*oo.fill,dpF=Math.abs(lv.entry-sp)/lv.entry;
           return row("Size",`$${pos.toLocaleString()}`,`${half?"half size · ":""}$${inn.toLocaleString()} in so far (first half) · lose about $${(inn*dp).toFixed(0)} at the stop now, about $${(pos*dpF).toFixed(0)} if the second half fills`);}
-        return row("Size",`$${pos.toLocaleString()}`,`${half?`half size (${[hr&&"high risk",btcHalf&&"BTC weak"].filter(Boolean).join(", ")}) · `:""}lose about $${loss.toFixed(0)} at the ${(dp*100).toFixed(1)}% stop${lv.confirm&&!(oo&&oo.stopA!=null)?" · estimate until the CHoCH sets the stop":""}`);})()}
+        return row("Size",`$${pos.toLocaleString()}`,`${half?"half size (high risk) · ":""}lose about $${loss.toFixed(0)} at the ${(dp*100).toFixed(1)}% stop${lv.confirm&&!(oo&&oo.stopA!=null)?" · estimate until the CHoCH sets the stop":""}`);})()}
       ${(()=>{const oo=h.out||h.track,real=oo&&oo.stopA!=null,fil=oo&&oo.trig>=0&&oo.fill>0,E=entOf(oo,lv),sp=(oo&&oo.stopA)??lv.stop;return row("Target 1",fmtP(lv.t1),`${pctTxt(lv.t1,fil||real?E:lv.entry)} · ${real||fil?"":lv.confirm?"about ":""}${(real&&oo.rr1!=null?oo.rr1:fil?Math.abs(lv.t1-E)/Math.abs(E-sp):lv.rr1).toFixed(1)}R · ${esc(lv.t1src)}`,"pos");})()}
       </div>
       ${inTrade?`<div class="late"${late?"":" hidden"}${isLive?` data-late="${h.id}" data-entry="${E0}" data-t1="${lv.t1}"`:""}>${late?lateTxt(prog):""}</div>`:""}
