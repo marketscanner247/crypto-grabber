@@ -3,7 +3,7 @@
 // for three stop settings, and the result goes to Telegram and the console.
 //   BT_DAYS (default 120), BT_TFS (default 1h,4h,1d), BT_TOP (default 50)
 //   BT_SET: "zone" (default: the current rules and earlier tweaks), "x" (new ideas X0–X7: full exit at Target 1, CVD,
-//           premium/discount, OTE), "w" (high-win candidates W0–W7), "y" (live default + momentum, ETH/BTC, session) or "ltf" (the lower-timeframe entries B–I)
+//           premium/discount, OTE), "w" (high-win candidates W0–W7), "y" (live default + momentum, ETH/BTC, session), "z" (entry timing: fill window, entering at the signal close) or "ltf" (the lower-timeframe entries B–I)
 const http = require("http"), fs = require("fs"), path = require("path");
 const { chromium } = require("playwright");
 const ROOT = path.join(__dirname, "..");
@@ -26,7 +26,8 @@ async function send1(html) {
 // Telegram allows 4,096 characters per message: send the report in pieces, one block per variant
 async function send(html) {
   if (!TOKEN || !CHAT) return;
-  const parts = html.split("\n\n"), out = [];
+  // blocks longer than one message are split by line
+  const parts = html.split("\n\n").flatMap(p => { if (p.length < 3800) return [p]; const o = [""]; for (const l of p.split("\n")) { if ((o[o.length - 1] + "\n" + l).length > 3800) o.push(l); else o[o.length - 1] += (o[o.length - 1] ? "\n" : "") + l; } return o; }), out = [];
   for (const p of parts) { if (out.length && (out[out.length - 1] + "\n\n" + p).length < 3800) out[out.length - 1] += "\n\n" + p; else out.push(p); }
   for (const m of out) await send1(m);
 }
@@ -71,7 +72,7 @@ const line = (lab, x) => `${lab}: ${x.closed} closed · win ${pc(x.winRate)} · 
       L.push(line("· all 5 checks", v.aplus));
       L.push("");
     }
-    const x0 = r.variants.find(v => /^(X0|W0|Y0)/.test(v.name));
+    const x0 = r.variants.find(v => /^(X0|W0|Y0|Z0)/.test(v.name));
     if (x0 && x0.cuts) {
       const m = x0.missInfo;
       if (m && m.alerted) L.push(`<b>Setups whose zone never filled (${x0.name.split(" ")[0]})</b>`,

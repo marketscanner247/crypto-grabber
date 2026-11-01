@@ -947,7 +947,7 @@ const RETEST_MAX=12;
 // minRR by the Trades setting: Most profit 0 (M8), Balanced 1.2 (M9, default: profitable in both years, worst drop −10R),
 // Safest 1.5 (M10).
 const RR_OF={max:0,bal:1.2,safe:1.5};
-const AM={entry:"split",mgmt:"trail",be1R:false,noFvg:false,tStop:0,regAplus:true,btcGuard:"off",rotLongs:true,noBadLongs:true,noFormShorts:true,needCvd:true,minRR:RR_OF[S.rmode]??1.2};
+const AM={entry:"split",mgmt:"trail",be1R:false,noFvg:false,tStop:0,regAplus:true,btcGuard:"off",rotLongs:true,noBadLongs:true,noFormShorts:true,needCvd:true,momRule:true,minRR:RR_OF[S.rmode]??1.2};
 const styleLab=h=>h.styleK!==undefined?h.styleK:(STRUCT[h.id]&&Object.keys(STRUCT[h.id]).length?tradeType(h,styleOf(STRUCT[h.id])).label:"");
 // Why a setup isn't alerted under the current rules (null = it can be)
 function ruleBlock(h){
@@ -955,6 +955,10 @@ function ruleBlock(h){
   if(AM.noFormShorts&&dirOf(h.type)==="bear"&&/^Swing short forming/.test(styleLab(h)||""))return "Swing short forming: the 4h hasn't turned down yet, and these shorts lost money over 2 years";
   if(AM.regAplus&&/^regular/.test(h.type)&&h.chk&&!h.chk.all&&!(AM.rotLongs&&dirOf(h.type)==="bull"&&rotOnFor(h)))
     return `Regular divergence with ${h.chk.n}/${h.chk.total} checks: only hidden divergence, or regular with all 5 checks, is alerted (regular without them lost money over 2 years)`;
+  // don't fight 3-week momentum (backtests: +3.1R on 4h over 2 years, +8.8R on 1h over 6 months, smaller worst drop)
+  if(AM.momRule&&typeof REG!=="undefined"&&REG&&REG.mom){const b=h.sym||String(h.id||"").replace(/-?USDT$/,""),r=REG.mom[b];
+    if(r!=null&&dirOf(h.type)==="bull"&&r<1/3)return `${b} is in the weakest third of the top 50 by 3-week return: longs there lost money in backtests`;
+    if(r!=null&&dirOf(h.type)==="bear"&&r>=2/3)return `${b} is in the strongest third of the top 50 by 3-week return: shorts there lost money in backtests`;}
   // order flow must agree with the divergence (backtests: +0.67R and +0.64R per trade with it, +0.12R and +0.13R without)
   if(AM.needCvd&&h.cvd&&!h.cvd.ok)return `CVD doesn't confirm the divergence (${h.cvd.txt}): these earned a fraction of the confirmed ones in backtests`;
   const lv=h.lv;if(AM.minRR&&lv&&lv.rr1<AM.minRR)return `Target 1 pays ${lv.rr1.toFixed(1)}R, under ${AM.minRR}R (${AM.minRR>=1.5?"Safest":"Balanced"} setting)`;
@@ -2864,7 +2868,9 @@ async function loadRegime(at){
       if(tf==="4h"){const e=ema(dd.close,50),c=dd.close[dd.close.length-1];btc4={up:c>e[e.length-1],e50:e[e.length-1]};}}}catch(e){}}));
     btc.btc4=btc4;
     mkt.style=styleOf(btcMap);mkt.btcMap=btcMap;
-    REG={btc,alts,mkt,at:end,last:btcD.close[btcD.close.length-1],nAlts:altKeys.length};regAt=Date.now();
+    const r21={};for(const b of Object.keys(series)){const c=series[b];if(c.length>21)r21[b]=c[c.length-1].c/c[c.length-22].c-1;}
+    const rv=Object.values(r21),mom={};for(const [b,v] of Object.entries(r21))mom[b]=rv.filter(x=>x<v).length/Math.max(1,rv.length-1);
+    REG={btc,alts,mkt,mom,at:end,last:btcD.close[btcD.close.length-1],nAlts:altKeys.length};regAt=Date.now();
     paintRegime();
     if(!at){try{localStorage.setItem("cgrab_reg",JSON.stringify({t:Date.now(),REG}));}catch(e){}
       // the BTC liquidation map is slow (open interest history): fetch it after the tiles are up
@@ -3042,7 +3048,14 @@ window.cgBacktest=async(o={})=>{
     {name:"Y5 old default without CVD, for comparison",...M9},
     {name:"Y6 + higher-low entry when the zone doesn't fill (the trendline move)",...Y0,hlEntry:true},
     {name:"Y7 old default + higher-low entry",...M9,hlEntry:true}];
-  const variants=o.variants||(o.set==="y"?YSET:o.set==="w"?WSET:o.set==="x"?XSET:o.set==="ltf"?null:[
+  const Z0={...Y0,keep:momOk};
+  const ZSET=[
+    {name:"Z0 NEW DEFAULT: Balanced + CVD + 3-week momentum",...Z0},
+    {name:"Z1 + zone order stays open 10 candles (instead of 5)",...Z0,trigger:10},
+    {name:"Z2 + zone order stays open 20 candles",...Z0,trigger:20},
+    {name:"Z3 enter at the signal close instead of the zone (same stop and targets)",...Z0,atSignal:true},
+    {name:"Z4 enter at the signal close only when price is already within 0.5R of the zone (else wait for the zone)",...Z0,nearSignal:true}];
+  const variants=o.variants||(o.set==="z"?ZSET:o.set==="y"?YSET:o.set==="w"?WSET:o.set==="x"?XSET:o.set==="ltf"?null:[
     {name:"A old rules (before tonight)",...Z,am:{}},
     {name:"M8 Most profit",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true}},
     {name:"M9 DEFAULT Balanced: M8 + Target 1 at least 1.2R",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true,minRR:1.2}},
@@ -3097,7 +3110,8 @@ window.cgBacktest=async(o={})=>{
       if(i<60)continue;const v=viewAt(x.D,i);m[tf]=structure(v);noteHTF(id,tf,v);}
     STRUCT[id]=m;};
   const saved={buf:STOP_BUF,min:STOP_MIN,mode:S.stopMode,fee:BT.fee,confirm:CONFIRM,cf:{...CF}},res=[];
-  for(const v of variants){STOP_BUF=v.buf;STOP_MIN=v.min;S.stopMode=v.mode;CONFIRM=!!v.confirm;Object.assign(CF,v.cf||{});Object.assign(AM,AM0,{mgmt:"half",regAplus:false,btcGuard:"off",rotLongs:false,noBadLongs:false,noFormShorts:false,needCvd:false,minRR:0},v.am||{});BT.fee=o.fee??0.15;const hits=[];
+  const TRIG0=CFG.trigger;
+  for(const v of variants){CFG.trigger=v.trigger||TRIG0;STOP_BUF=v.buf;STOP_MIN=v.min;S.stopMode=v.mode;CONFIRM=!!v.confirm;Object.assign(CF,v.cf||{});Object.assign(AM,AM0,{mgmt:"half",regAplus:false,btcGuard:"off",rotLongs:false,noBadLongs:false,noFormShorts:false,needCvd:false,momRule:false,minRR:0},v.am||{});BT.fee=o.fee??0.15;const hits=[];
     for(const b of bases){const d=data[b];if(!d)continue;
       for(const tf of tfs){const x=d[tf];if(!x||x.k.length<({"1w":120,"1M":60}[tf]||300))continue;const id=x.s.id(b);   // crypto has few weekly/monthly candles
         hits.push(...historyHits(x.k,{id,base:b},tf,from,now,pitFor(b,id)));}}
@@ -3120,6 +3134,12 @@ window.cgBacktest=async(o={})=>{
         if(!(R>0)||(bull?lv.t1-entry:entry-lv.t1)<R)break;   // Target 1 must still pay 1:1 or better
         const hl={...lv,method:"breakout",entry,stop,e1:entry,e2:entry,split:false,atClose:false,rr1:Math.abs(lv.t1-entry)/R,rr2:Math.abs(lv.t2-entry)/R,riskPct:R/entry*100};
         const o=simulate(hl,bull,fw.slice(k+3),BT.fee);if(o.trig>=0&&o.trig<5){h.out=o;h.hlUsed=true;}done=true;}}
+    // entering at the close of the signal candle instead of waiting for the zone (same stop and targets)
+    if(v.atSignal||v.nearSignal)for(const h of alerted0){const lv=h.lv;if(!lv||!h.fw||!(h.close>0))continue;const bull=dirOf(h.type)==="bull",R=Math.abs(h.close-lv.stop);
+      if(!(R>0)||(bull?h.close<=lv.stop:h.close>=lv.stop))continue;
+      if(v.nearSignal&&!(Math.abs(h.close-lv.entry)<=0.5*Math.abs(lv.entry-lv.stop)))continue;   // known at the signal close: no look-ahead
+      const rr1=Math.abs(lv.t1-h.close)/R;if(rr1<1){h.out={trig:-1,status:"no_trigger",r:0,done:false};continue;}
+      h.out=simulate({...lv,method:"close",entry:h.close,e1:h.close,e2:h.close,split:false,atClose:true,rr1,rr2:Math.abs(lv.t2-h.close)/R,riskPct:R/h.close*100},bull,h.fw,BT.fee);}
     if(v.flagBreak)for(const h of hits){const f=h.flag,lv=h.lv;if(!f||!lv||!h.fw)continue;const bull=dirOf(h.type)==="bull",a=lv.atr;
       const entry=bull?f.top+0.1*a:f.bot-0.1*a,stop=bull?f.bot-0.25*a:f.top+0.25*a,R=Math.abs(entry-stop);if(!(R>0))continue;
       if((bull?lv.t1-entry:entry-lv.t1)<R)continue;   // the break must still leave Target 1 at 1:1 or better
@@ -3173,7 +3193,7 @@ window.cgBacktest=async(o={})=>{
         for(const h of cl){const k=h.sym||String(h.id||"").replace(/-?USDT$/,"");(by[k]=by[k]||{n:0,r:0});by[k].n++;by[k].r+=h.out.r;}
         const a=Object.entries(by).sort((x,y)=>y[1].r-x[1].r),tot=cl.reduce((x,h)=>x+h.out.r,0);
         return {n:a.length,total:tot,top:a.slice(0,5),worst:a.slice(-3).reverse(),withoutTop3:tot-a.slice(0,3).reduce((x,[,v])=>x+v.r,0)};})()});}
-  STOP_BUF=saved.buf;STOP_MIN=saved.min;S.stopMode=saved.mode;BT.fee=saved.fee;CONFIRM=saved.confirm;Object.assign(CF,saved.cf);Object.assign(AM,AM0);
+  CFG.trigger=TRIG0;STOP_BUF=saved.buf;STOP_MIN=saved.min;S.stopMode=saved.mode;BT.fee=saved.fee;CONFIRM=saved.confirm;Object.assign(CF,saved.cf);Object.assign(AM,AM0);
   return {days,tfs,coins:Object.keys(data).filter(b=>Object.keys(data[b]).length).length,fee:o.fee??0.15,variants:res};
 };
 // ---------- daily BTC brief (New York open) ----------
