@@ -1031,7 +1031,7 @@ function levels(d,x,sr,vp,method="ob",tf=null){
 const GONE=new Map();
 const unfilledOf=h=>(!!h.track&&!h.out&&h.track.status==="no_trigger")||(!h.out&&GONE.has([h.id,h.tf,h.type,h.time].join("|")));
 // Never long into resistance, never short into support: the first 4h/1d/1w level in the trade's path (above the signal
-// timeframe) must be at least 1R away. Not applied in backtests (those levels would come from the future).
+// timeframe) must be at least 1R away. In backtests the levels come from candles up to the signal only (point in time).
 function roomOf(h){
   const lv=h.lv;if(!lv||h.bt)return null;
   const bull=dirOf(h.type)==="bull",R=Math.abs(lv.entry-lv.stop),m=HTFL[h.id]||{},lv2=[];
@@ -1043,6 +1043,11 @@ function roomOf(h){
   const rr=Math.abs(first.p-lv.entry)/R;
   return {p:first.p,tf:first.tf,ema:first.ema,rr,blocked:rr<1,txt:`${bull?"Long into":"Short into"} ${first.tf} ${first.ema?`EMA ${first.ema}`:bull?"resistance":"support"} at ${fmtP(first.p)} (${rr.toFixed(2)}R away)`};
 }
+// Higher-timeframe levels (1d, 1w, and the 1d EMA 200) between the entry and Target 1: price often stalls there.
+function htfPath(h,tfs=["1d","1w"]){const lv=h.plans&&h.plans[h.rec.m]||h.lv;if(!lv)return [];const bull=dirOf(h.type)==="bull",m=HTFL[h.id]||{},o=[];
+  for(const tf of tfs){if(TF_MIN[tf]<=TF_MIN[h.tf]||!m[tf])continue;for(const c of [...m[tf].res,...m[tf].sup])o.push({p:c.p,tf,t:c.t});
+    if(m[tf].ema&&m[tf].ema[200]!=null)o.push({p:m[tf].ema[200],tf,ema:200});}
+  return o.filter(x=>bull?x.p>lv.entry&&x.p<lv.t1:x.p<lv.entry&&x.p>lv.t1).sort((a,b)=>bull?a.p-b.p:b.p-a.p);}
 const ignoredOf=h=>{if(!h.lv)return "No valid plan";if(h.lv.wide)return `Stop too wide (${h.lv.ratr.toFixed(1)} ATR)`;
   if(h.lv.rr1<1)return `Target 1 pays only ${h.lv.rr1.toFixed(2)}R (under 1:1)`;const rm=roomOf(h);return rm&&rm.blocked?rm.txt:"";};
 function timing(lv,x){
@@ -2651,6 +2656,7 @@ function historyHits(series,c,tf,from=-Infinity,to=Infinity,pit=null){
       const sr=srLevels(v),vp=volumeProfile(v),h=buildHit(v,f,x,c,tf,sr,vp);
       h.bt=true;h.btc=null;h.rot=null;if(pit){pit(h,series[t].ct);h.bt=false;h.pit=true;}
       if(ignoredOf(h)){h.bt=true;continue;}
+      if(pit)h.htf=htfPath(h);
       h.sc=scoreHit(h,false);h.at=series[t].ct;
       if(pit){h.chk=checklist(h);h.styleK=(()=>{const m=STRUCT[h.id];const y=m?styleOf(m):null;return y?tradeType(h,y).label:"";})();h.tier=tierOf(h);h.bt=true;}
       h.outs={};const fw=series.slice(t+1);h.fw=fw;h.sigTime=series[t].ct+1;
@@ -3055,7 +3061,14 @@ window.cgBacktest=async(o={})=>{
     {name:"Z2 + zone order stays open 20 candles",...Z0,trigger:20},
     {name:"Z3 enter at the signal close instead of the zone (same stop and targets)",...Z0,atSignal:true},
     {name:"Z4 enter at the signal close only when price is already within 0.5R of the zone (else wait for the zone)",...Z0,nearSignal:true}];
-  const variants=o.variants||(o.set==="z"?ZSET:o.set==="y"?YSET:o.set==="w"?WSET:o.set==="x"?XSET:o.set==="ltf"?null:[
+  const capT1=h=>{const lv=P1(h),bull=dirOf(h.type)==="bull",x=(h.htf||[])[0];if(!x||!lv||!h.fw)return;
+    const t1=x.p-(bull?1:-1)*0.1*(lv.atr||0),R=Math.abs(lv.entry-lv.stop),rr1=Math.abs(t1-lv.entry)/R;if(!(rr1>=1))return;
+    h.out=simulate({...lv,t1,rr1},bull,h.fw,BT.fee);h.capped=true;};
+  const TSET=[
+    {name:"T0 NEW DEFAULT: Balanced + CVD + 3-week momentum",...Z0},
+    {name:"T1 + Target 1 moved to the first daily/weekly level in the way (if still 1R+)",...Z0,post:capT1},
+    {name:"T2 + skip setups with a daily/weekly level before Target 1",...Z0,keep:h=>momOk(h)&&!(h.htf&&h.htf.length)}];
+  const variants=o.variants||(o.set==="t"?TSET:o.set==="z"?ZSET:o.set==="y"?YSET:o.set==="w"?WSET:o.set==="x"?XSET:o.set==="ltf"?null:[
     {name:"A old rules (before tonight)",...Z,am:{}},
     {name:"M8 Most profit",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true}},
     {name:"M9 DEFAULT Balanced: M8 + Target 1 at least 1.2R",...Z,am:{...N0A,noBadLongs:true,noFormShorts:true,minRR:1.2}},
@@ -3134,6 +3147,7 @@ window.cgBacktest=async(o={})=>{
         if(!(R>0)||(bull?lv.t1-entry:entry-lv.t1)<R)break;   // Target 1 must still pay 1:1 or better
         const hl={...lv,method:"breakout",entry,stop,e1:entry,e2:entry,split:false,atClose:false,rr1:Math.abs(lv.t1-entry)/R,rr2:Math.abs(lv.t2-entry)/R,riskPct:R/entry*100};
         const o=simulate(hl,bull,fw.slice(k+3),BT.fee);if(o.trig>=0&&o.trig<5){h.out=o;h.hlUsed=true;}done=true;}}
+    if(v.post)for(const h of alerted0)v.post(h);
     // entering at the close of the signal candle instead of waiting for the zone (same stop and targets)
     if(v.atSignal||v.nearSignal)for(const h of alerted0){const lv=h.lv;if(!lv||!h.fw||!(h.close>0))continue;const bull=dirOf(h.type)==="bull",R=Math.abs(h.close-lv.stop);
       if(!(R>0)||(bull?h.close<=lv.stop:h.close>=lv.stop))continue;
@@ -3151,7 +3165,7 @@ window.cgBacktest=async(o={})=>{
         early:cl.filter(h=>h.out.early).length,maxDD:(()=>{const ct=h=>h.out.st||h.out.t2t||h.out.t1t||h.out.tt||h.at;let c=0,pk=0,dd=0;
           for(const h of cl.slice().sort((a,b)=>ct(a)-ct(b))){c+=h.out.r;pk=Math.max(pk,c);dd=Math.max(dd,pk-c);}return dd;})(),winRate:cl.length?cl.filter(h=>h.out.r>0).length/cl.length:null,avgR:cl.length?sum/cl.length:null,totalR:sum};};
     const alerted=hits.filter(h=>(h.tier==="aplus"||h.tier==="risk")&&(!v.keep||v.keep(h))),mid=from+(now-from)/2;
-    res.push({name:v.name,missInfo,hlUsed:alerted.filter(h=>h.hlUsed).length,all:st(hits),alerted:st(alerted),half1:st(alerted.filter(h=>h.at<mid)),half2:st(alerted.filter(h=>h.at>=mid)),aplus:st(hits.filter(h=>h.tier==="aplus")),risk:st(hits.filter(h=>h.tier==="risk")),
+    res.push({name:v.name,missInfo,capped:alerted.filter(h=>h.capped).length,hlUsed:alerted.filter(h=>h.hlUsed).length,all:st(hits),alerted:st(alerted),half1:st(alerted.filter(h=>h.at<mid)),half2:st(alerted.filter(h=>h.at>=mid)),aplus:st(hits.filter(h=>h.tier==="aplus")),risk:st(hits.filter(h=>h.tier==="risk")),
       byTf:Object.fromEntries(tfs.map(tf=>[tf,st(alerted.filter(h=>h.tf===tf))])),
       counter:st(alerted.filter(h=>/Counter/.test(h.styleK||""))),withTrend:st(alerted.filter(h=>/^Swing (long|short)$/.test(h.styleK||""))),
       byTfTrend:Object.fromEntries(tfs.map(tf=>{const x=ByTT(alerted,tf);return [tf,{with:st(x.w),counter:st(x.c)}];})),
@@ -3177,6 +3191,7 @@ window.cgBacktest=async(o={})=>{
         add("regular divergence",h=>/^regular/.test(h.type));add("hidden divergence",h=>/^hidden/.test(h.type));
         add("filled at the signal close",h=>h.out&&h.out.atClose);add("filled by the limit",h=>h.out&&h.out.trig>=0&&!h.out.atClose);
         add("entry from a fair value gap",h=>!!P(h).fvg);add("entry from the block top",h=>!P(h).fvg);
+        add("Target 1 clear of daily/weekly levels",h=>!(h.htf&&h.htf.length));add("a daily/weekly level before Target 1",h=>!!(h.htf&&h.htf.length));
         add("CVD confirms",h=>!!h.cvd&&h.cvd.ok);add("CVD doesn't confirm",h=>!!h.cvd&&!h.cvd.ok);add("no CVD data",h=>!h.cvd);
         const sym=h=>h.sym||String(h.id||"").replace(/-?USDT$/,""),fillT=h=>h.out&&(h.out.tt||h.at),uh=h=>new Date(fillT(h)).getUTCHours(),ud=h=>new Date(fillT(h)).getUTCDay();
         add("filled 00–08 UTC (Asia)",h=>uh(h)<8);add("filled 08–13 UTC (Europe)",h=>uh(h)>=8&&uh(h)<13);add("filled 13–21 UTC (US)",h=>uh(h)>=13&&uh(h)<21);add("filled 21–24 UTC (late US)",h=>uh(h)>=21);

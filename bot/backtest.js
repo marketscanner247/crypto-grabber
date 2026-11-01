@@ -3,7 +3,7 @@
 // for three stop settings, and the result goes to Telegram and the console.
 //   BT_DAYS (default 120), BT_TFS (default 1h,4h,1d), BT_TOP (default 50)
 //   BT_SET: "zone" (default: the current rules and earlier tweaks), "x" (new ideas X0–X7: full exit at Target 1, CVD,
-//           premium/discount, OTE), "w" (high-win candidates W0–W7), "y" (live default + momentum, ETH/BTC, session), "z" (entry timing: fill window, entering at the signal close) or "ltf" (the lower-timeframe entries B–I)
+//           premium/discount, OTE), "w" (high-win candidates W0–W7), "y" (live default + momentum, ETH/BTC, session), "z" (entry timing: fill window, entering at the signal close), "t" (daily/weekly levels before Target 1) or "ltf" (the lower-timeframe entries B–I)
 const http = require("http"), fs = require("fs"), path = require("path");
 const { chromium } = require("playwright");
 const ROOT = path.join(__dirname, "..");
@@ -68,11 +68,12 @@ const line = (lab, x) => `${lab}: ${x.closed} closed · win ${pc(x.winRate)} · 
       L.push(line("All alerted", v.alerted) + (v.alerted.maxDD != null ? ` · worst drop −${v.alerted.maxDD.toFixed(1)}R` : ""));
       if (v.half1) L.push(`· first ${hl} ${v.half1.totalR >= 0 ? "+" : ""}${v.half1.totalR.toFixed(1)}R (${v.half1.closed}) · last ${hl} ${v.half2.totalR >= 0 ? "+" : ""}${v.half2.totalR.toFixed(1)}R (${v.half2.closed})`);
       if (v.hlUsed) L.push(`· higher-low entries taken: ${v.hlUsed}`);
+      if (v.capped) L.push(`· Target 1 moved to a daily/weekly level: ${v.capped} trades`);
       L.push(line("· with the trend", v.withTrend));
       L.push(line("· all 5 checks", v.aplus));
       L.push("");
     }
-    const x0 = r.variants.find(v => /^(X0|W0|Y0|Z0)/.test(v.name));
+    const x0 = r.variants.find(v => /^(X0|W0|Y0|Z0|T0)/.test(v.name));
     if (x0 && x0.cuts) {
       const m = x0.missInfo;
       if (m && m.alerted) L.push(`<b>Setups whose zone never filled (${x0.name.split(" ")[0]})</b>`,
